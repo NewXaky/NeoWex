@@ -1,0 +1,27 @@
+type: Block
+name: Thermion
+description: "Cỗ máy 5x5 nhiều dạng của NewEx chạy bằng lưới điện. Đổi giữa ba dạng Yellow / Blue / Purple, mỗi dạng có kỹ năng riêng; điện dư càng lớn thì phạm vi càng rộng. Đạt Level 5 để mở kỹ năng chủ động."
+
+category: turret
+size: 5
+health: 5000
+
+solid: true
+update: true
+sync: true
+configurable: true
+
+hasPower: true
+outputsPower: false
+consumesPower: false
+
+buildVisibility: shown
+
+requirements: [
+  copper/1000
+  silicon/500
+  titanium/300
+]
+
+research: newex
+researchCostMultiplier: 1
