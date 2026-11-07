@@ -338,7 +338,7 @@ const FX_BLASTER = new Effect(16, 1700, e => {
 // sprites/shapes/meteor.png -> vùng ảnh "newex-meteor". METEOR_SPRITE_ROT: xoay thêm nếu ảnh gốc không hướng lên trên.
 const METEOR_SPRITE_ROT = 0, METEOR_SPRITE_SIZE = 84;
 let meteorRegion = null;
-const getMeteorRegion = () => { if(meteorRegion == null) meteorRegion = Core.atlas.find("newex-meteor"); return meteorRegion; };
+const getMeteorRegion = () => { if(meteorRegion == null){ const r = Core.atlas.find("newex-meteor"); if(r != null && r.found()) meteorRegion = r; else return r; } return meteorRegion; };
 const METEOR_DX = 480, METEOR_DY = 520, STAR_MIN = 2, STAR_MAX = 3.5; // bay từ phải-trên xuống; kích thước & độ dài sao: 4-7 ô
 function drawMeteorFall(e, f, hx, hy){
     const ang = Math.atan2(METEOR_DY, METEOR_DX) / DEG, size = rs(e.id * 3 + 1, STAR_MIN, STAR_MAX) * TS, tail = rs(e.id * 5 + 2, STAR_MIN, STAR_MAX) * TS;
@@ -361,6 +361,8 @@ function drawMeteorFall(e, f, hx, hy){
     Draw.color(Color.white); Draw.alpha(0.95);
     for(let a2 = 0; a2 < 4; a2++) Drawf.tri(hx, hy, size * 0.22, size * (a2 % 2 == 0 ? 1 : 0.7), spin + a2 * 90);
     Draw.blend();
+    const mreg = getMeteorRegion();
+    if(mreg != null && mreg.found()){ Draw.reset(); Draw.rect(mreg, hx, hy, METEOR_SPRITE_SIZE, METEOR_SPRITE_SIZE, METEOR_SPRITE_ROT + spin); }
     bloom(hx, hy, size * 1.1, Color.orange, 0.9);
     Draw.color(Color.white); Fill.circle(hx, hy, size * 0.12);
     // tàn lửa bắn ra phía sau
@@ -742,30 +744,51 @@ const FX_GLOW_DRONE = new Effect(45, 400, e => {
     drawGlow(lerp(cx, e.x, mv * mv * (3 - 2 * mv)), lerp(cy, e.y, mv * mv * (3 - 2 * mv)), e.color, 0.75 * (1 - cl((e.fin() - 0.8) / 0.2)), sc);
 });
 
-// ---------- cutscene khi lên level 5: pháo bắn tới 4 góc map -> zoom toàn map -> quét lưới 16x16 ô
-const CS = {pending: null, age: 0, on: false, stage: 0, t: 0, ox: 0, oy: 0, sx: 0, sy: 0, col: Color.sky, stars: [0, 0, 0, 0], oldScale: 1, oldMin: 1.5, grid: 0};
-const CS_PAN = 100, CS_HOLD = 50, CS_ZOOM = 200, CS_GRID = 420, CS_END = 90, CELL = 16;
+// ---------- cutscene khi lên level 5 ----------
+// 1) camera lia qua đủ 4 góc map, mỗi góc hiện 1 "ngôi sao 2 cánh" (2 cánh trái/phải + vòng tròn đen đặc che ruột)
+// 2) đủ 4 góc -> camera bay về unit của người chơi rồi trả quyền điều khiển
+// Ngôi sao được vẽ liên tục (hoạt ảnh) cho tới khi không còn Thermion level 5 (xem drawWorldMarks).
+const CS = {pending: null, age: 0, on: false, stage: 0, t: 0, ox: 0, oy: 0, sx: 0, sy: 0, col: Color.sky, stars: [0, 0, 0, 0]};
+const CS_PAN = 100, CS_HOLD = 50, CS_BACK = 90, STAR_LEN = TS * 8;
+// shown: 4 ngôi sao đã hiện đủ (bền cho tới khi không còn Thermion level 5)
+const MARK = {shown: false};
+const markCol = new Color();
+// Layer vẽ ngôi sao/tia: phải CAO HƠN lớp sương mù (fogOfWar) và lớp ánh sáng (light), nếu không 3 góc nằm trong vùng chưa khám phá sẽ bị che mất.
+const layerOr = (name, d) => { try{ const v = Layer[name]; return typeof v == "number" ? v : d; }catch(err){ return d; } };
+let markZ = null;
+const getMarkZ = () => markZ == null ? (markZ = Math.max(layerOr("fogOfWar", 130), layerOr("light", 140), layerOr("overlayUI", 120)) + 1) : markZ;
 const csCorner = i => { const W = Vars.world.unitWidth(), H = Vars.world.unitHeight(), m = 4 * TS; return [[m, m], [W - m, m], [W - m, H - m], [m, H - m]][i]; };
-const csFit = () => Math.min(Core.graphics.getWidth() / Vars.world.unitWidth(), Core.graphics.getHeight() / Vars.world.unitHeight()) * 0.92;
 const smooth = p => { p = cl(p); return p * p * (3 - 2 * p); };
-function startCutscene(x, y, col){ if(!CS.on && !Vars.headless) CS.pending = [x, y, col]; }
+function anyLevel5(){
+    for(var k in SELF){ const b = SELF[k]; if(b.isValid() && b.getLevel() >= MAX_LEVEL) return b; }
+    return null;
+}
+function playerPos(){
+    const u = Vars.player.unit();
+    if(u != null && !Vars.player.dead()) return [u.x, u.y];
+    return [CS.ox, CS.oy];
+}
+function startCutscene(x, y, col){ if(!CS.on && !Vars.headless && !MARK.shown) CS.pending = [x, y, col]; }
 function beginCutscene(x, y, col){
     CS.on = true; CS.age = 0; CS.stage = 0; CS.t = 0; CS.ox = x; CS.oy = y; CS.sx = Core.camera.position.x; CS.sy = Core.camera.position.y;
-    CS.col = col; CS.stars = [0, 0, 0, 0]; CS.grid = 0;
-    try{ CS.oldScale = Vars.renderer.getScale(); CS.oldMin = Vars.renderer.minZoom; Vars.renderer.minZoom = 0.01; }catch(err){}
+    CS.col = col; CS.stars = [0, 0, 0, 0];
     try{ Vars.control.input.logicCutscene = true; }catch(err){}
 }
 function endCutscene(){
     CS.on = false;
-    try{ Vars.control.input.logicCutscene = false; Vars.renderer.minZoom = CS.oldMin; Vars.renderer.setScale(CS.oldScale); }catch(err){}
+    try{ Vars.control.input.logicCutscene = false; }catch(err){}
 }
 function csCam(x, y){ Core.camera.position.set(x, y); }
 function csUpdate(){
+    // trạng thái bền: không có Thermion lv5 -> xóa; có sẵn lúc vào map (không có cutscene) -> hiện luôn đủ
+    const b5 = anyLevel5();
+    if(b5 == null){ if(!CS.on && CS.pending == null) MARK.shown = false; }
+    else if(!CS.on && CS.pending == null && !MARK.shown) MARK.shown = true;
     if(CS.pending != null && Vars.state.isGame() && !Vars.state.isPaused() && !Core.scene.hasDialog()){ const p = CS.pending; CS.pending = null; beginCutscene(p[0], p[1], p[2]); }
     if(!CS.on) return;
     if(!Vars.state.isGame()){ endCutscene(); return; }
     CS.t += Time.delta; CS.age += Time.delta;
-    const st = CS.stage, W = Vars.world.width(), H = Vars.world.height();
+    const st = CS.stage;
     if(st < 4){
         const c = csCorner(st);
         if(CS.t < CS_PAN){
@@ -777,70 +800,66 @@ function csUpdate(){
             CS.stars[st] = Math.min(1, CS.stars[st] + Time.delta / 25);
             if(CS.t >= CS_PAN + CS_HOLD){ CS.stage++; CS.t = 0; CS.sx = c[0]; CS.sy = c[1]; }
         }
-    }else if(st == 4){
-        const p = smooth(CS.t / CS_ZOOM);
-        csCam(lerp(CS.sx, Vars.world.unitWidth() / 2, p), lerp(CS.sy, Vars.world.unitHeight() / 2, p));
-        try{ Vars.renderer.setScale(lerp(CS.oldScale, csFit(), p)); }catch(err){}
-        if(CS.t >= CS_ZOOM + 40){ CS.stage = 5; CS.t = 0; }
-    }else if(st == 5){
-        csCam(Vars.world.unitWidth() / 2, Vars.world.unitHeight() / 2);
-        const total = Math.ceil(W / CELL) * Math.ceil(H / CELL);
-        CS.grid = Math.floor(total * cl(CS.t / CS_GRID));
-        if(CS.t >= CS_GRID){ CS.grid = total; CS.stage = 6; CS.t = 0; }
-    }else if(st == 6){
-        if(CS.t >= CS_END){ CS.stage = 7; CS.t = 0; CS.sx = Vars.world.unitWidth() / 2; CS.sy = Vars.world.unitHeight() / 2; }
     }else{
-        const p = smooth(CS.t / 90);
-        csCam(lerp(CS.sx, CS.ox, p), lerp(CS.sy, CS.oy, p));
-        try{ Vars.renderer.setScale(lerp(csFit(), CS.oldScale, p)); }catch(err){}
-        if(CS.t >= 90) endCutscene();
+        // đủ 4 góc -> camera bay về unit người chơi, xong thì trả quyền điều khiển
+        const pp = playerPos(), p = smooth(CS.t / CS_BACK);
+        csCam(lerp(CS.sx, pp[0], p), lerp(CS.sy, pp[1], p));
+        if(CS.t >= CS_BACK){ endCutscene(); MARK.shown = true; }
     }
-    try{ if(CS.age > 60 && !Core.scene.hasDialog() && Core.input.keyTap(Packages.arc.input.KeyCode.escape)) endCutscene(); }catch(err){}
+    try{
+        if(CS.age > 60 && !Core.scene.hasDialog() && Core.input.keyTap(Packages.arc.input.KeyCode.escape)){
+            endCutscene(); MARK.shown = true;   // bỏ qua: hiện đủ luôn
+        }
+    }catch(err){}
 }
-function drawStar4(x, y, len, a, c){
+// Ngôi sao 2 cánh trái/phải: 2 tam giác phát sáng (additive) nhấp nháy, rồi 1 vòng tròn đen đặc vẽ ĐÈ LÊN ở layer cao hơn,
+// vừa đủ che phần ruột của ngôi sao để chỉ lộ 2 cánh bên.
+function drawWingStar(x, y, len, t, i){
     if(len <= 0) return;
-    additive(); Draw.color(c); Draw.alpha(0.5 * a);
-    for(let k = 0; k < 4; k++) Drawf.tri(x, y, len * 0.2, len * 1.2, 90 * k + 45 * 0);
-    Draw.color(Color.white, c, 0.3); Draw.alpha(a);
-    for(let k = 0; k < 4; k++) Drawf.tri(x, y, len * 0.11, len, 90 * k);
-    Draw.blend(); bloom(x, y, len * 0.6, c, 0.8 * a); Draw.color(Color.white); Fill.circle(x, y, len * 0.08); Draw.reset();
+    const pulse = 1 + 0.1 * Math.sin(t * 0.08 + i * 1.7), flick = 0.85 + 0.15 * Math.sin(t * 0.21 + i * 2.3);
+    const L = len * pulse, w = len * 0.2, z = getMarkZ();
+    Draw.z(z);
+    additive();
+    Draw.color(markCol); Draw.alpha(0.45 * flick);
+    for(let k = 0; k < 2; k++) Drawf.tri(x, y, w * 1.5, L * 1.25, k * 180);          // quầng ngoài
+    Draw.color(Color.white, markCol, 0.35); Draw.alpha(0.95 * flick);
+    for(let k = 0; k < 2; k++) Drawf.tri(x, y, w, L, k * 180);                         // lõi cánh
+    Draw.blend();
+    Draw.z(z + 0.5);
+    Draw.color(Color.black); Fill.circle(x, y, w * 1.7);                                // vòng tròn đặc che ruột
+    Draw.reset();
 }
+// tia từ pháo tới góc đang lia camera (chỉ trong lúc lia, tự mất sau đó)
 function csDraw(){
     if(!CS.on) return;
-    const z = Draw.z(); Draw.z(Layer.overlayUI);
-    const st = CS.stage, big = st >= 4 ? 3 : 1;
-    // tia bắn từ pháo tới góc đang lia camera
-    if(st < 4 && CS.t < CS_PAN + 20){
-        const c = csCorner(st), p = smooth(CS.t / CS_PAN), hx = lerp(CS.ox, c[0], p), hy = lerp(CS.oy, c[1], p);
-        beamTo(CS.ox, CS.oy, hx, hy, 4 * (1 - 0.5 * p), CS.col); bloom(hx, hy, 26, CS.col, 0.9);
-    }
-    for(let i = 0; i < 4; i++){
-        if(CS.stars[i] <= 0) continue;
-        const c = csCorner(i), pop = CS.stars[i], len = (TS * 7) * big * (1 - Math.pow(1 - pop, 3)) * (1 + 0.08 * Math.sin(Time.time * 0.1 + i));
-        drawStar4(c[0], c[1], len, 1, CS.col);
-    }
-    // nối 4 ngôi sao khi zoom toàn map
-    if(st >= 4){
-        const lp = st == 4 ? smooth(CS.t / CS_ZOOM) : 1;
-        for(let i = 0; i < 4; i++){
-            const a = csCorner(i), b = csCorner((i + 1) % 4);
-            beamTo(a[0], a[1], lerp(a[0], b[0], lp), lerp(a[1], b[1], lp), 3 * big, CS.col);
-        }
-    }
-    // lưới khu vực 16x16 ô, hiện lần lượt
-    if(st >= 5){
-        const W = Vars.world.width(), H = Vars.world.height(), cols = Math.ceil(W / CELL), rows = Math.ceil(H / CELL), n = Math.min(CS.grid, cols * rows);
-        Lines.stroke(2);
-        for(let k = 0; k < n; k++){
-            const cx = k % cols, cy = Math.floor(k / cols), x0 = cx * CELL * TS, y0 = cy * CELL * TS, w = Math.min(CELL, W - cx * CELL) * TS, h = Math.min(CELL, H - cy * CELL) * TS;
-            const fresh = cl(1 - (n - k) / 40);
-            Draw.color(CS.col); Draw.alpha(0.12 + 0.3 * (1 - fresh)); Fill.rect(x0 + w / 2, y0 + h / 2, w, h);
-            Draw.color(CS.col, Color.white, 0.4 * (1 - fresh)); Draw.alpha(0.5 + 0.4 * (1 - fresh)); Lines.rect(x0, y0, w, h);
-        }
-        Draw.reset();
-    }
+    const st = CS.stage;
+    if(st >= 4 || CS.t >= CS_PAN + 20) return;
+    const z = Draw.z(); Draw.z(getMarkZ());
+    const c = csCorner(st), p = smooth(CS.t / CS_PAN), hx = lerp(CS.ox, c[0], p), hy = lerp(CS.oy, c[1], p);
+    beamTo(CS.ox, CS.oy, hx, hy, 4 * (1 - 0.5 * p), CS.col); bloom(hx, hy, 26, CS.col, 0.9);
     Draw.reset(); Draw.z(z);
 }
+// vẽ mỗi khung hình: 4 ngôi sao ở 4 góc (luôn đủ 4), cho tới khi không còn Thermion level 5
+function drawWorldMarks(){
+    if(Vars.headless || !Vars.state.isGame()) return;
+    const b = anyLevel5();
+    if(b == null) return;
+    b.fillMarkColor(markCol);
+    const t = Time.time, cx = Core.camera.position.x, cy = Core.camera.position.y, hw = Core.camera.width / 2, hh = Core.camera.height / 2, pz = Draw.z();
+    for(let i = 0; i < 4; i++){
+        const pop = MARK.shown ? 1 : (CS.on ? CS.stars[i] : (CS.pending != null ? 0 : 1));
+        if(pop <= 0) continue;
+        const c = csCorner(i), len = STAR_LEN * (1 - Math.pow(1 - pop, 3));
+        if(Math.abs(c[0] - cx) > hw + len * 1.8 || Math.abs(c[1] - cy) > hh + len * 1.8) continue;
+        drawWingStar(c[0], c[1], len, t, i);
+    }
+    Draw.z(pz); Draw.reset();
+}
+// vào map mới -> xóa trạng thái cutscene cũ
+Events.on(Packages.mindustry.game.EventType.WorldLoadEvent, cons(e => {
+    CS.pending = null; if(CS.on) endCutscene();
+    MARK.shown = false;
+}));
 Events.run(TRIG.update, run(csUpdate));
 // Block được khai báo khai báo bằng content/blocks/thermion.hjson (type: Block, size, health,
 // category, requirements, buildVisibility...). Ở đây chỉ lấy lại content đó và gắn thêm
@@ -867,6 +886,8 @@ Events.run(TRIG.draw, run(() => {
         if(!b.isValid()){ delete SELF[k]; continue; }
         b.drawBlades();
     }
+    csDraw();
+    drawWorldMarks();
 }));
 
 thermionBuild = prov(() => {
@@ -882,6 +903,8 @@ thermionBuild = prov(() => {
     };
     return extend(Building, {
         getForm(){ return st.form; },
+        getLevel(){ return st.level; },
+        fillMarkColor(c){ c.set(formColor(st.form)); if(st.pendingForm >= 0) c.lerp(formColor(st.pendingForm), this.changeProgress()); },
     // ---------- điện / phạm vi
     totalPowerProduction(){ return (this.power != null && this.power.graph != null) ? this.power.graph.getLastPowerProduced() * 60 : 0; },
     totalPowerUse(){ return (this.power != null && this.power.graph != null) ? this.power.graph.getLastPowerNeeded() * 60 : 0; },
