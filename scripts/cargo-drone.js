@@ -503,6 +503,90 @@ const swordDashTrailEffect = new Effect(45, e => {
     Lines.line(e.x, e.y, backX, backY);
 });
 
+// ===== DASH KIỂU "NHẢY SIÊU KHÔNG GIAN" (theo video tàu Star Destroyer) =====
+// Bật ra gần như tức thì với vệt mờ chuyển động rất mạnh, rồi giảm tốc cực nhanh (ease-out) cho tới khi rõ nét trở lại.
+const WARP_DASH_TICKS = 26.0;
+const WARP_EASE_POW = 4.0;
+
+// Mờ chuyển động: vẽ nhiều bản sao sprite kéo dài ngược hướng bay, độ dài theo tốc độ hiện tại
+const warpBlurFx = new Effect(3, 400, cons(e => {
+    let d = e.data;
+    if (!d || !d.region) return;
+    let a = e.fout() * d.alpha;
+    if (a <= 0.01) return;
+    let n = PerfCore.level() >= 2 ? 3 : 7;
+    let ang = e.rotation;
+    Draw.z(Layer.flyingUnit - 0.05);
+    Draw.mixcol(Color.white, 0.55);
+    for (let i = 1; i <= n; i++) {
+        let f = i / n;
+        Draw.alpha(a * (1.0 - f) * 0.7);
+        Draw.rect(d.region, e.x - Angles.trnsx(ang, d.blur * f), e.y - Angles.trnsy(ang, d.blur * f), d.rot - 90.0);
+    }
+    Draw.mixcol();
+    Draw.reset();
+}));
+
+// Lúc xuất phát: chớp sáng + các vệt sáng song song bắn dọc đường dash rồi co lại
+const warpDepartFx = new Effect(26, 1200, cons(e => {
+    let d = e.data;
+    if (!d) return;
+    let fin = e.fin(), fout = e.fout();
+    let dx = d.x2 - e.x, dy = d.y2 - e.y;
+    let len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1.0) return;
+    let ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+    let lines = PerfCore.level() >= 2 ? 3 : 7;
+
+    Draw.z(Layer.effect + 0.08);
+    if (isBloomEnabled()) Drawf.light(e.x, e.y, 150.0 * fout, Color.white, fout);
+
+    Draw.color(Color.white);
+    Draw.alpha(0.85 * fout * fout);
+    Fill.circle(e.x, e.y, 30.0 * fout);
+    Lines.stroke(3.5 * fout);
+    Lines.circle(e.x, e.y, 80.0 * fin);
+
+    let head = clamp01(fin * 3.5);
+    let tail = clamp01(fin * 1.6 - 0.15);
+    for (let i = 0; i < lines; i++) {
+        let off = (i - (lines - 1) / 2.0) * 7.0 + Mathf.randomSeed(e.id * 7 + i, -3, 3);
+        let l0 = tail * len * (0.9 + 0.1 * Mathf.randomSeed(e.id + i * 3, 0, 1));
+        let l1 = head * len;
+        if (l1 <= l0) continue;
+        let w = 1.0 - Math.abs(off) / 30.0;
+        Draw.color(Color.black);
+        Draw.alpha(0.6 * fout);
+        Lines.stroke((4.0 * w + 1.0) * fout);
+        Lines.line(e.x + ux * l0 + nx * off, e.y + uy * l0 + ny * off, e.x + ux * l1 + nx * off, e.y + uy * l1 + ny * off);
+        Draw.color(Color.white);
+        Draw.alpha(fout);
+        Lines.stroke((1.6 * w + 0.4) * fout);
+        Lines.line(e.x + ux * l0 + nx * off, e.y + uy * l0 + ny * off, e.x + ux * l1 + nx * off, e.y + uy * l1 + ny * off);
+    }
+    Draw.reset();
+}));
+
+// Lúc dừng: chớp sáng + vòng sóng tại điểm đáp
+const warpArriveFx = new Effect(30, 400, cons(e => {
+    let fin = e.fin(), fout = e.fout();
+    Draw.z(Layer.effect + 0.08);
+    if (isBloomEnabled()) Drawf.light(e.x, e.y, 120.0 * fout, Color.white, 0.9 * fout);
+
+    Draw.color(Color.white);
+    Draw.alpha(0.6 * fout * fout);
+    Fill.circle(e.x, e.y, 24.0 * fout);
+
+    Draw.alpha(fout);
+    Lines.stroke(3.0 * fout);
+    Lines.circle(e.x, e.y, 70.0 * Math.sqrt(fin));
+    Draw.color(Color.black);
+    Draw.alpha(0.7 * fout);
+    Lines.stroke(1.6 * fout);
+    Lines.circle(e.x, e.y, 52.0 * Math.sqrt(fin));
+    Draw.reset();
+}));
+
 const swordDissolveSparkEffect = new Effect(40, e => {
     Draw.z(Layer.flyingUnit + 2.1);
     Draw.color(coalGlowColor, Color.black, e.fout());
@@ -1003,10 +1087,11 @@ const renderSwordEffect = new Effect(2, e => {
         Fill.circle(swordX, swordY, circleRadius * 0.7);
 
     } else if (data.isFan) {
-        swordScale = 2.4;
+        let fDist = data.fanDist !== undefined ? data.fanDist : 48.0;
+        swordScale = data.fanScale !== undefined ? data.fanScale : 2.4;
         swordAngle = data.fanAngle;
-        swordX = rx + Angles.trnsx(swordAngle, 48.0);
-        swordY = ry + Angles.trnsy(swordAngle, 48.0);
+        swordX = rx + Angles.trnsx(swordAngle, fDist);
+        swordY = ry + Angles.trnsy(swordAngle, fDist);
     } else if (isDashing) {
         let t = Math.min(1.0, Math.max(0.0, dashProgress));
         swordAngle = rot - Mathf.lerp(0, 140, t);
@@ -1058,6 +1143,627 @@ const droneBulletMK2B = extend(BasicBulletType, {
     frontColor: Color.valueOf("ff5252"),
     backColor: Color.valueOf("ff1744")
 });
+
+// ===== DẠNG BRAWLER (cận chiến) của Cargo Sword Drone =====
+// 50% khi spawn: +500% HP, +20% tốc độ, bỏ dash, áp sát địch rồi chém một đường vòng cung điện ảnh (như video).
+const BRAWLER_CHANCE = 0.5;
+const BRAWLER_HP_MULT = 6.0;        // +500% HP => x6
+const BRAWLER_SPEED_MULT = 1.2;     // +20% tốc độ
+const BRAWLER_SLASH_SCALE = 6.0;    // hệ số kích thước vệt chém + kiếm (gốc 56 -> x6)
+const BRAWLER_SLASH_R = 56.0 * BRAWLER_SLASH_SCALE;   // bán kính mép ngoài của vệt chém
+const BRAWLER_SLASH_W = 30.0 * BRAWLER_SLASH_SCALE;   // độ dày tối đa của vệt chém (ở sát đầu)
+const BRAWLER_SWORD_SCALE = 8.0;    // cỡ thanh kiếm (gốc 2.4 -> 4.0 -> 8.0)
+// Phạm vi tấn công = đúng vệt chém: drone ra đòn khi địch đã nằm giữa dải vệt chém, và chỉ trúng những gì nằm trong dải đó.
+const BRAWLER_ENGAGE = BRAWLER_SLASH_R - BRAWLER_SLASH_W * 0.5;
+const BRAWLER_SWEEP_DEG = 200.0;    // góc quét
+const BRAWLER_WINDUP_TICKS = 14.0;  // giơ kiếm
+const BRAWLER_SWEEP_TICKS = 14.0;   // thời gian vung
+const BRAWLER_REST_TICKS = 30.0;
+const BRAWLER_COOLDOWN_TICKS = 15.0;
+const BRAWLER_FX_LIFE = 34.0;
+const BRAWLER_SLASH_DMG = 500.0;    // sát thương cố định mỗi nhát (x2 nếu MK2B)
+const BRAWLER_SLASH_PCT = 0.05;     // + % máu tối đa của mục tiêu
+const BRAWLER_COL_MAIN = "#28d0ff";
+const BRAWLER_COL_DARK = "#0a1c4a";
+const BRAWLER_COL_EDGE = "#02050f";
+const BRAWLER_COL_LIGHT = "#c8f8ff";
+const BRAWLER_COL_MAGENTA = "#ff4df2";   // viền sắc sai (chromatic aberration)
+const BRAWLER_COL_CYAN = "#00ffff";
+const BRAWLER_COL_VOID = "#000814";
+
+const BS_MAXN = 64;
+const bsCs = new Array(BS_MAXN + 1);
+const bsSn = new Array(BS_MAXN + 1);
+const bsWp = new Array(BS_MAXN + 1);
+const bsJg = new Array(BS_MAXN + 1);
+const bsCs2 = new Array(BS_MAXN + 1);
+const bsSn2 = new Array(BS_MAXN + 1);
+const bsWp2 = new Array(BS_MAXN + 1);
+
+function brawlerEase(p) {
+    return 1.0 - Math.pow(1.0 - p, 2.2);
+}
+
+// Hình dạng vệt chém theo thời gian t (tick từ lúc bắt đầu chém). Dùng chung cho hiệu ứng và vùng sát thương.
+function brawlerShapeAt(t) {
+    let pe = brawlerEase(clamp01(t / BRAWLER_SWEEP_TICKS));
+    let fadeStart = BRAWLER_SWEEP_TICKS * 0.6;
+    let fadeT = clamp01((t - fadeStart) / (BRAWLER_FX_LIFE - fadeStart));
+    return {
+        head: BRAWLER_SWEEP_DEG * pe,
+        tail: BRAWLER_SWEEP_DEG * clamp01((t - 3.0) / 30.0) * 0.8,
+        W: BRAWLER_SLASH_W * (1.0 - 0.45 * fadeT),
+        fadeT: fadeT
+    };
+}
+
+// Độ dày tương đối (0..1) theo vị trí dọc cung: u = 0 đuôi mảnh -> u = 1 đầu dày, mép đầu bo tròn
+function brawlerProfile(u) {
+    let w = Math.pow(u, 1.35);
+    if (u > 0.955) w *= Math.sqrt(Math.max(0.0, 1.0 - Math.pow((u - 0.955) / 0.045, 2.0)));
+    return w;
+}
+
+function bsQuad(cx, cy, i, ro0, ro1, ri0, ri1) {
+    Fill.quad(cx + bsCs[i] * ro0, cy + bsSn[i] * ro0, cx + bsCs[i + 1] * ro1, cy + bsSn[i + 1] * ro1,
+              cx + bsCs[i + 1] * ri1, cy + bsSn[i + 1] * ri1, cx + bsCs[i] * ri0, cy + bsSn[i] * ri0);
+}
+
+// Vệt chém điện ảnh: đầu dày trắng-xanh rực, đuôi mảnh chuyển xanh đen khói, viền đen, bóng sáng cộng màu,
+// tia lửa + vệt gió bay theo đầu, vòng sóng xung kích dưới đất, mờ dần.
+const brawlerSlashFx = new Effect(BRAWLER_FX_LIFE, 1100, cons(e => {
+    let d = e.data;
+    if (!d) return;
+    let t = e.time;
+    let sh = brawlerShapeAt(t);
+    let alpha = Math.pow(1.0 - sh.fadeT, 1.3);
+    if (alpha <= 0.02) return;
+
+    let lod = PerfCore.level();
+    let n = lod >= 2 ? 24 : 56;
+    let side = d.side;
+    let cx = e.x, cy = e.y;
+    let R = BRAWLER_SLASH_R, W = sh.W, S = BRAWLER_SLASH_SCALE;
+    let seed = e.id * 53;
+    let main = PerfCore.color(BRAWLER_COL_MAIN);
+    let dark = PerfCore.color(BRAWLER_COL_DARK);
+    let edge = PerfCore.color(BRAWLER_COL_EDGE);
+    let light = PerfCore.color(BRAWLER_COL_LIGHT);
+
+    // vòng sóng xung kích dưới đất lúc bắt đầu chém
+    if (t < 16.0) {
+        let k = t / 16.0;
+        Draw.z(Layer.effect + 0.01);
+        Draw.color(main);
+        Draw.alpha(0.55 * (1.0 - k));
+        Lines.stroke(7.0 * (1.0 - k) + 0.5);
+        Lines.circle(cx, cy, R * 0.95 * brawlerEase(k));
+        Draw.color(Color.white);
+        Draw.alpha(0.5 * (1.0 - k));
+        Lines.stroke(2.0 * (1.0 - k) + 0.3);
+        Lines.circle(cx, cy, R * 0.85 * brawlerEase(k));
+    }
+
+    let span = sh.head - sh.tail;
+    if (span < 0.5) { Draw.reset(); return; }
+
+    // vùng bị chém tối sầm lại để vệt sáng nổi bật hơn
+    Draw.z(Layer.effect + 0.005);
+    Draw.color(PerfCore.color(BRAWLER_COL_VOID));
+    Draw.alpha(0.34 * alpha);
+    let nd = lod >= 2 ? 10 : 22;
+    for (let i = 0; i < nd; i++) {
+        let a1 = d.a0 + side * (sh.head * i / nd), a2 = d.a0 + side * (sh.head * (i + 1) / nd);
+        Fill.tri(cx, cy, cx + Angles.trnsx(a1, R), cy + Angles.trnsy(a1, R),
+                 cx + Angles.trnsx(a2, R), cy + Angles.trnsy(a2, R));
+    }
+
+    let flick = Math.floor(t * 0.5);
+    for (let i = 0; i <= n; i++) {
+        let u = i / n;
+        let ang = d.a0 + side * (sh.tail + span * u);
+        bsCs[i] = Angles.trnsx(ang, 1.0);
+        bsSn[i] = Angles.trnsy(ang, 1.0);
+        bsWp[i] = W * brawlerProfile(u);
+        bsJg[i] = (1.0 - u) * W * 0.32 * Mathf.randomSeed(seed + i * 7 + flick, 0.25, 1.0);
+    }
+
+    Draw.z(Layer.effect + 0.09);
+
+    // khói đen xanh lởm chởm phía ngoài, đậm ở đuôi
+    Draw.color(edge, dark, 0.5);
+    Draw.alpha(0.5 * alpha);
+    for (let i = 0; i < n; i++) {
+        if (bsJg[i] < 1.0 && bsJg[i + 1] < 1.0) continue;
+        bsQuad(cx, cy, i, R + bsJg[i], R + bsJg[i + 1], R - bsWp[i] * 0.3, R - bsWp[i + 1] * 0.3);
+    }
+
+    // viền đen
+    let M = 8.0;
+    Draw.color(edge);
+    Draw.alpha(0.95 * alpha);
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.05 && bsWp[i + 1] < 0.05) continue;
+        bsQuad(cx, cy, i, R + M, R + M, R - bsWp[i] - M, R - bsWp[i + 1] - M);
+    }
+
+    // thân: xanh đen (đuôi) -> xanh sáng (đầu)
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.05 && bsWp[i + 1] < 0.05) continue;
+        let f = (i + 0.5) / n;
+        Draw.color(dark, main, Math.pow(f, 0.7));
+        Draw.alpha(alpha);
+        bsQuad(cx, cy, i, R, R, R - bsWp[i], R - bsWp[i + 1]);
+    }
+
+    // dải giữa sáng hơn
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.5 && bsWp[i + 1] < 0.5) continue;
+        let f = (i + 0.5) / n;
+        Draw.color(main, light, f);
+        Draw.alpha(0.9 * alpha * (0.35 + 0.65 * f));
+        bsQuad(cx, cy, i, R, R, R - bsWp[i] * 0.55, R - bsWp[i + 1] * 0.55);
+    }
+
+    // lõi trắng sát mép ngoài (lưỡi sắc)
+    Draw.color(Color.white);
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.5 && bsWp[i + 1] < 0.5) continue;
+        let f = (i + 0.5) / n;
+        Draw.alpha(0.95 * alpha * (0.2 + 0.8 * f));
+        bsQuad(cx, cy, i, R, R, R - bsWp[i] * 0.16, R - bsWp[i + 1] * 0.16);
+    }
+
+    // đường sáng mảnh dọc mép ngoài
+    Draw.color(Color.white);
+    Lines.stroke(2.4);
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.5 && bsWp[i + 1] < 0.5) continue;
+        Draw.alpha(alpha * (i + 0.5) / n);
+        Lines.line(cx + bsCs[i] * R, cy + bsSn[i] * R, cx + bsCs[i + 1] * R, cy + bsSn[i + 1] * R);
+    }
+
+    // vệt chém "dư ảnh": cung mảnh, sáng, đi chậm hơn vệt chính vài tick, nằm bên trong thân
+    let sh2 = brawlerShapeAt(Math.max(0.0, t - 3.5));
+    let tail2 = sh2.tail + (sh2.head - sh2.tail) * 0.35;
+    let span2 = sh2.head - tail2;
+    if (span2 > 1.0) {
+        let n2 = Math.floor(n / 2);
+        let Rc = R - W * 0.62;
+        for (let i = 0; i <= n2; i++) {
+            let u = i / n2;
+            let ang = d.a0 + side * (tail2 + span2 * u);
+            bsCs2[i] = Angles.trnsx(ang, 1.0);
+            bsSn2[i] = Angles.trnsy(ang, 1.0);
+            bsWp2[i] = W * 0.26 * brawlerProfile(u);
+        }
+        Draw.color(light);
+        for (let i = 0; i < n2; i++) {
+            if (bsWp2[i] < 0.3 && bsWp2[i + 1] < 0.3) continue;
+            Draw.alpha(0.6 * alpha * (0.3 + 0.7 * (i + 0.5) / n2));
+            Fill.quad(cx + bsCs2[i] * Rc, cy + bsSn2[i] * Rc, cx + bsCs2[i + 1] * Rc, cy + bsSn2[i + 1] * Rc,
+                      cx + bsCs2[i + 1] * (Rc - bsWp2[i + 1]), cy + bsSn2[i + 1] * (Rc - bsWp2[i + 1]),
+                      cx + bsCs2[i] * (Rc - bsWp2[i]), cy + bsSn2[i] * (Rc - bsWp2[i]));
+        }
+    }
+
+    // quầng sáng cộng màu
+    Draw.blend(Blending.additive);
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.5 && bsWp[i + 1] < 0.5) continue;
+        let f = (i + 0.5) / n;
+        Draw.color(main);
+        Draw.alpha(0.22 * alpha * f);
+        bsQuad(cx, cy, i, R + 14.0, R + 14.0, R - bsWp[i] - 14.0, R - bsWp[i + 1] - 14.0);
+    }
+
+    // viền sắc sai: hồng ngoài, lục lam trong (hiệu ứng ống kính)
+    let magenta = PerfCore.color(BRAWLER_COL_MAGENTA);
+    let cyanPure = PerfCore.color(BRAWLER_COL_CYAN);
+    for (let i = 0; i < n; i++) {
+        if (bsWp[i] < 0.5 && bsWp[i + 1] < 0.5) continue;
+        let f = (i + 0.5) / n;
+        Draw.color(magenta);
+        Draw.alpha(0.5 * alpha * f);
+        bsQuad(cx, cy, i, R + 14.0, R + 14.0, R + 8.0, R + 8.0);
+        Draw.color(cyanPure);
+        Draw.alpha(0.4 * alpha * f);
+        bsQuad(cx, cy, i, R + 8.0, R + 8.0, R + 3.0, R + 3.0);
+    }
+
+    // mảnh vỡ/tia lửa bắn văng ra ngoài ngay khi đầu vệt chém quét qua
+    let shards = lod >= 2 ? 6 : 20;
+    for (let j = 0; j < shards; j++) {
+        let angDeg = Mathf.randomSeed(seed + j * 11 + 31, 0.0, 1.0) * BRAWLER_SWEEP_DEG * 0.98;
+        if (angDeg > sh.head || angDeg < sh.tail) continue;
+        let x = Math.min(angDeg / BRAWLER_SWEEP_DEG, 0.999);
+        let age = t - (1.0 - Math.pow(1.0 - x, 1.0 / 2.2)) * BRAWLER_SWEEP_TICKS;
+        if (age < 0.0 || age > 20.0) continue;
+        let k = age / 20.0;
+        let ang = d.a0 + side * angDeg;
+        let r0 = R - W * Mathf.randomSeed(seed + j * 11 + 33, 0.0, 0.9);
+        let rr = r0 + age * (5.0 + Mathf.randomSeed(seed + j * 11 + 32, 0.0, 7.0));
+        let ls = 26.0 * (1.0 - k) + 5.0;
+        Draw.color(light, main, k);
+        Draw.alpha(0.95 * (1.0 - k) * alpha);
+        Lines.stroke(2.6 * (1.0 - k) + 0.5);
+        Lines.line(cx + Angles.trnsx(ang, rr), cy + Angles.trnsy(ang, rr),
+                   cx + Angles.trnsx(ang, rr + ls), cy + Angles.trnsy(ang, rr + ls));
+    }
+
+    // chớp sáng + sao 4 cánh ở đầu vệt chém
+    let ih = Math.floor(n * 0.97);
+    let hr = R - bsWp[ih] * 0.5;
+    let hx = cx + bsCs[ih] * hr, hy = cy + bsSn[ih] * hr;
+    let hk = clamp01(1.0 - t / (BRAWLER_SWEEP_TICKS + 8.0));
+    if (hk > 0.0) {
+        Draw.color(Color.white);
+        Draw.alpha(0.85 * hk);
+        Fill.circle(hx, hy, 34.0 * hk + 4.0);
+        let L = 14.0 * S * hk + 10.0;
+        Lines.stroke(3.0);
+        Lines.line(hx - L, hy, hx + L, hy);
+        Lines.line(hx, hy - L, hx, hy + L);
+        // vệt sáng ngang kiểu ống kính anamorphic
+        Draw.color(main);
+        Draw.alpha(0.7 * hk);
+        Lines.stroke(4.0 * hk + 0.8);
+        Lines.line(hx - 520.0 * hk - 40.0, hy, hx + 520.0 * hk + 40.0, hy);
+        Draw.color(Color.white);
+        Draw.alpha(0.9 * hk);
+        Lines.stroke(1.4);
+        Lines.line(hx - 300.0 * hk - 20.0, hy, hx + 300.0 * hk + 20.0, hy);
+    }
+    Draw.blend();
+
+    if (isBloomEnabled()) Drawf.light(hx, hy, 170.0 * alpha, main, 0.85 * alpha);
+
+    // vệt gió bay vọt theo hướng vung, phía trước đầu
+    if (t < BRAWLER_SWEEP_TICKS + 10.0) {
+        let ak = alpha * clamp01(1.0 - (t - BRAWLER_SWEEP_TICKS) / 10.0);
+        let hang = d.a0 + side * sh.head;
+        let tang = hang + side * 90.0;
+        let lines = lod >= 2 ? 2 : 7;
+        for (let j = 0; j < lines; j++) {
+            let rr = R - W * Mathf.randomSeed(seed + j * 3 + 1, 0.05, 1.0);
+            let len = Mathf.randomSeed(seed + j * 3 + 2, 50.0, 170.0);
+            let px = cx + Angles.trnsx(hang, rr), py = cy + Angles.trnsy(hang, rr);
+            Draw.color(Color.white);
+            Draw.alpha(0.85 * ak);
+            Lines.stroke(2.2 + (j % 3) * 0.8);
+            Lines.line(px + Angles.trnsx(tang, 6.0), py + Angles.trnsy(tang, 6.0),
+                       px + Angles.trnsx(tang, len), py + Angles.trnsy(tang, len));
+        }
+    }
+
+    // tia lấp lánh rải trên dải chém
+    let sparks = lod >= 2 ? 3 : 10;
+    for (let j = 0; j < sparks; j++) {
+        let u = Mathf.randomSeed(seed + j * 5 + 9, 0.35, 1.0);
+        let ang = d.a0 + side * (sh.tail + span * u);
+        let rr = R - W * brawlerProfile(u) * Mathf.randomSeed(seed + j * 5 + 10, 0.1, 1.0);
+        let tw = 0.5 + 0.5 * Math.sin(t * 0.6 + j * 2.1);
+        let sz = (4.0 + (j % 3) * 3.0) * tw;
+        let sx = cx + Angles.trnsx(ang, rr), sy = cy + Angles.trnsy(ang, rr);
+        Draw.color(Color.white);
+        Draw.alpha(alpha * tw);
+        Lines.stroke(2.0);
+        Lines.line(sx - sz, sy, sx + sz, sy);
+        Lines.line(sx, sy - sz, sx, sy + sz);
+        Fill.circle(sx, sy, 1.6 * tw);
+    }
+    Draw.reset();
+}));
+
+// Giơ kiếm: vòng rune xoay dưới chân, tia năng lượng hút về lưỡi kiếm, quầng sáng tăng dần
+const brawlerChargeFx = new Effect(2, 900, cons(e => {
+    let d = e.data;
+    if (!d) return;
+    let k = d.k;
+    let lod = PerfCore.level();
+    let main = PerfCore.color(BRAWLER_COL_MAIN);
+    let cx = e.x, cy = e.y;
+
+    Draw.z(Layer.flyingUnit - 0.3);
+    Draw.color(main);
+    Draw.alpha(0.4 * k);
+    Lines.stroke(2.0);
+    Lines.circle(cx, cy, 36.0 + 12.0 * k);
+    Draw.alpha(0.75 * k);
+    Lines.stroke(2.6);
+    for (let i = 0; i < 8; i++) {
+        Lines.arc(cx, cy, 58.0 + 10.0 * k, 0.07, Time.time * 5.0 + i * 45.0);
+    }
+    Draw.alpha(0.4 * k);
+    Lines.stroke(1.4);
+    for (let i = 0; i < 6; i++) {
+        Lines.arc(cx, cy, 84.0 - 10.0 * k, 0.05, -Time.time * 7.0 + i * 60.0);
+    }
+
+    Draw.z(Layer.effect + 0.05);
+    let streaks = lod >= 2 ? 4 : 12;
+    for (let j = 0; j < streaks; j++) {
+        let ph = (k * 1.4 + j / streaks) % 1.0;
+        let rad = (1.0 - ph) * 190.0 + 24.0;
+        let ang = j * (360.0 / streaks) + Time.time * 2.0;
+        Draw.color(Color.white, main, ph);
+        Draw.alpha(0.9 * ph * k);
+        Lines.stroke(1.2 + 1.6 * ph);
+        Lines.line(d.tx + Angles.trnsx(ang, rad), d.ty + Angles.trnsy(ang, rad),
+                   d.tx + Angles.trnsx(ang, rad * 0.8), d.ty + Angles.trnsy(ang, rad * 0.8));
+    }
+
+    Draw.blend(Blending.additive);
+    Draw.color(main);
+    Draw.alpha(0.3 * k);
+    Fill.circle(d.tx, d.ty, 34.0 * k + 6.0);
+    Draw.blend();
+    if (isBloomEnabled()) Drawf.light(d.tx, d.ty, 140.0 * k + 30.0, main, 0.9 * k);
+    Draw.reset();
+}));
+
+// Trúng đòn: chớp sáng, vòng sóng, chém chữ X lớn, tia lửa tỏa ra
+const brawlerHitFx = new Effect(28, 600, cons(e => {
+    let d = e.data;
+    let size = (d && d.size !== undefined) ? d.size : 10.0;
+    let fin = e.fin(), fout = e.fout();
+    let main = PerfCore.color(BRAWLER_COL_MAIN);
+    let seed = e.id * 29;
+    let base = e.rotation;
+
+    Draw.z(Layer.effect + 0.12);
+    if (isBloomEnabled()) Drawf.light(e.x, e.y, (110.0 + size * 2.0) * fout, main, fout);
+
+    Draw.color(Color.white);
+    Draw.alpha(0.9 * fout * fout);
+    Fill.circle(e.x, e.y, (12.0 + size * 0.8) * fout);
+
+    Draw.color(main);
+    Draw.alpha(fout);
+    Lines.stroke(5.0 * fout + 0.5);
+    Lines.circle(e.x, e.y, (34.0 + size) * Math.sqrt(fin));
+    Draw.color(Color.white);
+    Lines.stroke(1.8 * fout);
+    Lines.circle(e.x, e.y, (26.0 + size * 0.8) * Math.sqrt(fin));
+
+    let L = (70.0 + size * 1.8) * Math.min(1.0, fin * 5.0);
+    for (let q = 0; q < 2; q++) {
+        let a = base + (q == 0 ? 38.0 : -52.0);
+        let dx = Angles.trnsx(a, L), dy = Angles.trnsy(a, L);
+        Draw.color(Color.black);
+        Draw.alpha(0.6 * fout);
+        Lines.stroke(8.0 * fout + 0.6);
+        Lines.line(e.x - dx, e.y - dy, e.x + dx, e.y + dy);
+        Draw.color(Color.white);
+        Draw.alpha(fout);
+        Lines.stroke(3.2 * fout + 0.4);
+        Lines.line(e.x - dx, e.y - dy, e.x + dx, e.y + dy);
+    }
+
+    let sparks = PerfCore.level() >= 2 ? 4 : 10;
+    for (let j = 0; j < sparks; j++) {
+        let a = Mathf.randomSeed(seed + j * 3, 0.0, 360.0);
+        let r0 = (14.0 + size * 0.5) + fin * Mathf.randomSeed(seed + j * 3 + 1, 50.0, 130.0);
+        let ls = 16.0 * fout + 2.0;
+        Draw.color(Color.white, main, fin);
+        Draw.alpha(fout);
+        Lines.stroke(2.0 * fout + 0.4);
+        Lines.line(e.x + Angles.trnsx(a, r0), e.y + Angles.trnsy(a, r0),
+                   e.x + Angles.trnsx(a, r0 + ls), e.y + Angles.trnsy(a, r0 + ls));
+    }
+    Draw.reset();
+}));
+
+// Vòng sáng nhỏ nhấp nháy dưới chân brawler để nhận biết
+const brawlerAuraFx = new Effect(24, e => {
+    Draw.z(Layer.flyingUnit - 0.2);
+    Draw.color(PerfCore.color(BRAWLER_COL_MAIN));
+    Draw.alpha(0.55 * e.fout());
+    Lines.stroke(1.6 * e.fout());
+    Lines.circle(e.x, e.y, 8.0 + 16.0 * e.fin());
+    Draw.reset();
+});
+
+function brawlerTargetRadius(t) {
+    if (t == null) return 0.0;
+    if (t.block !== undefined && t.block != null) return t.block.size * 4.0;
+    return t.hitSize / 2.0;
+}
+
+function brawlerSwordDist(scale) {
+    // lưỡi kiếm (cánh dài 30*scale) chạm mép ngoài của vệt chém
+    return Math.max(24.0, BRAWLER_SLASH_R - 30.0 * scale * 0.95);
+}
+
+// Sát thương = đúng hình vệt chém đang hiển thị (dải giữa tail..head, dày theo brawlerProfile)
+function brawlerSlashDamage(unit, data, isMK2B) {
+    if (Vars.net.client()) return;
+    let sh = brawlerShapeAt(data.bsTimer);
+    let head = sh.head, tail = sh.tail, W = sh.W;
+    let cx = data.bsX, cy = data.bsY, R = BRAWLER_SLASH_R;
+    let mult = isMK2B ? 2.0 : 1.0;
+    if (head - tail < 1.0) { data.bsPrev = head; return; }
+
+    Units.nearbyEnemies(unit.team, cx, cy, R + 80.0, enemy => {
+        if (!enemy || !enemy.isValid() || enemy.dead || data.bsHit["u" + enemy.id]) return;
+        let rad = enemy.hitSize / 2.0;
+        let dist = Mathf.dst(cx, cy, enemy.x, enemy.y);
+        if (dist > R + rad) return;
+        let ang = Angles.angle(cx, cy, enemy.x, enemy.y);
+        let dg = (((ang - data.bsA0) * data.bsSide) % 360.0 + 360.0) % 360.0;
+        let angPad = Math.min(25.0, Math.atan2(rad + 4.0, Math.max(dist, 1.0)) * 57.2958);
+        if (dg < tail - angPad || dg > head + angPad) return;
+        let u = clamp01((dg - tail) / Math.max(1.0, head - tail));
+        let w = Math.max(14.0, W * brawlerProfile(u));
+        if (dist < R - w - rad) return;
+        data.bsHit["u" + enemy.id] = true;
+        enemy.damagePierce(BRAWLER_SLASH_DMG * mult + enemy.maxHealth * BRAWLER_SLASH_PCT);
+        spawnSwordHitSlash(enemy.x, enemy.y, ang + 90.0 * data.bsSide, enemy.hitSize);
+        brawlerHitFx.at(enemy.x, enemy.y, ang + 90.0 * data.bsSide, { size: enemy.hitSize });
+        if (!Vars.headless && !data.bsShook) {
+            data.bsShook = true;
+            Effect.shake(15.0, 24.0, enemy.x, enemy.y);
+        }
+    });
+
+    // công trình: lấy mẫu trong dải vừa quét qua trong tick này
+    for (let dg = data.bsPrev; dg <= head + 0.01; dg += 3.0) {
+        let u = clamp01((dg - tail) / Math.max(1.0, head - tail));
+        let w = Math.max(12.0, W * brawlerProfile(u));
+        let ang = data.bsA0 + data.bsSide * dg;
+        for (let r = R - w; r <= R; r += 10.0) {
+            let bx = cx + Angles.trnsx(ang, r);
+            let by = cy + Angles.trnsy(ang, r);
+            let bld = Vars.world.buildWorld(bx, by);
+            if (bld != null && bld.team != unit.team && !data.bsHit["b" + bld.pos()]) {
+                data.bsHit["b" + bld.pos()] = true;
+                bld.damage(BRAWLER_SLASH_DMG * mult + bld.maxHealth * BRAWLER_SLASH_PCT);
+                spawnSwordHitSlash(bld.x, bld.y, ang + 90.0 * data.bsSide, bld.block.size * 8);
+                brawlerHitFx.at(bld.x, bld.y, ang + 90.0 * data.bsSide, { size: bld.block.size * 8 });
+                if (!Vars.headless && !data.bsShook) {
+                    data.bsShook = true;
+                    Effect.shake(12.0, 20.0, bld.x, bld.y);
+                }
+            }
+        }
+    }
+    data.bsPrev = head;
+}
+
+function updateBrawler(unit, data, target, launcher, maxRange, moveSpeed, isMK2B) {
+    let spd = moveSpeed * BRAWLER_SPEED_MULT;
+    let st = data.swordState;
+    if (st !== "idle" && st !== "bwindup" && st !== "bslash" && st !== "resting" && st !== "cooldown") {
+        st = data.swordState = "idle";
+    }
+
+    data.auraTimer = (data.auraTimer || 0) + Time.delta;
+    if (data.auraTimer >= 28.0) {
+        data.auraTimer = 0;
+        brawlerAuraFx.at(unit.x, unit.y);
+    }
+
+    if (st === "bwindup") {
+        data.bTimer += Time.delta;
+        unit.vel.set(0, 0);
+        if (target != null && !target.dead) data.bAim = Angles.angle(unit.x, unit.y, target.x, target.y);
+        unit.rotation = data.bAim;
+
+        let side = data.bSide;
+        let a0 = data.bAim - side * BRAWLER_SWEEP_DEG / 2.0;
+        let k = clamp01(data.bTimer / BRAWLER_WINDUP_TICKS);
+        let wScale = BRAWLER_SWORD_SCALE * (0.35 + 0.65 * k);
+        let wAng = a0 - side * 14.0 * k;
+        let wDist = 40.0 + (brawlerSwordDist(BRAWLER_SWORD_SCALE) - 40.0) * k;
+        renderSwordEffect.at(unit.x, unit.y, unit.rotation, {
+            seed: unit.id, isFan: true, fanAngle: wAng, alpha: 1.0,
+            fanDist: wDist, fanScale: wScale
+        });
+        brawlerChargeFx.at(unit.x, unit.y, 0, {
+            k: k, tx: unit.x + Angles.trnsx(wAng, wDist), ty: unit.y + Angles.trnsy(wAng, wDist)
+        });
+
+        if (data.bTimer >= BRAWLER_WINDUP_TICKS) {
+            data.bsX = unit.x;
+            data.bsY = unit.y;
+            data.bsSide = side;
+            data.bsA0 = a0;
+            data.bsSweep = side * BRAWLER_SWEEP_DEG;
+            data.bsTimer = 0;
+            data.bsPrev = 0.0;
+            data.bsHit = {};
+            data.bsShook = false;
+            brawlerSlashFx.at(unit.x, unit.y, 0, { a0: a0, side: side });
+            if (!Vars.headless) Effect.shake(9.0, 18.0, unit.x, unit.y);
+            warpDepartFx.at(unit.x, unit.y, data.bAim, {
+                x2: unit.x + Angles.trnsx(data.bAim, BRAWLER_ENGAGE),
+                y2: unit.y + Angles.trnsy(data.bAim, BRAWLER_ENGAGE)
+            });
+            data.swordState = "bslash";
+        }
+        return;
+    }
+
+    if (st === "bslash") {
+        data.bsTimer += Time.delta;
+        unit.vel.set(0, 0);
+        let p = clamp01(data.bsTimer / BRAWLER_SWEEP_TICKS);
+        let headDeg = brawlerShapeAt(data.bsTimer).head;
+        renderSwordEffect.at(data.bsX, data.bsY, unit.rotation, {
+            seed: unit.id, isFan: true, fanAngle: data.bsA0 + data.bsSide * headDeg, alpha: 1.0,
+            fanDist: brawlerSwordDist(BRAWLER_SWORD_SCALE), fanScale: BRAWLER_SWORD_SCALE
+        });
+        // dư ảnh thanh kiếm kéo thành vệt mờ phía sau
+        let ghosts = PerfCore.level() >= 2 ? 1 : 3;
+        for (let g = 1; g <= ghosts; g++) {
+            renderSwordEffect.at(data.bsX, data.bsY, unit.rotation, {
+                seed: unit.id + g, isFan: true, fanAngle: data.bsA0 + data.bsSide * Math.max(0.0, headDeg - g * 9.0),
+                alpha: 0.5 / g, fanDist: brawlerSwordDist(BRAWLER_SWORD_SCALE), fanScale: BRAWLER_SWORD_SCALE
+            });
+        }
+        brawlerSlashDamage(unit, data, isMK2B);
+        if (p >= 1.0) {
+            data.swordState = "resting";
+            data.restTimer = 0;
+        }
+        return;
+    }
+
+    if (st === "resting") {
+        data.restTimer += Time.delta;
+        unit.vel.scl(0.8);
+        let alpha = Math.max(0.0, 1.0 - data.restTimer / BRAWLER_REST_TICKS);
+        renderSwordEffect.at(unit.x, unit.y, unit.rotation, {
+            seed: unit.id, isCharging: false, isDashing: false, chargeProgress: 1.0, dashProgress: 0, alpha: alpha
+        });
+        if (Mathf.chance(0.3)) swordDissolveSparkEffect.at(unit.x + Mathf.range(12), unit.y + Mathf.range(12));
+        if (data.restTimer >= BRAWLER_REST_TICKS) {
+            data.swordState = "cooldown";
+            data.bTimer = 0;
+        }
+        return;
+    }
+
+    let swordAlpha = 1.0;
+    if (st === "cooldown") {
+        data.bTimer += Time.delta;
+        swordAlpha = clamp01(data.bTimer / BRAWLER_COOLDOWN_TICKS);
+        if (data.bTimer >= BRAWLER_COOLDOWN_TICKS) data.swordState = "idle";
+    }
+    renderSwordEffect.at(unit.x, unit.y, unit.rotation, {
+        seed: unit.id, isCharging: false, isDashing: false, chargeProgress: 1.0, dashProgress: 0, alpha: swordAlpha
+    });
+
+    if (target != null) {
+                let dst = Mathf.dst(unit.x, unit.y, target.x, target.y);
+        unit.lookAt(target.x, target.y);
+
+        if (dst <= BRAWLER_ENGAGE) {
+            if (data.swordState === "idle") {
+                data.swordState = "bwindup";
+                data.bTimer = 0;
+                data.bSide = Mathf.chance(0.5) ? 1 : -1;
+                data.bAim = Angles.angle(unit.x, unit.y, target.x, target.y);
+                unit.vel.set(0, 0);
+            } else {
+                unit.vel.scl(0.8);
+            }
+        } else {
+            unit.moveAt(Tmp.v1.set(target.x - unit.x, target.y - unit.y).limit(spd));
+        }
+    } else {
+        data.repathTimer += Time.delta;
+        if (data.repathTimer >= 120 || Mathf.dst2(unit.x, unit.y, data.targetX, data.targetY) < 400) {
+            data.repathTimer = 0;
+            let randomAngle = Mathf.random(360);
+            let randomDist = Mathf.random(20, maxRange - 40);
+            data.targetX = launcher.x + Angles.trnsx(randomAngle, randomDist);
+            data.targetY = launcher.y + Angles.trnsy(randomAngle, randomDist);
+        }
+        unit.moveAt(Tmp.v1.set(data.targetX - unit.x, data.targetY - unit.y).limit(spd));
+        unit.lookAt(data.targetX, data.targetY);
+    }
+}
 
 const droneData = {};
 
@@ -1169,7 +1875,14 @@ Events.run(Trigger.update, () => {
                     masterMoveTargetX: unit.x,
                     masterMoveTargetY: unit.y,
                     masterHomingShootTimer: 0,
-                    activeKeySwordIndex: -1
+                    activeKeySwordIndex: -1,
+                    // 50% khi spawn là brawler (chọn theo id để server và client luôn đồng nhất)
+                    brawler: isSwordDrone && Mathf.randomSeed(id * 7919 + 17) < BRAWLER_CHANCE,
+                    brawlerInit: false,
+                    bTimer: 0,
+                    bSide: 1,
+                    bAim: 0,
+                    auraTimer: 0
                 };
 
                 if (isMasterSwordDrone) {
@@ -1208,6 +1921,12 @@ Events.run(Trigger.update, () => {
                 unit.maxHealth = unit.type.health * 2;
                 unit.health = unit.maxHealth;
                 unit.armor = unit.type.armor * 2;
+            }
+
+            if (data.brawler && !data.brawlerInit) {
+                data.brawlerInit = true;
+                unit.maxHealth = unit.type.health * (isMK2BUnit ? 2.0 : 1.0) * BRAWLER_HP_MULT;
+                unit.health = unit.maxHealth;
             }
 
             let launcherId = global.droneLauncherMap[id];
@@ -1528,6 +2247,11 @@ Events.run(Trigger.update, () => {
                     if (target) data.targetId = target.id;
                 }
 
+                if (data.brawler) {
+                    updateBrawler(unit, data, target, launcher, maxRange, moveSpeed, isMK2BUnit);
+                    return;
+                }
+
                 if (data.swordState === "charging") {
                     let prog = Math.min(1.0, data.chargeTimer / 72.0);
                     renderSwordEffect.at(unit.x, unit.y, unit.rotation, {
@@ -1536,7 +2260,8 @@ Events.run(Trigger.update, () => {
                     });
 
                 } else if (data.swordState === "dashing") {
-                    let dashProg = Math.min(1.0, data.dashTimer / data.maxDashTime);
+                    let dashLin = Math.min(1.0, data.dashTimer / data.maxDashTime);
+                    let dashProg = 1.0 - Math.pow(1.0 - dashLin, 3.0);
                     renderSwordEffect.at(unit.x, unit.y, unit.rotation, {
                         seed: unit.id,
                         isCharging: false, isDashing: true, chargeProgress: 1.0, dashProgress: dashProg, alpha: 1.0
@@ -1577,7 +2302,8 @@ Events.run(Trigger.update, () => {
                         data.swordState = "dashing";
                         data.chargeTimer = 0;
                         data.dashTimer = 0;
-                        data.maxDashTime = 9.33;
+                        data.maxDashTime = WARP_DASH_TICKS;
+                        data.dashPrevE = 0.0;
                         data.dashHit = {};
                         data.dashHitCount = 0;
                         data.fanRolled = false;
@@ -1587,6 +2313,11 @@ Events.run(Trigger.update, () => {
                         data.dashDirY = Angles.trnsy(angle, 1);
                         // quãng lướt theo khoảng cách thật tới mục tiêu (+ vượt qua một đoạn), tối thiểu 400
                         data.dashDist = target ? Math.min(900.0, Math.max(400.0, unit.dst(target) + 150.0)) : 400.0;
+                        // chớp sáng + vệt sáng xuất phát kiểu nhảy siêu không gian
+                        warpDepartFx.at(unit.x, unit.y, angle, {
+                            x2: unit.x + data.dashDirX * data.dashDist,
+                            y2: unit.y + data.dashDirY * data.dashDist
+                        });
                     }
                     return;
 
@@ -1594,24 +2325,39 @@ Events.run(Trigger.update, () => {
                     data.dashTimer += Time.delta;
 
                     let totalDistance = data.dashDist || 400.0;
-                    let dashSpeed = totalDistance / data.maxDashTime;
+                    // ease-out: vọt đi gần như tức thì ở những tick đầu, rồi giảm tốc nhanh tới khi dừng hẳn
+                    let tNorm = Math.min(1.0, data.dashTimer / data.maxDashTime);
+                    let easeNow = 1.0 - Math.pow(1.0 - tNorm, WARP_EASE_POW);
+                    let mv = totalDistance * (easeNow - (data.dashPrevE || 0.0));
+                    data.dashPrevE = easeNow;
+                    let curSpeed = mv / Math.max(0.001, Time.delta);
 
                     let prevX = unit.x;
                     let prevY = unit.y;
 
-                    // Lỗi cũ: moveAt() bị giới hạn bởi accel nên unit gần như không lướt được. Dịch chuyển trực tiếp.
-                    if (target != null && !target.dead && data.dashHitCount === 0) { // bẻ hướng dần về mục tiêu khi chưa trúng
+                    // bẻ hướng về mục tiêu chỉ ở những tick đầu (khi còn chưa trúng) để vệt lướt thẳng, dứt khoát
+                    if (tNorm < 0.25 && target != null && !target.dead && data.dashHitCount === 0) {
                         let want = Angles.angle(unit.x, unit.y, target.x, target.y);
                         let cur = Angles.angle(0, 0, data.dashDirX, data.dashDirY);
-                        let nxt = Angles.moveToward(cur, want, 14.0 * Time.delta);
+                        let nxt = Angles.moveToward(cur, want, 20.0 * Time.delta);
                         data.dashDirX = Angles.trnsx(nxt, 1);
                         data.dashDirY = Angles.trnsy(nxt, 1);
                     }
-                    let mv = dashSpeed * Time.delta;
                     unit.set(unit.x + data.dashDirX * mv, unit.y + data.dashDirY * mv);
-                    unit.vel.set(data.dashDirX * dashSpeed, data.dashDirY * dashSpeed);
+                    // vel = 0: tránh engine cộng thêm vel*delta lần nữa (quãng lướt đúng bằng dashDist, không trượt sau khi dừng)
+                    unit.vel.set(0, 0);
                     let dashAngle = Angles.angle(0, 0, data.dashDirX, data.dashDirY);
                     unit.rotation = dashAngle;
+
+                    // mờ chuyển động theo tốc độ hiện tại
+                    if (unit.type.region != null) {
+                        warpBlurFx.at(unit.x, unit.y, dashAngle, {
+                            region: unit.type.region,
+                            rot: dashAngle,
+                            blur: Math.min(260.0, 20.0 + curSpeed * 1.4),
+                            alpha: 0.35 + 0.6 * Math.pow(1.0 - tNorm, 2.0)
+                        });
+                    }
 
                     let swordDmg = 150 * (isMK2BUnit ? 2.0 : 1.0);
                     const DASH_HIT_R = 60.0; // phạm vi va chạm (cũ: 36)
@@ -1654,6 +2400,7 @@ Events.run(Trigger.update, () => {
                     }
 
                     if (data.dashTimer >= data.maxDashTime) {
+                        warpArriveFx.at(unit.x, unit.y, dashAngle);
                         data.swordState = "resting";
                         data.restTimer = 0;
                         data.dashTimer = 0;

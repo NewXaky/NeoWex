@@ -1,5 +1,5 @@
 name: Lavunder 
-description: "Chiếu laser Photon liên tục vào mục tiêu mặt đất, bắn càng lâu càng mạnh. Đầy năng lượng sẽ gây vụ nổ quang phổ lớn."
+description: "Chiếu laser Photon liên tục vào mục tiêu mặt đất, bắn càng lâu càng mạnh. Đầy năng lượng sẽ gây vụ nổ quang phổ lớn, và 50% bắn thêm một tia laser khổng lồ quét ngang."
 health: 3750
 size: 3
 range: 260

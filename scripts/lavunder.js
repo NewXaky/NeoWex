@@ -1,5 +1,13 @@
 const NexNet = global.NexNet;
 const PerfCore = global.PerfCore;
+
+function isBloomEnabled(){
+    try {
+        return Core.settings.getBool("bloom", true);
+    } catch(e){
+        return true;
+    }
+}
 print("LAVUNDER - OPTIMIZED & NO-LIMIT SYSTEM LOADED");
 
 const deadZone = 40;
@@ -46,6 +54,275 @@ function drawLaserRing(cx, cy, radiusX, radiusY, laserAngle, strokeWidth, color)
         lastX = rx; lastY = ry;
     }
 }
+
+
+// ===== TIA LASER KHỔNG LỒ (Exo Beam) =====
+// Khi đạt 100 sạc: 50% bắn một tia laser hồng-trắng quét ngang như trong video, có chớp sao 4 cánh ở gốc.
+const EXO_CHANCE = 0.5;
+const EXO_PRE_TICKS = 12;          // chớp sáng tích năng lượng trước khi tia phóng ra
+const EXO_DURATION = 96;           // thời gian tia tồn tại (tick)
+const EXO_SWEEP_DEG = 90;          // góc quét tổng cộng
+const EXO_LEN = 420;               // chiều dài tia
+const EXO_W0 = 34;                 // bề rộng ở gốc
+const EXO_W1 = 110;                // bề rộng ở đầu xa (tia loe dần)
+const EXO_PULSE_TICKS = 6;         // chu kỳ gây sát thương
+const EXO_DMG_FLAT = 150;          // sát thương mỗi nhịp (nhân theo cấp)
+const EXO_DMG_PCT = 0.005;         // + % máu tối đa mỗi nhịp
+const EXO_TIER_MULT = { 1: 1.0, 2: 3.0, 3: 2.5 };
+
+const exoColGlow = Color.valueOf("ff2fa8");
+const exoColPink = Color.valueOf("ff6fd0");
+const exoColLight = Color.valueOf("ffc4ee");
+const exoColGold = Color.valueOf("ffd98a");
+const exoColCyan = Color.valueOf("35f2e0");
+const exoColTeal = Color.valueOf("17b8c9");
+const exoColPurple = Color.valueOf("b47bff");
+
+const exoBeamList = [];
+const exoCountMap = new ObjectMap();
+
+function exoClamp(v){ return Math.max(0, Math.min(1, v)); }
+
+// độ mạnh của tia theo thời gian: phóng nhanh, giữ, rồi tắt dần
+function exoEnv(t){
+    if(t < 0) return 0;
+    return exoClamp(t / 6) * exoClamp((EXO_DURATION - t) / 22);
+}
+
+function exoBeamAngle(bm){
+    let k = exoClamp(bm.t / EXO_DURATION);
+    let sm = k * k * (3 - 2 * k);
+    return bm.base + bm.side * (-EXO_SWEEP_DEG / 2 + EXO_SWEEP_DEG * sm);
+}
+
+// 50% bắn tia khi đạt 100 sạc. Quyết định theo seed (id tháp + số lần) để server và client luôn thống nhất.
+function triggerExoBeam(b, turretId, tier, target){
+    let owner = b.owner;
+    if(!owner || !target) return;
+    let cnt = exoCountMap.containsKey(turretId) ? exoCountMap.get(turretId) : 0;
+    exoCountMap.put(turretId, cnt + 1);
+    if(Mathf.randomSeed(turretId * 131 + cnt * 17 + 5) >= EXO_CHANCE) return;
+
+    for(let i = 0; i < exoBeamList.length; i++){
+        if(exoBeamList[i].id == turretId) return;
+    }
+
+    exoBeamList.push({
+        id: turretId,
+        owner: owner,
+        team: b.team,
+        tier: tier,
+        x: owner.x,
+        y: owner.y,
+        base: Angles.angle(owner.x, owner.y, target.x, target.y),
+        side: Mathf.randomSeed(turretId * 71 + cnt * 13 + 9) < 0.5 ? 1 : -1,
+        t: -EXO_PRE_TICKS,
+        pulse: 0,
+        seed: turretId * 0.137 + cnt * 3.1,
+        started: false
+    });
+}
+
+function exoPulse(bm, ang){
+    let cosA = Math.cos(ang * Mathf.degRad), sinA = Math.sin(ang * Mathf.degRad);
+    let mult = EXO_TIER_MULT[bm.tier] || 1.0;
+    let flat = EXO_DMG_FLAT * mult;
+    let r = EXO_LEN + 60;
+
+    Units.nearbyEnemies(bm.team, bm.x - r, bm.y - r, r * 2, r * 2, u => {
+        if(!u || u.dead || u.isFlying()) return;
+        let dx = u.x - bm.x, dy = u.y - bm.y;
+        let s = dx * cosA + dy * sinA;
+        if(s < 0 || s > EXO_LEN) return;
+        let perp = Math.abs(-dx * sinA + dy * cosA);
+        let hw = Mathf.lerp(EXO_W0, EXO_W1, s / EXO_LEN) * 0.5 + u.hitSize / 2;
+        if(perp > hw) return;
+        u.damage(flat + u.maxHealth * EXO_DMG_PCT);
+        Fx.hitLancer.at(u.x, u.y, exoColPink);
+    });
+
+    let seen = {};
+    for(let s = 0; s <= EXO_LEN; s += 14){
+        let hw = Mathf.lerp(EXO_W0, EXO_W1, s / EXO_LEN) * 0.5;
+        for(let q = -1; q <= 1; q++){
+            let off = q * hw * 0.7;
+            let px = bm.x + cosA * s - sinA * off;
+            let py = bm.y + sinA * s + cosA * off;
+            let bld = Vars.world.buildWorld(px, py);
+            if(bld != null && bld.team != bm.team && !seen[bld.pos()]){
+                seen[bld.pos()] = true;
+                bld.damage(flat + bld.maxHealth * EXO_DMG_PCT);
+                Fx.hitLancer.at(bld.x, bld.y, exoColPink);
+            }
+        }
+    }
+}
+
+function exoStrip(cx, cy, ux, uy, len, seg, wScale, env, color, alphaBase){
+    let nx = -uy, ny = ux;
+    Draw.color(color);
+    for(let i = 0; i < seg; i++){
+        let s0 = len * i / seg, s1 = len * (i + 1) / seg;
+        let h0 = Mathf.lerp(EXO_W0, EXO_W1, s0 / EXO_LEN) * 0.5 * wScale * env;
+        let h1 = Mathf.lerp(EXO_W0, EXO_W1, s1 / EXO_LEN) * 0.5 * wScale * env;
+        let a = (1.0 - 0.5 * ((i + 0.5) / seg)) * Math.min(1.0, (seg - i) / 3.0);
+        Draw.alpha(alphaBase * a);
+        Fill.quad(
+            cx + ux * s0 + nx * h0, cy + uy * s0 + ny * h0,
+            cx + ux * s1 + nx * h1, cy + uy * s1 + ny * h1,
+            cx + ux * s1 - nx * h1, cy + uy * s1 - ny * h1,
+            cx + ux * s0 - nx * h0, cy + uy * s0 - ny * h0
+        );
+    }
+}
+
+// Vẽ tia: lõi trắng nóng, viền hồng rực, chớp sao 4 cánh ở gốc, mảnh vỡ xanh lam bay dọc tia, tia tím lấp lánh quanh gốc
+const exoBeamFx = new Effect(2, 1500, cons(e => {
+    let d = e.data;
+    if(!d) return;
+    let t = d.t;
+    let env = exoEnv(t);
+    let flare = t < 0 ? exoClamp((t + EXO_PRE_TICKS) / EXO_PRE_TICKS) * 0.8 : Math.max(env, 0.0);
+    if(flare <= 0.01) return;
+
+    let lod = PerfCore.level();
+    let ang = e.rotation;
+    let cx = e.x + Angles.trnsx(ang, 8), cy = e.y + Angles.trnsy(ang, 8);
+    let ux = Angles.trnsx(ang, 1), uy = Angles.trnsy(ang, 1);
+    let nx = -uy, ny = ux;
+    let flick = 0.9 + 0.1 * Math.sin(t * 1.7);
+
+    Draw.z(Layer.effect + 0.2);
+    Draw.blend(Blending.additive);
+
+    if(env > 0.01){
+        let len = EXO_LEN * (0.35 + 0.65 * exoClamp(t / 5));
+        let seg = lod >= 2 ? 10 : 22;
+        exoStrip(cx, cy, ux, uy, len, seg, 1.9 * flick, env, exoColGlow, 0.26);
+        exoStrip(cx, cy, ux, uy, len, seg, 1.25 * flick, env, exoColPink, 0.5);
+        exoStrip(cx, cy, ux, uy, len, seg, 0.78, env, exoColLight, 0.75);
+        exoStrip(cx, cy, ux, uy, len, seg, 0.4 * flick, env, Color.white, 0.95);
+
+        // hai đường viền vàng nhạt dọc mép tia
+        Draw.color(exoColGold);
+        Draw.alpha(0.6 * env);
+        Lines.stroke(2.0);
+        let eh0 = EXO_W0 * 0.5 * 0.95 * env, eh1 = EXO_W1 * 0.5 * 0.95 * env * (len / EXO_LEN);
+        Lines.line(cx + nx * eh0, cy + ny * eh0, cx + ux * len + nx * eh1, cy + uy * len + ny * eh1);
+        Lines.line(cx - nx * eh0, cy - ny * eh0, cx + ux * len - nx * eh1, cy + uy * len - ny * eh1);
+
+        // mảnh vỡ xanh lam/tím bay dọc theo tia
+        let shards = lod >= 2 ? 10 : 36;
+        for(let j = 0; j < shards; j++){
+            let ph = (d.seed * 0.37 + j * 0.6180339 + t * (0.012 + (j % 5) * 0.004)) % 1.0;
+            let s = ph * len * 0.97;
+            let hw = Mathf.lerp(EXO_W0, EXO_W1, s / EXO_LEN) * 0.5 * env;
+            let lat = Mathf.randomSeed(Math.floor(d.seed * 100) + j * 7, -1.0, 1.0) * hw * 1.7 + Math.sin(t * 0.3 + j) * 3.0;
+            let px = cx + ux * s + nx * lat, py = cy + uy * s + ny * lat;
+            let col = (j % 4 == 0) ? exoColPurple : ((j % 4 == 1) ? exoColTeal : ((j % 4 == 2) ? exoColCyan : Color.white));
+            Draw.color(col);
+            Draw.alpha(env * (0.55 + 0.45 * Math.sin(t * 0.5 + j * 1.9)) * (1.0 - ph * 0.5));
+            Fill.square(px, py, 1.1 + (j % 3) * 0.9, t * 3.0 + j * 40.0);
+        }
+    }
+
+    // chớp sao 4 cánh ở gốc (kiểu ống kính anamorphic)
+    let L = 210.0 * flare * flick;
+    let wd = 8.0 * flare + 1.0;
+    Draw.color(exoColPink);
+    Draw.alpha(0.4 * flare);
+    let L2 = L * 1.18, wd2 = wd * 2.0;
+    Fill.tri(cx - L2, cy, cx, cy + wd2, cx, cy - wd2);
+    Fill.tri(cx + L2, cy, cx, cy + wd2, cx, cy - wd2);
+    Fill.tri(cx, cy - L2 * 0.9, cx + wd2, cy, cx - wd2, cy);
+    Fill.tri(cx, cy + L2 * 0.9, cx + wd2, cy, cx - wd2, cy);
+    Draw.color(Color.white);
+    Draw.alpha(0.95 * flare);
+    Fill.tri(cx - L, cy, cx, cy + wd, cx, cy - wd);
+    Fill.tri(cx + L, cy, cx, cy + wd, cx, cy - wd);
+    Fill.tri(cx, cy - L * 0.85, cx + wd, cy, cx - wd, cy);
+    Fill.tri(cx, cy + L * 0.85, cx + wd, cy, cx - wd, cy);
+    // cặp tia chéo ngắn
+    let Ld = L * 0.4, wdd = wd * 0.6;
+    for(let q = 0; q < 2; q++){
+        let a = 45.0 + q * 90.0;
+        let dx = Angles.trnsx(a, Ld), dy = Angles.trnsy(a, Ld);
+        let px = Angles.trnsx(a + 90.0, wdd), py = Angles.trnsy(a + 90.0, wdd);
+        Fill.tri(cx - dx, cy - dy, cx + px, cy + py, cx - px, cy - py);
+        Fill.tri(cx + dx, cy + dy, cx + px, cy + py, cx - px, cy - py);
+    }
+
+    // lõi sáng + quầng
+    Draw.color(exoColPink);
+    Draw.alpha(0.35 * flare);
+    Fill.circle(cx, cy, 70.0 * flare);
+    Draw.color(Color.white);
+    Draw.alpha(0.9 * flare);
+    Fill.circle(cx, cy, 30.0 * flare * flick);
+    Draw.alpha(0.5 * flare);
+    Lines.stroke(2.0);
+    Lines.circle(cx, cy, 52.0 * flare + 6.0 * Math.sin(t * 0.4));
+
+    // tia lấp lánh tím quanh gốc
+    let sp = lod >= 2 ? 3 : 9;
+    for(let j = 0; j < sp; j++){
+        let a = j * (360.0 / sp) + t * (2.0 + (j % 3));
+        let r = 34.0 + (j % 4) * 16.0 + 6.0 * Math.sin(t * 0.3 + j);
+        let sx = cx + Angles.trnsx(a, r), sy = cy + Angles.trnsy(a, r);
+        let tw = 0.5 + 0.5 * Math.sin(t * 0.6 + j * 2.3);
+        let sz = (3.0 + (j % 3) * 2.0) * tw * flare;
+        Draw.color(j % 2 == 0 ? exoColPurple : Color.white);
+        Draw.alpha(flare * tw);
+        Lines.stroke(1.6);
+        Lines.line(sx - sz, sy, sx + sz, sy);
+        Lines.line(sx, sy - sz, sx, sy + sz);
+    }
+    Draw.blend();
+
+    if(isBloomEnabled()){
+        Drawf.light(cx, cy, 220.0 * flare, exoColPink, 0.9 * flare);
+        if(env > 0.01){
+            for(let q = 1; q <= 3; q++){
+                Drawf.light(cx + ux * (EXO_LEN * q / 3.5), cy + uy * (EXO_LEN * q / 3.5), 130.0 * env, exoColPink, 0.6 * env);
+            }
+        }
+    }
+    Draw.reset();
+}));
+
+Events.run(Trigger.update, () => {
+    if(exoBeamList.length == 0 || Vars.state.isPaused()) return;
+    for(let i = exoBeamList.length - 1; i >= 0; i--){
+        let bm = exoBeamList[i];
+        let o = bm.owner;
+        if(!o || !o.isValid() || bm.t >= EXO_DURATION){
+            exoBeamList.splice(i, 1);
+            continue;
+        }
+        bm.x = o.x; bm.y = o.y;
+        bm.t += Time.delta;
+        let ang = exoBeamAngle(bm);
+
+        if(bm.t >= 0 && !bm.started){
+            bm.started = true;
+            if(!Vars.headless){
+                Effect.shake(12, 22, bm.x, bm.y);
+                try { Sounds.laserbig.at(bm.x, bm.y, 0.9, 1.0); } catch(err){}
+            }
+        }
+
+        exoBeamFx.at(bm.x, bm.y, ang, { t: bm.t, seed: bm.seed });
+
+        if(bm.t >= 0){
+            if(!Vars.headless && Mathf.chance(0.35)) Effect.shake(3.5, 5, bm.x, bm.y);
+            bm.pulse += Time.delta;
+            if(bm.pulse >= EXO_PULSE_TICKS){
+                bm.pulse = 0;
+                if(!Vars.net.client()) exoPulse(bm, ang);
+            }
+        }
+    }
+});
 
 const lavunderLaserBullet = extend(BulletType, {
     init(b){
@@ -170,6 +447,9 @@ const lavunderLaserBullet = extend(BulletType, {
 
                         Fx.scatheExplosion.at(target.x, target.y);
                         Effect.shake(tier == 2 ? 8 : 6, tier == 2 ? 8 : 6, target.x, target.y);
+
+                        // 50% bắn thêm một tia laser khổng lồ
+                        triggerExoBeam(b, turretId, tier, target);
                     }
                 }
                 else if(tier == 3) {
@@ -232,6 +512,9 @@ const lavunderLaserBullet = extend(BulletType, {
                                 y: target.y
                             });
                         }
+
+                        // 50% bắn thêm một tia laser khổng lồ
+                        triggerExoBeam(b, turretId, tier, target);
                     }
                 }
                 turretChargeMap.put(turretId, currentPoints);
@@ -423,6 +706,7 @@ lavunder.buildType = () => extend(PowerTurret.PowerTurretBuild, lavunder, {
         mk3TripleExplosionMap.remove(turretId);
         greenLaserRenderMap.remove(turretId);
         turretDamageTimerMap.remove(turretId);
+        exoCountMap.remove(turretId);
     },
 
     updateTile(){
@@ -652,6 +936,10 @@ lavunder.buildType = () => extend(PowerTurret.PowerTurretBuild, lavunder, {
                           "[lightgray]Sạc Đa Tầng:[] Nổ tia phụ tại các mốc [yellow]20,40,60,80 sạc[]\n" +
                           "[lightgray]Bộc phá Tối đại:[] Kích hoạt chuỗi [orange]3 loạt nổ liên tiếp[]";
             }
+
+            descStr += isEn ?
+                "\n[pink]Exo Beam:[] At [yellow]100 charge[] there is a [orange]50%[] chance to fire a giant sweeping laser (pink-white, ~420 px, 1.6s)." :
+                "\n[pink]Tia Exo:[] Khi đạt [yellow]100 sạc[] có [orange]50%[] tỷ lệ bắn một tia laser khổng lồ quét ngang (hồng-trắng, ~420 px, 1.6 giây).";
 
             let dialog = extend(BaseDialog, title, {});
             let infoTable = new Table();
