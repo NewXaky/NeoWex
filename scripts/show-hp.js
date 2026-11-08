@@ -33,9 +33,95 @@ const _perfRect = new Rect();
         clearHpCache();
     });
 
+    // ===== Thanh máu vỡ như kính khi unit bị hạ (0.3s = 18 tick): rạn nứt -> vỡ mảnh bay tản ra -> mờ dần =====
+    const SHATTER_LIFE = 18, CRACK_FRAC = 0.22;
+    const hpBarShatterFx = new Effect(SHATTER_LIFE, 200, cons(e => {
+        const d = e.data;
+        if (d == null) return;
+        const W = d.w, H = d.h, k = e.fin(), hx = d.hx;
+        const hpCol = Color.valueOf(d.c), bgCol = Color.valueOf("0d0d11");
+        const fillL = -W / 2 + 0.8, fillR = fillL + d.fillW;
+        Draw.z(117);
+
+        if (k < CRACK_FRAC) { // giai đoạn rạn nứt: thanh còn nguyên + vết nứt tỏa ra từ điểm va
+            const q = k / CRACK_FRAC;
+            Draw.color(bgCol); Draw.alpha(0.8); Fill.rect(e.x, e.y, W, H);
+            Draw.color(hpCol); Draw.alpha(0.9); Fill.rect(e.x + (fillL + fillR) / 2, e.y, d.fillW, H - 1.6);
+            Draw.color(Color.white); Lines.stroke(0.5);
+            for (let i = 0; i < 8; i++) {
+                let a = i * 45 + Mathf.randomSeed(e.id * 7 + i) * 30, len = (3 + Mathf.randomSeed(e.id * 11 + i) * 9) * q;
+                Draw.alpha(0.9);
+                Lines.lineAngle(e.x + hx, e.y, a, len);
+            }
+            Draw.alpha(0.8 * (1 - q)); Fill.circle(e.x + hx, e.y, 2.2 * (1 - q) + 0.6);
+            Draw.reset();
+            return;
+        }
+
+        const t = (k - CRACK_FRAC) / (1 - CRACK_FRAC);       // 0..1 sau khi vỡ
+        const tau = (k - CRACK_FRAC) * SHATTER_LIFE;          // tick kể từ lúc vỡ
+        const alpha = 1 - Math.pow(t, 1.6);                   // mờ dần
+        const cols = Math.max(5, Math.round(W / 3.6)), rows = 2, cw = W / cols, rh = H / rows;
+        // lưới đỉnh có lệch ngẫu nhiên (cố định theo id) để mảnh kính không đều
+        const gx = [], gy = [];
+        for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+            let inner = c > 0 && c < cols, innerY = r > 0 && r < rows;
+            gx.push(-W / 2 + c * cw + (inner ? (Mathf.randomSeed(e.id * 131 + c * 17 + r * 31) - 0.5) * cw * 0.7 : 0));
+            gy.push(-H / 2 + r * rh + (innerY ? (Mathf.randomSeed(e.id * 137 + c * 19 + r * 29) - 0.5) * rh * 0.7 : 0));
+        }
+        const idx = (c, r) => r * (cols + 1) + c;
+        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+            const tris = [[idx(c, r), idx(c + 1, r), idx(c, r + 1)], [idx(c + 1, r), idx(c + 1, r + 1), idx(c, r + 1)]];
+            for (let ti = 0; ti < 2; ti++) {
+                const tr = tris[ti], seed = e.id * 193 + (r * cols + c) * 2 + ti;
+                const cxl = (gx[tr[0]] + gx[tr[1]] + gx[tr[2]]) / 3, cyl = (gy[tr[0]] + gy[tr[1]] + gy[tr[2]]) / 3;
+                // hướng bay: từ điểm va ra ngoài + trọng lực kéo xuống
+                let dx = cxl - hx, dy = cyl + 0.6, dl = Math.max(0.5, Math.sqrt(dx * dx + dy * dy));
+                const sp = 0.35 + Mathf.randomSeed(seed) * 0.9;
+                const px = cxl + (dx / dl) * sp * tau * 1.1;
+                const py = cyl + (dy / dl) * sp * tau * 0.8 - 0.045 * tau * tau;
+                const rot = (Mathf.randomSeed(seed + 5) - 0.5) * 0.35 * tau, cr = Math.cos(rot), sr = Math.sin(rot);
+                const sc = 1 - 0.3 * t;
+                const vx = [], vy = [];
+                for (let v = 0; v < 3; v++) {
+                    let ox = (gx[tr[v]] - cxl) * sc, oy = (gy[tr[v]] - cyl) * sc;
+                    vx.push(e.x + px + ox * cr - oy * sr);
+                    vy.push(e.y + py + ox * sr + oy * cr);
+                }
+                const inFill = cxl >= fillL && cxl <= fillR && Math.abs(cyl) < H / 2 - 0.8;
+                Draw.color(inFill ? hpCol : bgCol); Draw.alpha((inFill ? 0.95 : 0.8) * alpha);
+                Fill.tri(vx[0], vy[0], vx[1], vy[1], vx[2], vy[2]);
+                Draw.color(Color.white); Draw.alpha(0.55 * alpha); Lines.stroke(0.35);
+                Lines.line(vx[0], vy[0], vx[1], vy[1]); Lines.line(vx[1], vy[1], vx[2], vy[2]); Lines.line(vx[2], vy[2], vx[0], vy[0]);
+            }
+        }
+        // chớp sáng lúc vỡ
+        if (t < 0.35) {
+            const fl = 1 - t / 0.35;
+            Draw.blend(Blending.additive);
+            Draw.color(Color.white); Draw.alpha(0.8 * fl); Fill.circle(e.x + hx, e.y, 2.5 * fl + 0.5);
+            Lines.stroke(0.6); Draw.alpha(0.6 * fl);
+            Lines.lineAngle(e.x + hx, e.y, 0, 7 * fl); Lines.lineAngle(e.x + hx, e.y, 180, 7 * fl);
+            Lines.lineAngle(e.x + hx, e.y, 90, 4 * fl); Lines.lineAngle(e.x + hx, e.y, 270, 4 * fl);
+            Draw.blend();
+        }
+        Draw.reset();
+    }));
+
     Events.on(UnitDestroyEvent, e => {
         if (e.unit == null) return;
-        let id = e.unit.id;
+        const u = e.unit, id = u.id;
+        const style = Core.settings.getString("newex-hp-style", "show-hp");
+        const lastDmg = lastDamageTimeMap.containsKey(id) ? lastDamageTimeMap.get(id) : -9999;
+        if (style !== "off" && Time.time - lastDmg <= 300 && smoothHpMap.containsKey(id) && !Vars.headless) {
+            const pct = Math.max(0, smoothHpMap.get(id) / u.maxHealth * 100);
+            let W, H, by, col;
+            if (style === "show-hp") { W = Math.max(22, u.hitSize * 1.2) + 1.6; H = 5.6; by = u.y + u.hitSize / 2 + 6; col = pct < 25 ? "ff0000" : pct < 55 ? "ffff00" : "00ff00"; }
+            else { W = Math.max(18, u.hitSize) + 1.2; H = 4.2; by = u.y + u.hitSize / 2 + 4; col = pct < 20 ? "ff0000" : pct < 50 ? "ffff00" : "00ff00"; }
+            const fillW = Math.max(0.5, (W - 1.6) * Math.min(1, pct / 100));
+            const hx = Math.max(-W / 2 + 2, Math.min(W / 2 - 2, -W / 2 + 0.8 + fillW * 0.85));
+            hpBarShatterFx.at(u.x, by, 0, { w: W, h: H, fillW: fillW, hx: hx, c: col });
+        }
         smoothHpMap.remove(id);
         smoothShieldMap.remove(id);
         lastHpMap.remove(id);

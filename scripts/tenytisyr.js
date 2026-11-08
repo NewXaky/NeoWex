@@ -87,7 +87,7 @@ const tenytisyrBullet = createtenytisyrBullet({
     frontColor: Color.white, backColor: Color.valueOf("#0ee05f"),
     pierce: true, pierceCap: 3, pierceBuilding: true, knockback: 1, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.20
+    trailEffect: Fx.none, trailChance: 0.20
 });
 
 const tenytisyrMK2Bullet = createtenytisyrBullet({
@@ -95,13 +95,13 @@ const tenytisyrMK2Bullet = createtenytisyrBullet({
     frontColor: Color.white, backColor: Color.valueOf("#0ee05f"),
     pierce: true, pierceCap: 5, pierceBuilding: true, knockback: 1.4, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.40
+    trailEffect: Fx.none, trailChance: 0.40
 });
 
 const tenytisyrMK2BBullet = createtenytisyrBullet({
     speed: 9, damage: 183.75, lifetime: 50, width: 6, height: 20,
     frontColor: Color.white, backColor: Color.valueOf("#0ee05f"),
-    trailEffect: Fx.disperseTrail, trailChance: 0.40,
+    trailEffect: Fx.none, trailChance: 0.40,
     trailColor: Color.valueOf("#80e0a5"),
     pierce: false, pierceBuilding: false, knockback: 2.8, impact: true,
     homingPower: 0.15, homingRange: 200,
@@ -113,7 +113,7 @@ const tenytisyrCopperBullet = createtenytisyrBullet({
     frontColor: Color.white, backColor: Color.valueOf("#0ee05f"),
     pierce: true, pierceCap: 3, pierceBuilding: true, knockback: 1, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.20
+    trailEffect: Fx.none, trailChance: 0.20
 });
 
 const tenytisyrCopperMK2Bullet = createtenytisyrBullet({
@@ -121,13 +121,13 @@ const tenytisyrCopperMK2Bullet = createtenytisyrBullet({
     frontColor: Color.white, backColor: Color.valueOf("#0ee05f"),
     pierce: true, pierceCap: 5, pierceBuilding: true, knockback: 1.4, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.40
+    trailEffect: Fx.none, trailChance: 0.40
 });
 
 const tenytisyrCopperMK2BBullet = createtenytisyrBullet({
     speed: 9, damage: 91.875, lifetime: 50, width: 6, height: 20,
     frontColor: Color.white, backColor: Color.valueOf("#0ee05f"),
-    trailEffect: Fx.disperseTrail, trailChance: 0.40,
+    trailEffect: Fx.none, trailChance: 0.40,
     trailColor: Color.valueOf("#80e0a5"),
     pierce: false, pierceBuilding: false, knockback: 2.8, impact: true,
     homingPower: 0.15, homingRange: 200,

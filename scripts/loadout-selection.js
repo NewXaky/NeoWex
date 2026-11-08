@@ -43,9 +43,6 @@ const NexNet = global.NexNet;
     let countClearER = 0;
     let countDeleteOre = 0;
     let countRandomSpawnE = 0;
-    let countDestroyStructs = 0;
-    let countMegaSpawn = 0;
-    const MEGA_SPAWN_LIMIT = 30;
 
     let targetCamX = -1;
     let targetCamY = -1;
@@ -767,137 +764,6 @@ const NexNet = global.NexNet;
         }
     }
 
-    NexNet.on("destroystructs", (player, payload) => {
-        if (Vars.state == null || !Vars.state.isGame()) return;
-
-        let team = requesterTeam(player);
-        if (team == null) return;
-
-        Time.run(60, () => {
-            let targets = new Seq();
-            Groups.build.each(b => {
-                if (b != null && b.team == team && !(b.block instanceof CoreBlock)) {
-                    targets.add(b);
-                }
-            });
-
-            if (targets.isEmpty()) {
-                NexNet.toastTo(player, isEn() ? "No allied structures found (besides core)!" : "Không tìm thấy công trình nào ngoài lõi!", 2);
-                return;
-            }
-
-            targets.each(b => {
-                if (b != null) b.kill();
-            });
-
-            NexNet.toastTo(player, isEn() ? "[red]All allied structures self-destructed (core spared)![]" : "[red]Đã tự hủy toàn bộ công trình phe ta (trừ lõi)![]", 2);
-        });
-    }, true, 1000);
-
-    function destroyAlliedStructures(btnActor) {
-        if (Vars.state == null || !Vars.state.isGame()) return;
-        let team = Vars.player != null ? Vars.player.team() : Vars.state.rules.defaultTeam;
-        if (team == null) return;
-
-        let cores = team.cores();
-        if (cores != null && !cores.isEmpty()) {
-            let core = cores.first();
-            if (core != null) smoothPanTo(core.x, core.y);
-        }
-
-        Vars.ui.showInfoToast(isEn() ? "[red]Self-destructing allied structures (core spared)...[]" : "[red]Đang tự hủy công trình phe ta (trừ lõi)...[]", 1.5);
-
-        NexNet.send("destroystructs", "");
-
-        countDestroyStructs++;
-        if (btnActor != null) {
-            btnActor.setText((isEn() ? "Destroy Structs" : "Hủy công trình") + " (" + countDestroyStructs + ")");
-        }
-    }
-
-    function findMegaUnitType() {
-        let direct = Vars.content.unit(CURRENT_MOD_NAME + "-mega");
-        if (direct != null) return direct;
-
-        let found = null;
-        Vars.content.units().each(u => {
-            if (found == null && u != null && u.name != null && u.name.toLowerCase().includes("mega")) {
-                found = u;
-            }
-        });
-        return found;
-    }
-
-    NexNet.on("spawnmega", (player, payload) => {
-        if (Vars.state == null || !Vars.state.isGame() || Vars.world == null) return;
-
-        let a = payload.split("|");
-        let tx = parseFloat(a[0]);
-        let ty = parseFloat(a[1]);
-        if (isNaN(tx) || isNaN(ty)) return;
-
-        let team = requesterTeam(player);
-        let unitType = findMegaUnitType();
-        if (unitType == null) {
-            NexNet.toastTo(player, isEn() ? "Mega unit type not found!" : "Không tìm thấy loại unit mega!", 2);
-            return;
-        }
-
-        let targetTile = Vars.world.tileWorld(tx, ty);
-        if (targetTile == null) return;
-
-        Time.run(60, () => {
-            if (Vars.state == null || !Vars.state.isGame()) return;
-            let spawnedUnit = unitType.create(team);
-            if (spawnedUnit != null) {
-                let wx = targetTile.worldx();
-                let wy = targetTile.worldy();
-                spawnedUnit.set(wx, wy);
-                spawnedUnit.add();
-
-                Fx.spawn.at(wx, wy);
-                Fx.teleportOut.at(wx, wy);
-                NexNet.fx(Fx.spawn, wx, wy);
-
-                NexNet.toastAll(isEn() ? "[gold]Mega unit summoned: " + unitType.name + "![]" : "[gold]Đã triệu hồi unit mega: " + unitType.localizedName + "![]", 2);
-            }
-        });
-    }, true, 500);
-
-    function triggerSpawnMegaUnit(btnActor) {
-        if (Vars.state == null || !Vars.state.isGame() || Vars.world == null) return;
-
-        if (countMegaSpawn >= MEGA_SPAWN_LIMIT) {
-            Vars.ui.showInfoToast(isEn() ? "Reached the limit of " + MEGA_SPAWN_LIMIT + " mega units!" : "Đã đạt giới hạn " + MEGA_SPAWN_LIMIT + " unit mega!", 2);
-            return;
-        }
-
-        let team = Vars.player != null ? Vars.player.team() : Vars.state.rules.defaultTeam;
-        let cores = team != null ? team.cores() : null;
-        let baseX, baseY;
-        if (cores != null && !cores.isEmpty()) {
-            let core = cores.first();
-            baseX = core.x;
-            baseY = core.y;
-        } else {
-            baseX = Vars.player != null ? Vars.player.x : 0;
-            baseY = Vars.player != null ? Vars.player.y : 0;
-        }
-
-        let spawnX = baseX + Mathf.random(-80, 80);
-        let spawnY = baseY + Mathf.random(-80, 80);
-
-        smoothPanTo(spawnX, spawnY);
-        Vars.ui.showInfoToast(isEn() ? "[gold]Summoning mega unit...[]" : "[gold]Đang triệu hồi unit mega...[]", 1.5);
-
-        NexNet.send("spawnmega", spawnX + "|" + spawnY);
-
-        countMegaSpawn++;
-        if (btnActor != null) {
-            btnActor.setText((isEn() ? "Mega Unit" : "Unit Mega") + " (" + countMegaSpawn + "/" + MEGA_SPAWN_LIMIT + ")");
-        }
-    }
-
     function applyFpsOptimizationLevel(percent) {
         Core.settings.put("newex-fps-opt-percent", java.lang.Integer(percent));
         fpsOptPercentSetting = percent;
@@ -1566,14 +1432,6 @@ const NexNet = global.NexNet;
                         customWaveContainer.visible = false;
                     }
                 }
-
-                // --- PHÍM TẮT GỌI ĐỢT (1=x1, 2=thiên thạch, 3=x10, 4=spawn E, 5=tự hủy công trình) ---
-                if (Core.input.keyTap(KeyCode.num1)) triggerNextWave();
-                if (Core.input.keyTap(KeyCode.num2)) triggerRandomMeteor();
-                if (Core.input.keyTap(KeyCode.num3)) triggerMultipleWaves(10);
-                if (Core.input.keyTap(KeyCode.num4)) triggerRandomSpawnEnemy();
-                if (Core.input.keyTap(KeyCode.num5)) destroyAlliedStructures();
-                if (Core.input.keyTap(KeyCode.num6)) triggerSpawnMegaUnit();
             } else {
                 if (customWaveContainer != null) {
                     customWaveContainer.visible = false;

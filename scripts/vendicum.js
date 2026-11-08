@@ -74,7 +74,7 @@ const vendicumBullet = extend(BasicBulletType, {
     textType: "vendicumBullet",
     pierce: true, pierceCap: 3, pierceBuilding: true, knockback: 1, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.20
+    trailEffect: Fx.none, trailChance: 0.20
 });
 
 const vendicumMK2Bullet = extend(BasicBulletType, {
@@ -82,13 +82,13 @@ const vendicumMK2Bullet = extend(BasicBulletType, {
     frontColor: Color.white, backColor: Color.valueOf("#ffaa66"),
     pierce: true, pierceCap: 5, pierceBuilding: true, knockback: 1.4, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.40
+    trailEffect: Fx.none, trailChance: 0.40
 });
 
 const vendicumMK2BBullet = extend(BasicBulletType, {
     speed: 9, damage: 183.75, lifetime: 50, width: 5, height: 64,
     frontColor: Color.white, backColor: Color.valueOf("#831006"),
-    trailEffect: Fx.disperseTrail, trailChance: 0.40,
+    trailEffect: Fx.none, trailChance: 0.40,
     trailColor: Color.valueOf("#ff2525"),
     pierce: false, pierceBuilding: false, knockback: 2.8, impact: true,
     homingPower: 0.15, homingRange: 200,
@@ -101,7 +101,7 @@ const vendicumCopperBullet = extend(BasicBulletType, {
     textType: "vendicumCopperBullet",
     pierce: true, pierceCap: 3, pierceBuilding: true, knockback: 1, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.20
+    trailEffect: Fx.none, trailChance: 0.20
 });
 
 const vendicumCopperMK2Bullet = extend(BasicBulletType, {
@@ -109,13 +109,13 @@ const vendicumCopperMK2Bullet = extend(BasicBulletType, {
     frontColor: Color.white, backColor: Color.valueOf("#d99d73"),
     pierce: true, pierceCap: 5, pierceBuilding: true, knockback: 1.4, impact: true,
     hitEffect: Fx.disperseTrail, despawnEffect: Fx.disperseTrail,
-    trailEffect: Fx.disperseTrail, trailChance: 0.40
+    trailEffect: Fx.none, trailChance: 0.40
 });
 
 const vendicumCopperMK2BBullet = extend(BasicBulletType, {
     speed: 9, damage: 91.875, lifetime: 50, width: 5, height: 64,
     frontColor: Color.white, backColor: Color.valueOf("#b85b37"),
-    trailEffect: Fx.disperseTrail, trailChance: 0.40,
+    trailEffect: Fx.none, trailChance: 0.40,
     trailColor: Color.valueOf("#d99d73"),
     pierce: false, pierceBuilding: false, knockback: 2.8, impact: true,
     homingPower: 0.15, homingRange: 200,

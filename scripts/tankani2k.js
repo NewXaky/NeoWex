@@ -43,10 +43,25 @@ function applyMaxHpPercentDamage(b, entity) {
     }
 }
 
+// Vệt đuôi đạn: sống 0.3s (18 tick), thu hẹp chiều rộng + mờ dần
+const tankaniTrailEffect = new Effect(18, cons(e => {
+    Draw.z(Layer.bullet - 0.1);
+    Draw.color(e.color); Draw.alpha(0.6 * e.fout()); Lines.stroke(6 * e.fout());
+    Lines.lineAngle(e.x, e.y, e.rotation + 180, 24);
+    Draw.color(Color.white); Draw.alpha(0.9 * e.fout()); Lines.stroke(2.5 * e.fout());
+    Lines.lineAngle(e.x, e.y, e.rotation + 180, 24);
+    Draw.reset();
+}));
+
 const tankaniNormalBullet = extend(BasicBulletType, {
     speed: 15, damage: 1115, width: 10, height: 33, lifetime: 60,
     frontColor: Color.valueOf("#e0ea87"), backColor: Color.valueOf("#e5ff00"),
     trailColor: Color.valueOf("#daea80"),
+
+    update(b) {
+        this.super$update(b);
+        tankaniTrailEffect.at(b.x, b.y, b.rotation(), this.trailColor);
+    },
 
     hitEntity(b, entity, health) {
         applyMaxHpPercentDamage(b, entity);
@@ -62,6 +77,11 @@ const tankaniMK2Bullet = extend(BasicBulletType, {
     splashDamage: 558,
     hitEffect: crumbleExplosionEffect,
     despawnEffect: crumbleExplosionEffect,
+
+    update(b) {
+        this.super$update(b);
+        tankaniTrailEffect.at(b.x, b.y, b.rotation(), this.trailColor);
+    },
 
     hitEntity(b, entity, health) {
         applyMaxHpPercentDamage(b, entity);
@@ -79,6 +99,11 @@ const tankaniMK2BBullet = extend(BasicBulletType, {
     collidesAir: true,
     hitEffect: crumbleExplosionEffect,
     despawnEffect: crumbleExplosionEffect,
+
+    update(b) {
+        this.super$update(b);
+        tankaniTrailEffect.at(b.x, b.y, b.rotation(), this.trailColor);
+    },
 
     hitEntity(b, entity, health) {
         applyMaxHpPercentDamage(b, entity);

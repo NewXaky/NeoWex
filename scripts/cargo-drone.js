@@ -452,6 +452,7 @@ const renderAttachedMasterSwordsEffect = new Effect(2, e => {
         let renderAngle = unitAngle + 90;
 
         drawSwordStar(sx, sy, renderAngle + 90, 1.05, 1.0, true, i * 7 + 3, false);
+        drawSwordSparkles(sx, sy, renderAngle + 90, 1.05, 1.0, i * 7 + 3, true);
     }
     Draw.reset();
 });
@@ -570,6 +571,72 @@ function drawSwordStar(cx, cy, angle, scale, alpha, master, seed, noRing) {
             }
         }
     }
+}
+
+// ===== Lấp lánh pixel kiểu "pixel art animation": sao 4 cánh + -> x, vệt chém ngang, mảnh dọc, dấu x, chấm nhỏ =====
+const SPARKLE_PERIOD = 140.0; // ~2.3s như video
+// [bắt đầu, thời lượng, loại, u (0..1 dọc lưỡi), v (lệch ngang)]
+const SPARKLE_EVENTS = [
+    [0, 16, 0, 0.62, 7], [8, 10, 1, 0.25, 4], [18, 12, 3, 0.75, 8], [26, 16, 2, 0.50, 5],
+    [30, 22, 0, 0.40, 8], [48, 14, 2, 0.85, 3], [60, 16, 0, 0.70, 6], [70, 12, 1, 0.55, 6],
+    [82, 18, 3, 0.30, 7], [92, 20, 0, 0.50, 8], [106, 12, 2, 0.20, 4], [116, 16, 1, 0.80, 5],
+    [124, 16, 0, 0.35, 6]
+];
+function drawSwordSparkles(cx, cy, angle, scale, alpha, seed, master) {
+    if (alpha <= 0.02) return;
+    let T = (Time.time + seed * 17.0) % SPARKLE_PERIOD;
+    let col = master ? masterGlowColor : Color.white;
+    let px = Math.max(0.7, 0.8 * scale);
+    let sideA = angle + 90.0;
+    for (let i = 0; i < SPARKLE_EVENTS.length; i++) {
+        let ev = SPARKLE_EVENTS[i];
+        let k = (T - ev[0]) / ev[1];
+        if (k < 0.0 || k > 1.0) continue;
+        let pulse = Math.sin(Math.PI * Math.pow(k, 0.7)); // nở nhanh, tắt chậm
+        for (let side = -1; side <= 1; side += 2) { // đối xứng 2 bên lưỡi
+            let ex = cx + Angles.trnsx(angle, ev[3] * 30.0 * scale) + Angles.trnsx(sideA, ev[4] * side * scale);
+            let ey = cy + Angles.trnsy(angle, ev[3] * 30.0 * scale) + Angles.trnsy(sideA, ev[4] * side * scale);
+            Draw.color(col, Color.white, 0.6);
+            Draw.alpha(alpha);
+            if (ev[2] == 0) { // sao 4 cánh, xoay + -> x khi thu nhỏ
+                let rot = angle + 45.0 * k, L = 5.5 * scale * pulse, w = 0.9 * scale * pulse;
+                for (let a = 0; a < 4; a++) {
+                    let ra = rot + a * 90.0, nx = Angles.trnsx(ra + 90, w), ny = Angles.trnsy(ra + 90, w);
+                    Fill.tri(ex + nx, ey + ny, ex - nx, ey - ny, ex + Angles.trnsx(ra, L), ey + Angles.trnsy(ra, L));
+                }
+                Fill.rect(ex - px * 0.5, ey - px * 0.5, px, px);
+            } else if (ev[2] == 1) { // vệt chém ngang (vuông góc lưỡi), mảnh dần
+                let L = 9.0 * scale * Math.min(1.0, k * 3.0), w = 0.7 * scale * (1.0 - k);
+                let dx = Angles.trnsx(sideA, 1.0), dy = Angles.trnsy(sideA, 1.0);
+                let nx = Angles.trnsx(angle, w), ny = Angles.trnsy(angle, w);
+                let mx = ex + dx * L * 0.3, my = ey + dy * L * 0.3;
+                Fill.tri(mx - dx * L, my - dy * L, mx + nx, my + ny, mx - nx, my - ny);
+                Fill.tri(mx + dx * L, my + dy * L, mx + nx, my + ny, mx - nx, my - ny);
+            } else if (ev[2] == 2) { // mảnh dọc nhọn (dọc theo lưỡi)
+                let L = 7.0 * scale * pulse, w = 1.3 * scale * (1.0 - k * 0.6);
+                let dx = Angles.trnsx(angle, 1.0), dy = Angles.trnsy(angle, 1.0);
+                let nx = Angles.trnsx(sideA, w), ny = Angles.trnsy(sideA, w);
+                Fill.tri(ex - dx * L * 0.4, ey - dy * L * 0.4, ex + nx, ey + ny, ex + dx * L, ey + dy * L);
+                Fill.tri(ex - dx * L * 0.4, ey - dy * L * 0.4, ex - nx * 0.3, ey - ny * 0.3, ex + dx * L, ey + dy * L);
+            } else { // dấu x nhỏ
+                let L = 2.2 * scale * pulse;
+                Lines.stroke(Math.max(0.5, 0.7 * scale));
+                Lines.line(ex + Angles.trnsx(angle + 45, L), ey + Angles.trnsy(angle + 45, L), ex - Angles.trnsx(angle + 45, L), ey - Angles.trnsy(angle + 45, L));
+                Lines.line(ex + Angles.trnsx(angle + 135, L), ey + Angles.trnsy(angle + 135, L), ex - Angles.trnsx(angle + 135, L), ey - Angles.trnsy(angle + 135, L));
+            }
+        }
+    }
+    // chấm pixel nhỏ nhấp nháy rải quanh lưỡi
+    for (let i = 0; i < 10; i++) {
+        let ph = ((T / SPARKLE_PERIOD) * 3.0 + Mathf.randomSeed(seed * 7 + i)) % 1.0;
+        if (ph > 0.35) continue;
+        let u = Mathf.randomSeed(seed * 11 + i * 3) * 1.05, v = (Mathf.randomSeed(seed * 13 + i * 5) - 0.5) * 22.0;
+        let dx = cx + Angles.trnsx(angle, u * 30.0 * scale) + Angles.trnsx(sideA, v * scale);
+        let dy = cy + Angles.trnsy(angle, u * 30.0 * scale) + Angles.trnsy(sideA, v * scale);
+        Draw.color(Color.white); Draw.alpha(alpha * (1.0 - ph / 0.35));
+        Fill.rect(dx - px * 0.4, dy - px * 0.4, px * 0.8, px * 0.8);
+    }
+    Draw.color(Color.white); Draw.alpha(1.0);
 }
 
 const swordHitSlashFx = new Effect(30, 400, cons(e => {
@@ -967,6 +1034,7 @@ const renderSwordEffect = new Effect(2, e => {
     if (isBloomEnabled()) Drawf.light(swordX, swordY, 50 * alpha, Color.white, 0.9 * alpha);
 
     drawSwordStar(swordX, swordY, swordAngle, swordScale, alpha, false, seed, false);
+    drawSwordSparkles(swordX, swordY, swordAngle, swordScale, alpha, seed, false);
 
     Draw.reset();
 });
@@ -1517,24 +1585,37 @@ Events.run(Trigger.update, () => {
                         let angle = target ? unit.angleTo(target) : unit.rotation;
                         data.dashDirX = Angles.trnsx(angle, 1);
                         data.dashDirY = Angles.trnsy(angle, 1);
+                        // quãng lướt theo khoảng cách thật tới mục tiêu (+ vượt qua một đoạn), tối thiểu 400
+                        data.dashDist = target ? Math.min(900.0, Math.max(400.0, unit.dst(target) + 150.0)) : 400.0;
                     }
                     return;
 
                 } else if (data.swordState === "dashing") {
                     data.dashTimer += Time.delta;
 
-                    let totalDistance = 400.0;
+                    let totalDistance = data.dashDist || 400.0;
                     let dashSpeed = totalDistance / data.maxDashTime;
 
                     let prevX = unit.x;
                     let prevY = unit.y;
 
-                    unit.moveAt(Tmp.v1.set(data.dashDirX * dashSpeed, data.dashDirY * dashSpeed));
+                    // Lỗi cũ: moveAt() bị giới hạn bởi accel nên unit gần như không lướt được. Dịch chuyển trực tiếp.
+                    if (target != null && !target.dead && data.dashHitCount === 0) { // bẻ hướng dần về mục tiêu khi chưa trúng
+                        let want = Angles.angle(unit.x, unit.y, target.x, target.y);
+                        let cur = Angles.angle(0, 0, data.dashDirX, data.dashDirY);
+                        let nxt = Angles.moveToward(cur, want, 14.0 * Time.delta);
+                        data.dashDirX = Angles.trnsx(nxt, 1);
+                        data.dashDirY = Angles.trnsy(nxt, 1);
+                    }
+                    let mv = dashSpeed * Time.delta;
+                    unit.set(unit.x + data.dashDirX * mv, unit.y + data.dashDirY * mv);
+                    unit.vel.set(data.dashDirX * dashSpeed, data.dashDirY * dashSpeed);
                     let dashAngle = Angles.angle(0, 0, data.dashDirX, data.dashDirY);
                     unit.rotation = dashAngle;
 
                     let swordDmg = 150 * (isMK2BUnit ? 2.0 : 1.0);
-                    let steps = 6;
+                    const DASH_HIT_R = 60.0; // phạm vi va chạm (cũ: 36)
+                    let steps = Math.max(6, Math.ceil(mv / 20.0));
                     if (!data.dashHit) {
                         data.dashHit = {};
                         data.dashHitCount = 0;
@@ -1542,12 +1623,12 @@ Events.run(Trigger.update, () => {
                     for (let i = 0; i <= steps; i++) {
                         let sampleX = Mathf.lerp(prevX, unit.x, i / steps);
                         let sampleY = Mathf.lerp(prevY, unit.y, i / steps);
-                        Damage.damage(unit.team, sampleX, sampleY, 36, swordDmg, true, true);
+                        Damage.damage(unit.team, sampleX, sampleY, DASH_HIT_R, swordDmg, true, true);
 
                         if (data.dashHitCount < 14) {
-                            Units.nearbyEnemies(unit.team, sampleX, sampleY, 36, enemy => {
+                            Units.nearbyEnemies(unit.team, sampleX, sampleY, DASH_HIT_R + 16, enemy => {
                                 if (!enemy || !enemy.isValid() || data.dashHit["u" + enemy.id]) return;
-                                if (!enemy.within(sampleX, sampleY, 36 + enemy.hitSize / 2)) return;
+                                if (!enemy.within(sampleX, sampleY, DASH_HIT_R + enemy.hitSize / 2)) return;
                                 data.dashHit["u" + enemy.id] = true;
                                 data.dashHitCount++;
                                 spawnSwordHitSlash(enemy.x, enemy.y, dashAngle, enemy.hitSize);

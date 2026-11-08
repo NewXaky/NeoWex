@@ -1,0 +1,25 @@
+type: PayloadVoid
+name: "Unit Reactor"
+description: "Lò phản ứng sinh học. Nạp unit (dạng payload) từ xưởng/tái cấu trúc/băng chuyền payload vào khối: unit bị hấp thụ VĨNH VIỄN và tạo điện liên tục theo cấp T1-T5. Mỗi cấp có giới hạn số lượng; có đủ cả 5 cấp sẽ kích hoạt Cộng hưởng +20% điện. Bị phá hủy sẽ nổ theo lượng điện đã tích."
+size: 4
+health: 4000
+category: power
+hasPower: true
+outputsPower: true
+consumesPower: false
+connectedPower: true
+rotate: false
+solid: true
+update: true
+outputsPayload: false
+acceptsPayload: true
+requirements: [
+  { item: lead, amount: 600 }
+  { item: silicon, amount: 500 }
+  { item: titanium, amount: 400 }
+  { item: thorium, amount: 250 }
+  { item: obs, amount: 150 }
+  { item: uranilum, amount: 150 }
+]
+researchCostMultiplier: 0.6
+research: power-node

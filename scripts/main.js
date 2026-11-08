@@ -31,6 +31,7 @@ require("show-hp");
 require("fix-save");
 
 require("uranilum-reactor");
+require("unit-reactor");
 require("laser-charger-uranilum");
 
 require("dor");

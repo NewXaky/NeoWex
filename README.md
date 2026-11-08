@@ -6,6 +6,19 @@
 
 
 -------------------------------------------
+> Bản bổ sung Unit Reactor:
++ Thêm khối Unit Reactor (5x5, mục Điện): nạp unit dạng payload (từ xưởng/tái cấu trúc/băng chuyền payload) -> unit bị hấp thụ vĩnh viễn và tạo điện liên tục.
++ Điện/tick mỗi unit: T1 0.4 / T2 1.5 / T3 6 / T4 20 / T5 50 (x60 = /giây). Giới hạn mỗi cấp: 64/32/16/8/4. Có đủ cả 5 cấp: Cộng hưởng +20%.
++ Nhận diện cấp: theo tên unit gốc Serpulo + Erekir; unit mod khác suy theo máu (<=300 T1, <=1000 T2, <=5000 T3, <=15000 T4, còn lại T5).
++ Damage popup v2 (damage-display.js): chế độ dồn có đếm số mượt, nảy khi trúng, hiện xN đòn, số tổng trồi lên khi mục tiêu chết; chế độ popup đòn đầu hiện ngay + gom đòn sau; màu/cỡ chữ theo % máu mục tiêu.
++ Thanh HP vỡ như kính khi unit bị hạ (0.3s: rạn nứt -> vỡ mảnh bay tản -> mờ dần), show-hp.js.
++ Hiệu ứng điện ảnh: lõi sao + vành quỹ đạo T1-T5, tia sáng; khi hấp thụ unit thu thành đốm sáng (0.2s) rồi bay lên phải-trên (phóng to, mờ dần) để lại vệt sáng; sau đó laser từ trái-trên bắn xuống tâm khối rồi mới cộng điện.
++ Kiếm Cargo Sword Drone (và Master) có hiệu ứng lấp lánh pixel kiểu video: sao 4 cánh +→×, vệt chém ngang, mảnh dọc, dấu ×, chấm nhỏ, chu kỳ 2,3s (drawSwordSparkles trong cargo-drone.js).
++ Phá hủy khối sẽ nổ theo lượng điện đang tạo. Dữ liệu được lưu theo save.
++ Chỉnh cân bằng: đầu file scripts/unit-reactor.js (POWER_PER_TIER, CAP_PER_TIER, SYNERGY).
+
+
+-------------------------------------------
 > Điều chỉnh cân bằng bản NeoWex 0.1:
 + Pháo Swordoder:  giảm thời gian effect xé không gian gấp đôi / mk2b: giảm tầm bắn 20%, giảm sát thương 60%, giảm kích thước nhát chém đi gấp đôi.
 

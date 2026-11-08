@@ -41,12 +41,26 @@
         if (tags != null) tags.put(TAG_KILLS, String(n));
     }
 
+    let killDirty = false;
+    let killT = 0;
     if (global.NexNet != null) {
-        global.NexNet.on("newex-survival-sync-kills", function(player, payload) {
-            let k = parseInt(payload) || 0;
-            setKills(k);
-        }, true, 100);
+        // server -> mọi client (trước đây chỉ cập nhật trên host nên bạn bè thấy kill = 0)
+        global.NexNet.onBroadcast("newex-survival-kills", function(payload) {
+            if (Vars.net.client()) setKills(parseInt(payload) || 0);
+        });
     }
+    Events.run(Trigger.update, new Runnable({
+        run: function() {
+            if (Vars.net.client() || !Vars.net.server() || global.NexNet == null || !isActive()) return;
+            killT -= Time.delta;
+            if (killT > 0) return;
+            if (killDirty || killT < -120) {
+                killDirty = false;
+                killT = 15;
+                global.NexNet.broadcast("newex-survival-kills", String(getKills()));
+            }
+        }
+    }));
 
     function safeRadiusWorld() {
         let ts = Vars.tilesize;
@@ -210,9 +224,7 @@
             let k = getKills() + 1;
             setKills(k);
 
-            if (global.NexNet != null) {
-                global.NexNet.send("newex-survival-sync-kills", String(k));
-            }
+            killDirty = true;
 
             if (k >= KILL_GOAL) win();
         }
