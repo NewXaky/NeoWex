@@ -182,6 +182,9 @@ const _perfRect = new Rect();
             }
 
             let realHpPercent = Math.max(0, (smoothHpVal / maxHp) * 100);
+            // Xaky(Neo): vạch ngưỡng kết liễu trên thanh máu địch (chỉ người chơi trang bị pilot này thấy)
+            let neoMk = 0;
+            try { if (global.newexNeoMark != null && u.team != Vars.player.team()) neoMk = global.newexNeoMark(); } catch (err) {}
 
             if (currentHpStyle === "show-hp") {
                 let smoothShield = smoothShieldMap.containsKey(id) ? smoothShieldMap.get(id) : curShield;
@@ -228,6 +231,11 @@ const _perfRect = new Rect();
                  Draw.z(116);
                 Draw.color(Color.white, 0.45);
                 Fill.rect(centerX, baseY + (barHeight / 2) - 0.5, barWidth, 0.8);
+                if (neoMk > 0) {
+                    let tx = centerX - halfW + barWidth * neoMk;
+                    Draw.color(Color.black, 0.9); Fill.rect(tx, baseY, 2.4, barHeight + 4.4);
+                    Draw.color(Color.white, 1); Fill.rect(tx, baseY, 1.2, barHeight + 3.2);
+                }
 
                  let font = Fonts.outline;
                 let oldX = font.getData().scaleX;
@@ -270,6 +278,12 @@ const _perfRect = new Rect();
                 if (hpPercent <= 20) Draw.alpha(0.5 + Mathf.absin(Time.time, 6, 0.5));
                 let w = barWidth * Math.max(0, realHpPercent) / 100;
                 Fill.rect(x - barWidth / 2 + w / 2, baseY, w, barHeight);
+                if (neoMk > 0) {
+                    let tx = x - barWidth / 2 + barWidth * neoMk;
+                    Draw.z(116);
+                    Draw.color(Color.black, 0.9); Fill.rect(tx, baseY, 2.2, barHeight + 4);
+                    Draw.color(Color.white, 1); Fill.rect(tx, baseY, 1.1, barHeight + 3);
+                }
 
                 Draw.z(116);
                 let font = Fonts.outline;

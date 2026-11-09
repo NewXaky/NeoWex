@@ -6,22 +6,6 @@
 
 
 -------------------------------------------
-> Bản bổ sung Unit Reactor:
-+ Thêm khối Unit Reactor (5x5, mục Điện): nạp unit dạng payload (từ xưởng/tái cấu trúc/băng chuyền payload) -> unit bị hấp thụ vĩnh viễn và tạo điện liên tục.
-+ Điện/tick mỗi unit: T1 0.4 / T2 1.5 / T3 6 / T4 20 / T5 50 (x60 = /giây). Giới hạn mỗi cấp: 64/32/16/8/4. Có đủ cả 5 cấp: Cộng hưởng +20%.
-+ Nhận diện cấp: theo tên unit gốc Serpulo + Erekir; unit mod khác suy theo máu (<=300 T1, <=1000 T2, <=5000 T3, <=15000 T4, còn lại T5).
-+ Damage popup v2 (damage-display.js): chế độ dồn có đếm số mượt, nảy khi trúng, hiện xN đòn, số tổng trồi lên khi mục tiêu chết; chế độ popup đòn đầu hiện ngay + gom đòn sau; màu/cỡ chữ theo % máu mục tiêu.
-+ Thanh HP vỡ như kính khi unit bị hạ (0.3s: rạn nứt -> vỡ mảnh bay tản -> mờ dần), show-hp.js.
-+ Hiệu ứng điện ảnh: lõi sao + vành quỹ đạo T1-T5, tia sáng; khi hấp thụ unit thu thành đốm sáng (0.2s) rồi bay lên phải-trên (phóng to, mờ dần) để lại vệt sáng; sau đó laser từ trái-trên bắn xuống tâm khối rồi mới cộng điện.
-+ Kiếm Cargo Sword Drone (và Master) có hiệu ứng lấp lánh pixel kiểu video: sao 4 cánh +→×, vệt chém ngang, mảnh dọc, dấu ×, chấm nhỏ, chu kỳ 2,3s (drawSwordSparkles trong cargo-drone.js).
-+ Pháo Lavunder: khi đạt 100 sạc có 50% tỷ lệ bắn thêm một tia laser khổng lồ quét ngang (hồng-trắng, chớp sao 4 cánh ở gốc, mảnh vỡ xanh lam dọc tia) — hằng số EXO_* đầu khối trong lavunder.js.
-+ Cargo Sword Drone: dash đổi sang kiểu "nhảy siêu không gian" như tàu trong video — chớp sáng + vệt sáng lúc xuất phát, vọt đi gần như tức thì với mờ chuyển động mạnh, giảm tốc ease-out rồi dừng có chớp sáng/vòng sóng (warpBlurFx, warpDepartFx, warpArriveFx, WARP_DASH_TICKS trong cargo-drone.js).
-+ Cargo Sword Drone: 50% khi spawn là dạng Brawler — +500% HP, +20% tốc độ, bỏ dash, áp sát địch rồi chém vòng cung điện ảnh cỡ lớn (brawlerSlashFx + brawlerChargeFx + brawlerHitFx: vùng tối, dư ảnh, viền sắc sai, flare, mảnh vỡ, dư ảnh kiếm, rung màn hình). Tầm ra đòn và vùng sát thương khớp đúng dải vệt chém; kiếm to x2. Chỉnh bằng các hằng số BRAWLER_* trong cargo-drone.js.
-+ Phá hủy khối sẽ nổ theo lượng điện đang tạo. Dữ liệu được lưu theo save.
-+ Chỉnh cân bằng: đầu file scripts/unit-reactor.js (POWER_PER_TIER, CAP_PER_TIER, SYNERGY).
-
-
--------------------------------------------
 > Điều chỉnh cân bằng bản NeoWex 0.1:
 + Pháo Swordoder:  giảm thời gian effect xé không gian gấp đôi / mk2b: giảm tầm bắn 20%, giảm sát thương 60%, giảm kích thước nhát chém đi gấp đôi.
 
@@ -31,8 +15,6 @@
 + Pilot (PvP): chạm icon pilot để zoom ảnh to ra, chạm/lướt tự do để xoay nhẹ tấm ảnh.
 + Chiến dịch: trang nâng cấp pháo chỉ hiện pháo đã mở khóa; giá nghiên cứu pháo tăng gấp 10 lần.
 + Thêm HistekaIMsp Pilot (miễn phí): +15% máu/giáp/tốc bắn/tốc chạy/tầm đạn/tấn công/xuyên giáp/EXP/khiên, +15% dame lên lính lõi/quái wave/player, +1 cấp cho mọi thẻ chỉ số, tự hồi máu 0.525%/s, đạn bào 5.25% giáp địch.
-+ Thêm Xaky (Neo) Pilot (PvP newmode): +5% tấn công (mỗi phút +0.1%, tối đa +100%), +1 điểm cho Tỉ lệ bạo kích & Sát thương bạo kích, +35% sát thương lên mục tiêu trên 50% máu, kết liễu mục tiêu dưới 5% máu (bản thân mất 20% máu tối đa).
-+ Thêm VanHau Pilot (PvP newmode): máu dưới 70% dựng khiên vanilla bằng 120% máu tối đa, tồn tại đến khi vỡ (hồi chiêu 3 phút); chỉ số Hồi máu ưu tiên hồi khiên.
 
 
 

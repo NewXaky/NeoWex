@@ -80,20 +80,24 @@
     const EMPIX_HEAL_HP = 0.5;       // máu tụt xuống dưới 50%
     const EMPIX_HEAL_CHANCE = 0.5;   // tỉ lệ 50% hồi đầy máu
     const EMPIX_HEAL_CD = 5 * 60 * 60; // hồi chiêu 5 phút (tick)
-    const PILOT_XNEO = 5;            // Xaky (Neo) Pilot
-    const XNEO_ATK_PCT = 0.05;       // +5% tấn công
-    const XNEO_RAMP_PER_MIN = 0.001; // mỗi phút +0.1% tấn công
-    const XNEO_RAMP_MAX = 1.0;       // cộng dồn tối đa +100%
-    const XNEO_CRIT_ADD = 1;         // +1 điểm cho tỉ lệ bạo kích & sát thương bạo kích
-    const XNEO_HIGH_HP = 0.5;        // mục tiêu trên 50% máu
-    const XNEO_HIGH_DMG = 0.35;      // gây thêm 35% sát thương
-    const XNEO_EXEC_HP = 0.05;       // mục tiêu dưới 5% máu bị kết liễu
-    const XNEO_EXEC_COST = 0.2;      // kết liễu: bản thân mất 20% máu tối đa
-    const PILOT_VANHAU = 6;          // VanHau Pilot
-    const VH_HP_THRESHOLD = 0.7;     // máu dưới 70% -> dựng khiên
-    const VH_SHIELD_MUL = 1.2;       // khiên = 120% máu tối đa
-    const VH_CD = 3 * 60 * 60;       // hồi chiêu 3 phút (tick)
-    let vhCdAt = {};                 // pid -> Time.time lần dựng khiên gần nhất
+    const PILOT_XAKYNEO = 5;             // Xaky(Neo) Pilot
+    const XAKYNEO_ATK_PCT = 0.05;        // +5% tấn công
+    const XAKYNEO_CRIT_BONUS_LV = 1;     // +1 điểm cho tỉ lệ bạo kích & sát thương bạo kích
+    const XAKYNEO_RAMP_PCT_MIN = 0.1;    // mỗi phút +0.1% tấn công
+    const XAKYNEO_RAMP_MAX = 100;        // tối đa +100% tấn công
+    const XAKYNEO_HIGHHP_RATIO = 0.5;    // mục tiêu trên 50% máu
+    const XAKYNEO_HIGHHP_DMG = 0.35;     // +35% sát thương
+    const XAKYNEO_EXECUTE_RATIO = 0.16;  // mục tiêu dưới 16% máu: kết liễu
+    const XAKYNEO_EXECUTE_SELF_PCT = 0.09; // bản thân mất 9% máu tối đa khi kết liễu
+    let xakyNeoStart = {};               // pid -> Time.time lúc pilot kích hoạt (mốc tăng dần tấn công)
+    const PILOT_VANHAU = 6;              // VanHau Pilot
+    const VANHAU_TRIGGER_HP = 0.7;       // dưới 70% máu
+    const VANHAU_SHIELD_PCT = 1.2;       // độ bền khiên = 120% máu tối đa
+    const VANHAU_CD = 3 * 60 * 60;       // hồi chiêu 3 phút (tick)
+    let vanhauCdAt = {};                 // pid -> Time.time lần tạo khiên gần nhất
+    let vanhauField = {};                // pid -> khiên lực VanHau {uid,hp,max,r,fl,st}
+    const VHS_KIND = "newex-pvp-vhs";
+    let vanhauShieldOn = {};             // pid -> đang có khiên VanHau (chưa bị phá)
     let coreCine = null;               // hoạt ảnh lõi nổ (client): {x,y,t,dur}
     let coreKilled = {};               // lõi do ta chủ động cho nổ (đã chiếu hoạt ảnh)
     let coreDying = {};                // cb.id -> {b,t} (server): lõi đang chờ nổ
@@ -573,6 +577,14 @@
         return false;
     }
 
+    // show-hp.js dùng: tỉ lệ máu kết liễu nếu người chơi cục bộ đang trang bị Xaky(Neo), ngược lại 0
+    global.newexNeoMark = function() {
+        try {
+            if (!isActive()) return 0;
+            let st = byId[Vars.player.id];
+            return (st != null && st.pi === PILOT_XAKYNEO) ? XAKYNEO_EXECUTE_RATIO : 0;
+        } catch (err) { return 0; }
+    };
     function isActive() {
         return isFull() || isExt();
     }
@@ -755,7 +767,7 @@
         let out = {};
         for (let id in byId) {
             let s = byId[id];
-            out[id] = [s.lv, Math.floor(s.exp), s.pts, s.s, s.d, s.u || 0, s.p, s.b || 0, s.pi || 0, s.kc || [0, 0, 0], s.cmd || 0, s.w === undefined ? WALL_NONE : s.w, s.wl || 0, Math.floor(s.xt || 0)];
+            out[id] = [s.lv, Math.floor(s.exp), s.pts, s.s, s.d, s.u || 0, s.p, s.b || 0, s.pi || 0, s.kc || [0, 0, 0], s.cmd || 0, s.w === undefined ? WALL_NONE : s.w, s.wl || 0];
         }
         if (Vars.net.server()) {
             try { Call.clientPacketReliable(SYNC_KIND, JSON.stringify({ d: out })); } catch (err) {}
@@ -771,7 +783,7 @@
                 let a = o.d[id];
                 let pp = (a[6] != null && a[4] != null && a[6].length === a[4].length) ? a[6] : [];
                 while (a[3].length < STATS.length) a[3].push(0);
-                n[id] = { lv: a[0], exp: a[1], pts: a[2], s: a[3], d: a[4], u: a[5] || 0, p: pp, b: a[7] || 0, pi: a[8] || 0, kc: a[9] || [0, 0, 0], cmd: a[10] || 0, w: a[11] === undefined ? WALL_NONE : a[11], wl: a[12] || 0, xt: a[13] || 0 };
+                n[id] = { lv: a[0], exp: a[1], pts: a[2], s: a[3], d: a[4], u: a[5] || 0, p: pp, b: a[7] || 0, pi: a[8] || 0, kc: a[9] || [0, 0, 0], cmd: a[10] || 0, w: a[11] === undefined ? WALL_NONE : a[11], wl: a[12] || 0 };
             }
             byId = n;
             stVer++;
@@ -789,7 +801,17 @@
                 get: function(content) { onShieldSync(content); }
             }));
             Vars.netClient.addPacketHandler(PFX_KIND, new Cons({
-                get: function(content) { try { let s0 = String(content); let id = parseInt(s0); pilotFxAt[id] = Time.time; if (s0.indexOf("x") >= 0) xakyCdAt[id] = Time.time; else if (s0.indexOf("v") >= 0) vhCdAt[id] = Time.time; else if (s0.indexOf("n") < 0) empixCdAt[id] = Time.time; } catch (err) {} }
+                get: function(content) { try { let s0 = String(content); let id = parseInt(s0); pilotFxAt[id] = Time.time; if (s0.indexOf("x") >= 0) xakyCdAt[id] = Time.time; else if (s0.indexOf("v") >= 0) vanhauCdAt[id] = Time.time; else if (s0.indexOf("n") < 0) empixCdAt[id] = Time.time; } catch (err) {} }
+            }));
+            Vars.netClient.addPacketHandler(VHS_KIND, new Cons({
+                get: function(content) { try {
+                    let a = String(content).split("|"), id = parseInt(a[0]), uid = parseInt(a[1]), hp = parseFloat(a[2]);
+                    if (!(hp > 0)) { delete vanhauField[id]; return; }
+                    let f = vanhauField[id];
+                    if (f == null || f.uid !== uid) { f = { fl: 0 }; vanhauField[id] = f; }
+                    if (f.hp !== undefined && hp < f.hp) f.fl = 1;
+                    f.uid = uid; f.hp = hp; f.max = parseFloat(a[3]); f.r = parseFloat(a[4]); f.at = Time.time;
+                } catch (err) {} }
             }));
             Vars.netClient.addPacketHandler(CORE_KIND, new Cons({
                 get: function(content) { try { let a = String(content).split("|"); coreDeathFx(parseFloat(a[0]), parseFloat(a[1]), parseFloat(a[2])); } catch (err) {} }
@@ -2118,6 +2140,7 @@
             Draw.reset();
             return;
         }
+        if (st.pi === PILOT_XAKYNEO) { Draw.reset(); return; } // Xaky(Neo): chỉ nhảy icon, không vạch gạch
         let left = p < 0.5;
         let sp = left ? p * 2 : (p - 0.5) * 2;
         let fade = Math.sin(sp * Math.PI);
@@ -2161,7 +2184,30 @@
         }));
     }
 
+    function drawVanhauFields() {
+        for (let id in vanhauField) {
+            let f = vanhauField[id];
+            let u = Groups.unit.getByID(f.uid);
+            if (u == null || !u.isValid() || u.dead || (Vars.net.client() && f.at !== undefined && Time.time - f.at > 180)) {
+                if (Vars.net.client()) delete vanhauField[id];
+                continue;
+            }
+            f.fl = Math.max(0, (f.fl || 0) - Time.delta / 20);
+            let ratio = Math.max(0, Math.min(1, f.hp / Math.max(1, f.max)));
+            let R = (f.r || 60) * (0.97 + 0.03 * Math.sin(Time.time * 0.08));
+            Draw.z(Layer.shields);
+            Draw.color(SHIELD_GLOW, SHIELD_COLOR, 1 - ratio);
+            Draw.alpha(0.1 + f.fl * 0.3);
+            Fill.poly(u.x, u.y, 6, R);
+            Lines.stroke(1.5 + f.fl * 1.5);
+            Draw.alpha(0.85);
+            Lines.poly(u.x, u.y, 6, R);
+            Draw.reset();
+        }
+    }
+
     function drawPilotIcons() {
+        try { drawVanhauFields(); } catch (err) { logOnce("vhfield", "vanhau field draw failed: " + err); }
         Groups.player.each(eachDrawPilot);
         for (let bi = 0; bi < bots.length; bi++) drawPilotFor(bots[bi].botPl);
     }
@@ -2541,13 +2587,14 @@
             for (let i = 0; i < h.length; i++) h[i] = i !== STAT_ARMY ? Math.min(st.s[i] + 1, statMax(i)) : st.s[i];
             return h;
         }
-        if (st.pi === PILOT_XNEO) { // xaky (neo): +1 điểm cho tỉ lệ bạo kích & sát thương bạo kích
-            let h = st._hs;
-            if (h == null) { h = st._hs = st.s.slice(); }
-            for (let i = 0; i < h.length; i++) h[i] = st.s[i];
-            h[5] = Math.min(st.s[5] + XNEO_CRIT_ADD, statMax(5));
-            h[6] = Math.min(st.s[6] + XNEO_CRIT_ADD, statMax(6));
-            return h;
+        if (st.pi === PILOT_XAKYNEO) { // xaky(neo): +1 điểm cho tỉ lệ bạo kích & sát thương bạo kích
+            let xn = st._xns;
+            if (xn == null) { xn = st._xns = st.s.slice(); }
+            for (let i = 0; i < xn.length; i++) xn[i] = st.s[i];
+            xn[5] = Math.min(st.s[5] + XAKYNEO_CRIT_BONUS_LV, statMax(5));
+            xn[6] = Math.min(st.s[6] + XAKYNEO_CRIT_BONUS_LV, statMax(6));
+            xn[8] = Math.min(st.s[8] + XAKYNEO_CRIT_BONUS_LV, statMax(8));
+            return xn;
         }
         return st.s;
     }
@@ -2593,6 +2640,306 @@
         pilotFxAt[id] = Time.time;
         try { Call.effect(Fx.spawnShockwave, ox, oy, 0, Color.white); Call.effect(Fx.spawnShockwave, nx, ny, 0, Color.white); } catch (err) {}
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "x"); } catch (err) {}
+    }
+
+    // xaky(neo): +0.1% tấn công mỗi phút kể từ lúc kích hoạt pilot, tối đa +100%
+    function xakyNeoRampPct(unit) {
+        let pl = ownerPl(unit);
+        if (pl == null) return 0;
+        let id = pl.id;
+        let t0 = xakyNeoStart[id];
+        if (t0 === undefined) { xakyNeoStart[id] = Time.time; return 0; }
+        let minutes = (Time.time - t0) / 3600;
+        return Math.min(XAKYNEO_RAMP_MAX, minutes * XAKYNEO_RAMP_PCT_MIN) / 100;
+    }
+
+    // ===== Hiệu ứng kết liễu của Xaky(Neo) (phóng to, sáng, sống lâu hơn để dễ thấy) =====
+    const NEO_CYAN = Color.valueOf("#7df9ff"), NEO_BLUE = Color.valueOf("#3a7bff"), NEO_GOLD = Color.valueOf("#ffd34d"), NEO_WHITE = Color.valueOf("#ffffff");
+    const NEO_S = 0.75, NEO_T = 0.4375; // hệ số độ dài / độ dày nét
+    const neoClamp = function(v) { return Math.min(1, Math.max(0, v)); };
+    // mỗi lớp vẽ chạy riêng trong try: 1 lệnh lỗi không làm mất cả hiệu ứng
+    function neoSafe(key, fn) { try { fn(); } catch (err) { Draw.reset(); logOnce("neofx-" + key, "neo fx section '" + key + "' failed: " + err); } }
+    const xakyNeoExecuteFx = new Effect(90, e => {
+        let S = NEO_S, T = NEO_T, fi = e.fin(), fo = e.fout();
+        Draw.z(Layer.effect + 2);
+        neoSafe("core", () => { // lớp cơ bản: vòng sóng + sao 8 tia (chỉ dùng lệnh đã chạy ổn ở bản cũ)
+            Draw.color(NEO_GOLD, NEO_WHITE, fi);
+            Lines.stroke(fo * 6 * T);
+            Lines.circle(e.x, e.y, e.finpow() * 70 * S);
+            Draw.color(NEO_WHITE, NEO_CYAN, fi); Draw.alpha(fo);
+            for (let k = 0; k < 8; k++) Drawf.tri(e.x, e.y, (5 * fo + 1) * S, (24 + 76 * fi) * S, k * 45 + fi * 25);
+        });
+        neoSafe("flash", () => {
+            if (fi < 0.3) { let q = fi / 0.3; Draw.color(NEO_WHITE, NEO_CYAN, q); Draw.alpha(1 - q); Fill.circle(e.x, e.y, S * (10 + q * 40)); }
+        });
+        neoSafe("cross", () => { // tia quét ngang + trụ sáng dọc
+            let sw = Interp.pow3Out.apply(neoClamp(fi * 1.6));
+            Draw.color(NEO_CYAN, NEO_WHITE, fo); Draw.alpha(Math.min(1, fo * 1.8));
+            Fill.rect(e.x, e.y, S * 170 * sw, T * (3 * fo + 0.6));
+            Fill.rect(e.x, e.y, T * (4 * fo + 0.6), S * 130 * sw);
+        });
+        neoSafe("frame", () => { // khung khóa mục tiêu
+            if (fi >= 0.6) return;
+            let q2 = fi / 0.6, sz = S * (58 - 34 * Interp.pow3Out.apply(q2)), arm = S * 10;
+            Draw.color(NEO_GOLD); Draw.alpha(1 - q2 * q2);
+            Lines.stroke(T * 2.4);
+            for (let sx = -1; sx <= 1; sx += 2) for (let sy = -1; sy <= 1; sy += 2) {
+                Lines.line(e.x + sx * sz, e.y + sy * sz, e.x + sx * (sz - arm), e.y + sy * sz);
+                Lines.line(e.x + sx * sz, e.y + sy * sz, e.x + sx * sz, e.y + sy * (sz - arm));
+            }
+        });
+        neoSafe("hex", () => { // sóng lục giác xoay
+            Draw.color(NEO_CYAN, NEO_BLUE, fi);
+            Lines.stroke(T * fo * 5);
+            Lines.poly(e.x, e.y, 6, e.finpow() * 74 * S, fi * 70);
+            let f2 = neoClamp(fi * 1.5 - 0.15);
+            if (f2 > 0 && f2 < 1) { Draw.color(NEO_WHITE, NEO_CYAN, f2); Lines.stroke(T * (1 - f2) * 3.2); Lines.poly(e.x, e.y, 6, Math.pow(f2, 0.5) * 104 * S, -f2 * 90); }
+        });
+        neoSafe("arcs", () => { // vòng phân đoạn quay
+            Draw.color(NEO_GOLD, NEO_CYAN, fi);
+            Lines.stroke(T * (fo * 3 + 0.4));
+            for (let k = 0; k < 6; k++) Lines.arc(e.x, e.y, S * (30 + 30 * Interp.pow2Out.apply(fi)), 0.11, k * 60 + fi * 220);
+        });
+        neoSafe("debris", () => { // mảnh vụn + tia lửa
+            Draw.color(NEO_WHITE, NEO_CYAN, fi);
+            Angles.randLenVectors(e.id + 7, 22, e.finpow() * 105 * S, (x, y) => { Fill.square(e.x + x, e.y + y, S * (fo * 3.2 + 0.6), fi * 240 + x); });
+            Draw.color(NEO_GOLD, NEO_WHITE, fo);
+            Lines.stroke(T * fo * 2);
+            Angles.randLenVectors(e.id + 31, 18, e.finpow() * 90 * S, (x, y) => { Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), S * (fo * 10 + 1)); });
+        });
+        Draw.reset();
+    });
+    // hạt sao 4 cánh bay tứ tung (to, sáng)
+    const xakyNeoStarsFx = new Effect(55, e => {
+        try {
+            Draw.z(Layer.effect + 2);
+            Draw.blend(Blending.additive);
+            for (let i = 0; i < 24; i++) {
+                let pf = Math.min(1, e.fin() * (0.7 + ((i * 53) % 10) * 0.05));
+                if (pf <= 0) continue;
+                let pfo = 1 - pf, sz = (1.4 + ((i * 37) % 5) * 0.6) * 5;
+                Angles.randLenVectors(e.id + i * 911, 1, Mathf.pow(pf, 0.6) * 240, (x, y) => {
+                    let rot = Mathf.angle(x, y) + pf * 50;
+                    Draw.color(NEO_WHITE, NEO_GOLD, Math.min(1, pf * 1.4)); Draw.alpha(Math.min(1, pfo * 1.6));
+                    for (let k = 0; k < 4; k++) Drawf.tri(e.x + x, e.y + y, sz * 0.42, sz, rot + k * 90);
+                });
+            }
+            Draw.blend();
+            Draw.reset();
+        } catch (err) { Draw.blend(); Draw.reset(); logOnce("neofx3", "neo stars fx failed: " + err); }
+    });
+    // tia laser từ trên trời chiếu xuống từ phía trên bên trái
+    const NEO_LEN = 1100, NEO_ANG = 118; // độ dài tia, góc so với trục x (118° = chếch lên bên trái)
+    const xakyNeoLaserFx = new Effect(48, e => {
+        neoSafe("laser", () => {
+            let fi = e.fin();
+            let k = fi < 0.1 ? fi / 0.1 : Math.pow((1 - fi) / 0.9, 1.4); // bật nhanh rồi thu nhỏ dần
+            let sx = e.x + Angles.trnsx(NEO_ANG, NEO_LEN), sy = e.y + Angles.trnsy(NEO_ANG, NEO_LEN);
+            Draw.z(Layer.effect + 3);
+            Draw.color(NEO_CYAN); Draw.alpha(0.4 * k);
+            Lines.stroke(44 * k); Lines.line(sx, sy, e.x, e.y);
+            Draw.alpha(0.85 * k);
+            Lines.stroke(22 * k); Lines.line(sx, sy, e.x, e.y);
+            Draw.color(NEO_WHITE); Draw.alpha(1);
+            Lines.stroke(9 * k); Lines.line(sx, sy, e.x, e.y);
+            Fill.circle(e.x, e.y, 26 * k);
+            Draw.reset();
+        });
+    });
+    // ngôi sao 2 cánh chớp nhoáng ở đầu nòng khi kích hoạt kết liễu (0.2s)
+    const xakyNeoMuzzleFx = new Effect(12, e => {
+        try {
+            Draw.z(Layer.effect + 2);
+            Draw.blend(Blending.additive);
+            let k = e.fout();
+            Draw.color(NEO_WHITE, NEO_CYAN, e.fin());
+            Drawf.tri(e.x, e.y, 12 * k + 2, 80 * k + 8, e.rotation);
+            Drawf.tri(e.x, e.y, 12 * k + 2, 80 * k + 8, e.rotation + 180);
+            Fill.circle(e.x, e.y, 11 * k);
+            Draw.blend();
+            Draw.reset();
+        } catch (err) { Draw.blend(); Draw.reset(); logOnce("neofx2", "neo muzzle fx failed: " + err); }
+    });
+    Log.info("[NexPvp] neo fx v9 loaded");
+    try { xakyNeoExecuteFx.clip = 2500; xakyNeoStarsFx.clip = 2500; xakyNeoLaserFx.clip = 2500; xakyNeoMuzzleFx.clip = 600; } catch (err) {}
+
+    // phát 1 hiệu ứng: có mạng (host/server) -> Call.effect (chạy cục bộ + gửi client); chơi 1 mình -> vẽ trực tiếp
+    function neoFxAt(fx, x, y, rot) {
+        try {
+            if (Vars.headless) { if (Vars.net.server()) Call.effect(fx, x, y, rot, Color.white); return; }
+            if (Vars.net.active()) Call.effect(fx, x, y, rot, Color.white);
+            else fx.at(x, y, rot, Color.white);
+        } catch (err) {
+            logOnce("neofxcall", "neo Call.effect failed: " + err);
+            try { if (!Vars.headless) fx.at(x, y, rot, Color.white); } catch (err2) {}
+        }
+    }
+    let neoFxMark = {}, neoFxCnt = 0, neoDiagN = 0;
+    // vẽ trực tiếp trong Trigger.draw (không qua hệ thống Effect của game): dùng lại đúng hàm vẽ của các Effect Neo
+    let neoLive = [], neoDrawErr = false;
+    function neoLocalFx(fx, life, x, y, rot) {
+        if (Vars.headless) return;
+        neoLive.push({ fx: fx, life: life, t: 0, x: x, y: y, rotation: rot, id: Math.floor(Time.time) % 9973,
+            fin: function() { return Math.min(1, this.t / this.life); },
+            fout: function() { return 1 - this.fin(); },
+            finpow: function() { return Interp.pow3Out.apply(this.fin()); } });
+    }
+    if (!Vars.headless) Events.run(Trigger.draw, new Runnable({ run: function() {
+        if (neoLive.length === 0) return;
+        let dt = Vars.state.isPaused() ? 0 : Time.delta;
+        for (let i = neoLive.length - 1; i >= 0; i--) {
+            let o = neoLive[i];
+            if (o.t >= o.life) { neoLive.splice(i, 1); continue; }
+            try { o.fx.renderer.get(o); } catch (err) { Draw.reset(); if (!neoDrawErr) { neoDrawErr = true; Log.err("[NexPvp] neo draw failed: " + err); } }
+            o.t += dt;
+        }
+        Draw.reset();
+    } }));
+    // chẩn đoán (ghi log 3 lần đầu): effect chỉ được tạo khi vị trí nằm trong khung camera
+    function neoDiag(ex, ey) {
+        try {
+            if (Vars.headless || Core.camera == null || neoDiagN >= 3) return;
+            neoDiagN++;
+            let cp = Core.camera.position;
+            Log.info("[NexPvp] neo fx #" + neoDiagN + ": cách tâm camera " + Math.round(Mathf.dst(cp.x, cp.y, ex, ey)) + " đv (nửa khung ~" + Math.round(Core.camera.width / 2) + "), effects=" + Vars.renderer.enableEffects + ", net.active=" + Vars.net.active());
+        } catch (err) {}
+    }
+    // toàn bộ phần "trình diễn" kết liễu: nhãn + nổ + hiệu ứng Neo + sao đầu nòng. Trả false nếu vừa phát cho cùng mục tiêu (chống lặp)
+    function neoExecuteShow(apid, tid, ex, ey, b, o, isUnitOwner) {
+        let nowT = Time.time, lm = neoFxMark[tid];
+        if (lm !== undefined && nowT - lm < 20) return false;
+        if (++neoFxCnt > 300) { neoFxCnt = 0; neoFxMark = {}; }
+        neoFxMark[tid] = nowT;
+        try { Call.label("[#7df9ff]KẾT LIỄU", 1.4, ex, ey + 14); } catch (err) { logOnce("neolabel", "neo label failed: " + err); }
+        neoFxAt(Fx.massiveExplosion, ex, ey, 0);
+        neoLocalFx(xakyNeoExecuteFx, 90, ex, ey, 0);
+        neoLocalFx(xakyNeoStarsFx, 55, ex, ey, 0);
+        neoLocalFx(xakyNeoLaserFx, 48, ex, ey, 0);
+        if (isUnitOwner) { // sao 2 cánh chớp nhoáng ở đầu nòng
+            try {
+                let mx = b.originX, my = b.originY, br = b.rotation();
+                if (typeof mx !== "number" || typeof my !== "number" || (mx === 0 && my === 0)) { mx = o.x + Angles.trnsx(br, o.hitSize * 0.8); my = o.y + Angles.trnsy(br, o.hitSize * 0.8); }
+                neoLocalFx(xakyNeoMuzzleFx, 12, mx, my, br + 90);
+            } catch (err) {}
+        }
+        neoDiag(ex, ey);
+        pilotFxAt[apid] = Time.time;
+        try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, apid + "n"); } catch (err) {}
+        return true;
+    }
+    // đòn đánh vừa HẠ mục tiêu (tgt.dead đã true khi sự kiện chạy): nếu trước đòn đó mục tiêu đang <16% máu thì vẫn phải chạy hiệu ứng kết liễu
+    function neoFinisher(b, tgt) {
+        let o = b.owner;
+        if (o == null || o.team == tgt.team || !(tgt.maxHealth > 0)) return;
+        let isUnitOwner = typeof o.getPlayer === "function", apid;
+        if (isUnitOwner) {
+            if (soldierOwner[o.id] !== undefined) return; // lính không áp dụng
+            let ap = ownerPl(o);
+            if (ap == null) return;
+            apid = ap.id;
+        } else apid = hostOwner[o.id];
+        if (apid === undefined) return;
+        let st = byId[apid];
+        if (st == null || st.pi !== PILOT_XAKYNEO) return;
+        let dealt = b.damage; // ước lượng sát thương thật của đòn vừa rồi (đã trừ giáp, chia hệ số máu)
+        try { dealt = Damage.applyArmor(b.damage, tgt.armor) / Math.max(0.01, tgt.healthMultiplier) / Math.max(0.01, Vars.state.rules.unitHealth(tgt.team)); } catch (err) {}
+        if ((tgt.health + dealt) / tgt.maxHealth >= XAKYNEO_EXECUTE_RATIO) return;
+        if (neoExecuteShow(apid, tgt.id, tgt.x, tgt.y, b, o, isUnitOwner)) logOnce("neo-run2", "neo execute (đòn kết thúc) on " + tgt.type.name, true);
+    }
+
+    // ===== Cơ chế mới: quét liên tục =====
+    // mục tiêu bị đạn của Xaky(Neo) đánh trúng được đánh dấu; bất cứ lúc nào máu còn < 16% max HP (dù do đạn, sát thương cộng thêm hay hiệu ứng) -> kết liễu + effect
+    let neoMark = {}, neoScanT = 0;
+    function neoExecuteUnit(u, apid) {
+        let ex = u.x, ey = u.y, tid = u.id;
+        if (!u.dead) { try { u.damagePierce(u.health + u.maxHealth); } catch (err) { try { u.kill(); } catch (err2) {} } }
+        logOnce("neo-scan", "neo execute (quét) on " + u.type.name + " hp=" + Math.round(u.health) + "/" + Math.round(u.maxHealth), true);
+        if (neoExecuteShow(apid, tid, ex, ey, null, null, false)) {
+            try { let su = plUnit(apid); if (su != null && !su.dead) su.damage(su.maxHealth * XAKYNEO_EXECUTE_SELF_PCT); } catch (err) {}
+        }
+    }
+    Events.run(Trigger.update, new Runnable({
+        run: function() {
+            try {
+                if (Vars.net.client() || !isActive() || Vars.state.isPaused()) return;
+                neoScanT += Time.delta;
+                if (neoScanT < 3) return;
+                neoScanT = 0;
+                let todo = [], now = Time.time, stale = [];
+                Groups.unit.each(new Cons({ get: function(u) {
+                    let m = neoMark[u.id];
+                    if (m === undefined) return;
+                    if (u.dead || !u.isValid() || now - m.t > 900) { stale.push(u.id); return; }
+                    if (u.maxHealth > 0 && u.health / u.maxHealth < XAKYNEO_EXECUTE_RATIO) {
+                        let st = byId[m.pid];
+                        if (st != null && st.pi === PILOT_XAKYNEO) todo.push([u, m.pid]);
+                        stale.push(u.id);
+                    }
+                } }));
+                for (let i = 0; i < stale.length; i++) delete neoMark[stale[i]];
+                for (let i = 0; i < todo.length; i++) neoExecuteUnit(todo[i][0], todo[i][1]);
+            } catch (err) { logOnce("neoscan", "neo scan failed: " + err); }
+        }
+    }));
+
+    // ===== Hiệu ứng kích hoạt khiên của VanHau =====
+    const vanhauShieldFx = new Effect(28, e => {
+        Draw.color(SHIELD_GLOW, Color.white, e.fin());
+        Lines.stroke(e.fout() * 3.0);
+        Lines.circle(e.x, e.y, e.finpow() * 11.0);
+        Draw.color(SHIELD_COLOR, SHIELD_GLOW, e.fin());
+        Lines.stroke(e.fout() * 1.6);
+        Lines.circle(e.x, e.y, e.finpow() * 11.0);
+        Draw.reset();
+    });
+
+    // vanhau: máu dưới 70% -> tạo khiên vanilla bền 120% máu tối đa, tồn tại đến khi bị phá, hồi chiêu 3 phút
+    let vhCtx = null;
+    const vhEach = new Cons({ get: function(b) {
+        let c = vhCtx;
+        if (c.f.hp <= 0 || b.team === c.team || !b.type.absorbable) return;
+        if (Mathf.dst2(b.x, b.y, c.x, c.y) > c.r2) return;
+        c.f.hp -= Math.max(1, b.damage);
+        c.f.fl = 1;
+        try { b.absorb(); } catch (err) {}
+        if (!Vars.headless) { try { Fx.absorb.at(b.x, b.y); } catch (err) {} }
+    } });
+    function vanhauR(u) { return Math.max(34, u.hitSize * 0.66 + 17); }
+    function vanhauSend(id, u, f) {
+        try { if (Vars.net.server()) Call.clientPacketUnreliable(VHS_KIND, id + "|" + u.id + "|" + Math.round(f.hp) + "|" + Math.round(f.max) + "|" + Math.round(f.r)); } catch (err) {}
+    }
+    // khiên lực quanh unit (như khối tạo khiên): hấp thụ đạn địch tới khi vỡ. Trả về true nếu còn hoạt động
+    function vanhauTick(u, id, f) {
+        if (f.uid !== u.id || u.dead) { delete vanhauField[id]; return false; }
+        f.r = vanhauR(u);
+        vhCtx = { f: f, team: u.team, x: u.x, y: u.y, r2: f.r * f.r };
+        try { Groups.bullet.intersect(u.x - f.r, u.y - f.r, f.r * 2, f.r * 2, vhEach); } catch (err) { Groups.bullet.each(vhEach); }
+        if (f.hp <= 0) {
+            f.hp = 0;
+            vanhauSend(id, u, f);
+            delete vanhauField[id];
+            try { Call.effect(Fx.shieldBreak, u.x, u.y, f.r, SHIELD_COLOR); } catch (err) {}
+            return false;
+        }
+        f.st -= Time.delta;
+        if (f.st <= 0) { f.st = 6; vanhauSend(id, u, f); }
+        return true;
+    }
+
+    function vanhauCheck(unit, pl, st) {
+        if (pl == null || unit.dead || unit.health <= 0) return;
+        let id = pl.id;
+        { let vf = vanhauField[id]; if (vf != null && vanhauTick(unit, id, vf)) return; } // khiên còn tồn tại
+        if (vanhauShieldOn[id]) vanhauShieldOn[id] = false; // khiên vừa bị phá hết
+        if (unit.health >= unit.maxHealth * VANHAU_TRIGGER_HP) return;
+        let at = vanhauCdAt[id];
+        if (at !== undefined && Time.time >= at && Time.time - at < VANHAU_CD) return; // đang hồi chiêu
+        vanhauField[id] = { uid: unit.id, hp: unit.maxHealth * VANHAU_SHIELD_PCT, max: unit.maxHealth * VANHAU_SHIELD_PCT, r: vanhauR(unit), fl: 0, st: 0 };
+        vanhauShieldOn[id] = true;
+        vanhauCdAt[id] = Time.time;
+        pilotFxAt[id] = Time.time;
+        try { Call.effect(vanhauShieldFx, unit.x, unit.y, 0, Color.white); } catch (err) {}
+        try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "v"); } catch (err) {}
     }
 
     function empixFx(id) {
@@ -2655,41 +3002,6 @@
         return true;
     }
 
-    // ===== Xaky (Neo) Pilot: +5% tấn công, mỗi phút +0.1% (tối đa +100%) =====
-    function xneoRamp(st) {
-        let mins = Math.floor((st.xt || 0) / 3600);
-        return Math.min(XNEO_RAMP_MAX, mins * XNEO_RAMP_PER_MIN);
-    }
-
-    function pilotPing(id, suffix) {
-        try { pilotFxAt[id] = Time.time; } catch (err) {}
-        try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + suffix); } catch (err) {}
-    }
-
-    // ===== VanHau Pilot: máu < 70% -> khiên vanilla = 120% máu tối đa, tồn tại tới khi vỡ, hồi chiêu 3 phút =====
-    function vhCheck(u, pl, st) {
-        if (u.dead || u.health <= 0 || u.shield > 0.5) return;
-        if (u.health >= u.maxHealth * VH_HP_THRESHOLD) return;
-        let id = pl.id;
-        let at = vhCdAt[id];
-        if (at !== undefined && Time.time >= at && Time.time - at < VH_CD) return;
-        u.shield = u.maxHealth * VH_SHIELD_MUL;
-        vhCdAt[id] = Time.time;
-        pilotPing(id, "v");
-        try { Fx.shieldApply.at(u.x, u.y, u.hitSize); } catch (err) {}
-        try { Call.effect(Fx.spawnShockwave, u.x, u.y, 0, Pal.shield); } catch (err) {}
-        toast(pl, tr("[accent]VanHau Pilot dựng khiên bảo vệ bạn! (hồi chiêu 3 phút)", "[accent]VanHau Pilot raised a shield for you! (3 min cooldown)"));
-    }
-
-    // chạy mỗi tick trên máy chủ cho từng người chơi / bot
-    function pilotTick(pl, st, u) {
-        if (st.pi === PILOT_XNEO) {
-            if (!u.dead) st.xt = (st.xt || 0) + Time.delta;
-        } else if (st.pi === PILOT_VANHAU) {
-            vhCheck(u, pl, st);
-        }
-    }
-
     function applyStats(unit) {
         if (!isActive() || (!isFull() && !isTierUnit(unit))) return;
         let s = statsOf(unit);
@@ -2708,6 +3020,8 @@
         if (xakyOn) hpT *= XAKY_HP_MUL;
         let histOn = isPl && stOwn != null && stOwn.pi === PILOT_HIST;
         if (histOn) hpT *= 1 + HIST_STAT_PCT;
+        let xakyNeoOn = isPl && stOwn != null && stOwn.pi === PILOT_XAKYNEO;
+        let vanhauOn = isPl && stOwn != null && stOwn.pi === PILOT_VANHAU;
         if (Math.abs(unit.maxHealth - hpT) > 0.5) {
             let diff = hpT - unit.maxHealth;
             unit.maxHealth = hpT;
@@ -2724,7 +3038,7 @@
         if (s[5] > 0 && Math.random() < s[5] * 0.02) dm *= 1.5 + s[6] * 0.12;
         if (empixOn) dm *= 1 + EMPIX_ATK_PCT;
         if (histOn) dm *= 1 + HIST_STAT_PCT;
-        if (isPl && stOwn != null && stOwn.pi === PILOT_XNEO) dm *= 1 + XNEO_ATK_PCT + xneoRamp(stOwn);
+        if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT + xakyNeoRampPct(unit);
         unit.damageMultiplier *= dm;
         if (empixOn && !Vars.net.client()) empixHeal(unit);
         let base = Math.max(0.1, unit.type.speed);
@@ -2744,9 +3058,10 @@
         }
         if (s[8] > 0 && !Vars.net.client() && unit.health > 0) {
             let regenAmt = unit.maxHealth * s[8] * REGEN_PCT / 100 * Time.delta / 60;
-            let vhCap = unit.maxHealth * VH_SHIELD_MUL;
-            if (isPl && stOwn != null && stOwn.pi === PILOT_VANHAU && unit.shield > 0 && unit.shield < vhCap) {
-                unit.shield = Math.min(vhCap, unit.shield + regenAmt); // vanhau: ưu tiên hồi độ bền cho khiên
+            let vhP = vanhauOn ? ownerPl(unit) : null, vhF = vhP != null ? vanhauField[vhP.id] : null;
+            if (vhF != null && vhF.hp > 0 && vhF.hp < vhF.max) {
+                // vanhau: chỉ số hồi máu ưu tiên hồi độ bền khiên khi khiên còn tồn tại
+                vhF.hp = Math.min(vhF.max, vhF.hp + regenAmt);
             } else if (unit.health < unit.maxHealth * REGEN_THRESHOLD) {
                 unit.health = Math.min(unit.maxHealth, unit.health + regenAmt);
             }
@@ -2763,6 +3078,7 @@
         if (nSm > 1) unit.damageMultiplier *= 1 + (nSm - 1) * SMITE_ATK_PCT / 100;
         if (equippedCount(stOwn, "duo") > 0 || equippedCount(stOwn, "breach") > 0) unit.speedMultiplier *= 1 + LIGHT_SPD_PCT / 100;
         if (xakyOn && !Vars.net.client()) xakyCheck(unit, ownerPl(unit), stOwn);
+        if (vanhauOn && !Vars.net.client()) vanhauCheck(unit, ownerPl(unit), stOwn);
     }
 
     const buffStatus = extend(StatusEffect, "pvp-buff", {
@@ -3232,7 +3548,6 @@
             }
             let u = pl.unit();
             if (u == null || !u.isValid()) return;
-            try { pilotTick(pl, st, u); } catch (err) { logOnce("pilottick", "pilot tick failed: " + err); }
             if (!isFull()) { extSwap(pl, st, u); return; }
             let dead = deadUnit[pl.id];
             if (dead !== undefined && u.id !== dead && !u.dead) {
@@ -4997,7 +5312,9 @@
                 if (Vars.net.client() || !isActive()) return;
                 let b = e.bullet;
                 let tgt = e.unit;
-                if (b == null || tgt == null || tgt.dead || !tgt.isValid()) return;
+                if (b == null || tgt == null) return;
+                if (tgt.dead || !tgt.isValid()) { try { neoFinisher(b, tgt); } catch (err) {} return; } // đòn hạ mục tiêu: xử lý riêng cho Xaky(Neo)
+                let neoHp0 = tgt.health; // máu ngay sau đòn đánh, trước mọi sát thương cộng thêm của mod
                 let shred = shredMap.get(b.type);
                 if (shred) {
                     try { tgt.damagePierce(b.damage * shred); } catch (err) {
@@ -5047,26 +5364,27 @@
                     }
                 } catch (err) {}
                 try {
-                    lastHitBy[tgt.id] = { pid: apid, t: Time.time };
-                } catch (err) {}
-                try {
-                    // xaky (neo): +35% sát thương lên mục tiêu trên 50% máu; mục tiêu dưới 5% máu bị kết liễu (bản thân mất 20% máu)
-                    let nst = byId[apid];
-                    if (nst != null && nst.pi === PILOT_XNEO && isUnitOwner && ownerPl(o) != null && !tgt.dead) {
-                        if (tgt.maxHealth > 0 && tgt.health / tgt.maxHealth > XNEO_HIGH_HP) {
-                            tgt.damage(b.damage * XNEO_HIGH_DMG);
-                        }
-                        if (!tgt.dead && tgt.health > 0 && tgt.health < tgt.maxHealth * XNEO_EXEC_HP) {
-                            let npl = ownerPl(o);
-                            try { Call.effect(Fx.spawnShockwave, tgt.x, tgt.y, 0, Color.valueOf("ff3b3b")); } catch (err) {}
-                            tgt.kill();
-                            if (!o.dead && o.isValid()) o.health = Math.max(1, o.health - o.maxHealth * XNEO_EXEC_COST);
-                            if (npl != null) {
-                                pilotPing(npl.id, "n");
-                                toast(npl, tr("[scarlet]Xaky (Neo) Pilot kết liễu mục tiêu! (-20% máu)", "[scarlet]Xaky (Neo) Pilot executed the target! (-20% HP)"));
-                            }
+                    // xaky(neo): +35% sát thương lên mục tiêu trên 50% máu
+                    let xnst = byId[apid];
+                    if (xnst != null && xnst.pi === PILOT_XAKYNEO && (!isUnitOwner || soldierOwner[o.id] === undefined)) neoMark[tgt.id] = { pid: apid, t: Time.time }; // đánh dấu để bộ quét kết liễu
+                    if (xnst != null && xnst.pi === PILOT_XAKYNEO && !tgt.dead && tgt.isValid() && tgt.maxHealth > 0 && tgt.health / tgt.maxHealth > XAKYNEO_HIGHHP_RATIO) {
+                        let exn = b.damage * XAKYNEO_HIGHHP_DMG;
+                        try { tgt.damagePierce(exn); } catch (err) { tgt.damage(exn); }
+                    }
+                    // xaky(neo): kết liễu mục tiêu dưới 16% máu, bản thân mất 9% máu tối đa (áp dụng cho đạn unit người chơi, pháo trang bị và pháo xây; không áp dụng cho lính)
+                    // dùng máu thấp nhất giữa "ngay sau đòn" và "hiện tại" + không đòi !dead: sát thương cộng thêm của mod có thể đã hạ mục tiêu trước bước này
+                    if ((!isUnitOwner || soldierOwner[o.id] === undefined) && xnst != null && xnst.pi === PILOT_XAKYNEO && tgt.maxHealth > 0 && Math.min(neoHp0, tgt.health) / tgt.maxHealth < XAKYNEO_EXECUTE_RATIO) {
+                        lastHitBy[tgt.id] = { pid: apid, t: Time.time }; // ghi credit kill trước khi kết liễu
+                        let ex = tgt.x, ey = tgt.y;
+                        if (!tgt.dead) { try { tgt.damagePierce(tgt.health + tgt.maxHealth); } catch (err) { try { tgt.kill(); } catch (err2) {} } }
+                        logOnce("neo-run", "neo execute fired on " + tgt.type.name + " hp=" + Math.round(tgt.health) + "/" + Math.round(tgt.maxHealth), true);
+                        if (neoExecuteShow(apid, tgt.id, ex, ey, b, o, isUnitOwner)) {
+                            try { let su = isUnitOwner ? o : plUnit(apid); if (su != null) su.damage(su.maxHealth * XAKYNEO_EXECUTE_SELF_PCT); } catch (err) {}
                         }
                     }
+                } catch (err) { logOnce("neoexec", "neo execute block failed: " + err); }
+                try {
+                    lastHitBy[tgt.id] = { pid: apid, t: Time.time };
                 } catch (err) {}
                 if (!isUnitOwner) return;
                 try {
@@ -5211,7 +5529,7 @@
             shieldSeenHit = {};
             recentUp = [[], [], [], []];
             viewUp = [[], [], [], []];
-            pilotRecent = []; viewPilot = []; bagRecent = []; viewBag = [];
+            pilotRecent = []; viewPilot = []; bagRecent = []; viewBag = []; vanhauField = {};
             lastUpTab = 0;
             auraSeen = {};
             respawnLock = {};
@@ -5287,16 +5605,19 @@
             let st = reqState(player);
             if (st == null) return;
             let k = parseInt(payload);
-            if (k !== 0 && k !== PILOT_XIKI && k !== PILOT_EMPIX && k !== PILOT_XAKY && k !== PILOT_HIST && k !== PILOT_XNEO && k !== PILOT_VANHAU) return;
+            if (k !== 0 && k !== PILOT_XIKI && k !== PILOT_EMPIX && k !== PILOT_XAKY && k !== PILOT_HIST && k !== PILOT_XAKYNEO && k !== PILOT_VANHAU) return;
             if ((st.pi || 0) === k) return;
             if (k === PILOT_EMPIX && st.lv < EMPIX_MIN_LEVEL) return; // cần cấp 11
+            if (st.pi === PILOT_XAKYNEO) delete xakyNeoStart[player.id]; // đổi pilot: reset mốc tăng dần tấn công
+            if (st.pi === PILOT_VANHAU) { delete vanhauCdAt[player.id]; delete vanhauShieldOn[player.id]; delete vanhauField[player.id]; }
             st.pi = k;
+            if (k === PILOT_XAKYNEO) xakyNeoStart[player.id] = Time.time;
             toast(player, k === PILOT_XIKI ? tr("[accent]Đã chiêu mộ Xiki Pilot!", "[accent]Recruited Xiki Pilot!") :
                 k === PILOT_XAKY ? tr("[accent]Đã chiêu mộ Xaky Pilot!", "[accent]Recruited Xaky Pilot!") :
                 k === PILOT_HIST ? tr("[accent]Đã chiêu mộ HistekaIMsp Pilot!", "[accent]Recruited HistekaIMsp Pilot!") :
-                k === PILOT_XNEO ? tr("[accent]Đã chiêu mộ Xaky (Neo) Pilot!", "[accent]Recruited Xaky (Neo) Pilot!") :
-                k === PILOT_VANHAU ? tr("[accent]Đã chiêu mộ VanHau Pilot!", "[accent]Recruited VanHau Pilot!") :
                 k === PILOT_EMPIX ? tr("[accent]Đã chiêu mộ Empixeand Pilot!", "[accent]Recruited Empixeand Pilot!") :
+                k === PILOT_XAKYNEO ? tr("[accent]Đã chiêu mộ Xaky(Neo) Pilot!", "[accent]Recruited Xaky(Neo) Pilot!") :
+                k === PILOT_VANHAU ? tr("[accent]Đã chiêu mộ VanHau Pilot!", "[accent]Recruited VanHau Pilot!") :
                 tr("[lightgray]Đã cho pilot nghỉ.", "[lightgray]Pilot dismissed."));
             changed();
         }, false, 60);
@@ -5740,7 +6061,7 @@
     }
 
     function statRow(p, st, i, w) {
-        let lv = st.s[i] + (st.pi === PILOT_HIST && i !== STAT_ARMY ? 1 : 0) + (st.pi === PILOT_XNEO && (i === 5 || i === 6) ? XNEO_CRIT_ADD : 0); // histeka / xaky neo: hiển thị +1 cấp
+        let lv = st.s[i] + (st.pi === PILOT_HIST && i !== STAT_ARMY ? 1 : 0) + (st.pi === PILOT_XAKYNEO && (i === 5 || i === 6 || i === 8) ? XAKYNEO_CRIT_BONUS_LV : 0); // histeka: +1 mọi thẻ; xaky(neo): +1 bạo kích
         let row = new Table(Styles.black6);
         row.margin(8);
         let col = new Table();
@@ -5971,19 +6292,19 @@
                 if (Core.atlas.has("xakypilot")) return Core.atlas.find("xakypilot");
                 return null;
             }
-            if (pi === PILOT_XNEO) {
-                if (Core.atlas.has("newex-xakyneo")) return Core.atlas.find("newex-xakyneo");
-                if (Core.atlas.has("xakyneo")) return Core.atlas.find("xakyneo");
-                return null;
-            }
-            if (pi === PILOT_VANHAU) {
-                if (Core.atlas.has("newex-vanhau")) return Core.atlas.find("newex-vanhau");
-                if (Core.atlas.has("vanhau")) return Core.atlas.find("vanhau");
-                return null;
-            }
             if (pi === PILOT_HIST) {
                 if (Core.atlas.has("newex-histeka")) return Core.atlas.find("newex-histeka");
                 if (Core.atlas.has("histeka")) return Core.atlas.find("histeka");
+                return null;
+            }
+            if (pi === PILOT_XAKYNEO) {
+                if (Core.atlas.has("newex-xakyneopilot")) return Core.atlas.find("newex-xakyneopilot");
+                if (Core.atlas.has("xakyneopilot")) return Core.atlas.find("xakyneopilot");
+                return null;
+            }
+            if (pi === PILOT_VANHAU) {
+                if (Core.atlas.has("newex-vanhaupilot")) return Core.atlas.find("newex-vanhaupilot");
+                if (Core.atlas.has("vanhaupilot")) return Core.atlas.find("vanhaupilot");
                 return null;
             }
             if (Core.atlas.has("newex-xikipilot")) return Core.atlas.find("newex-xikipilot");
@@ -6082,12 +6403,12 @@
             [PILOT_HIST, "HistekaIMsp Pilot",
                 "Mạnh toàn diện, không điểm yếu! +1 cấp cho mọi thẻ ở trang chỉ số.",
                 "All-rounder, no weakness! +1 level on every stat card in the stats page.", 1],
-            [PILOT_XNEO, "Xaky (Neo) Pilot",
-                "+5% tấn công (mỗi phút cộng dồn +0.1%, tối đa +100%). +1 điểm cho Tỉ lệ bạo kích và Sát thương bạo kích. Gây thêm 35% sát thương lên mục tiêu trên 50% máu. Kết liễu: mục tiêu dưới 5% máu sẽ bị hạ ngay nhưng bạn mất 20% máu tối đa.",
-                "+5% attack (+0.1% more every minute, max +100%). +1 point on Crit chance and Crit damage. Deal 35% extra damage to targets above 50% HP. Execute: targets below 5% HP are killed instantly, but you lose 20% of your max HP.", 1],
+            [PILOT_XAKYNEO, "Xaky(Neo) Pilot",
+                "+5% tấn công (mỗi phút +0.1%, tối đa +100%). +1 điểm tỉ lệ bạo kích, sát thương bạo kích & hồi máu. +35% sát thương lên mục tiêu trên 50% máu. Kết liễu mục tiêu dưới 16% máu (bản thân mất 9% máu tối đa; áp dụng cả đạn pháo trang bị và pháo xây).",
+                "+5% attack (ramps +0.1%/min, up to +100%). +1 point to crit chance, crit damage & regeneration. +35% damage to targets above 50% HP. Executes targets below 16% HP (costs 9% of your own max HP; applies to unit, mounted and built turret bullets).", 1],
             [PILOT_VANHAU, "VanHau Pilot",
-                "Máu dưới 70%: lập tức dựng khiên (khiên vanilla) bằng 120% máu tối đa, tồn tại đến khi vỡ (hồi chiêu 3 phút). Chỉ số Hồi máu sẽ ưu tiên hồi độ bền cho khiên.",
-                "Below 70% HP: instantly raise a vanilla shield worth 120% of max HP that lasts until broken (3 min cooldown). The Regeneration stat heals the shield first.", 1]
+                "Máu dưới 70%: tự tạo khiên lực (như khối tạo khiên) bao quanh unit, chặn đạn địch, độ bền 120% máu tối đa (hồi chiêu 3 phút), tồn tại đến khi bị phá. Chỉ số hồi máu ưu tiên hồi độ bền khiên khi khiên còn tồn tại.",
+                "Below 70% HP: auto-creates a force-field shield (like a force projector) around you that blocks enemy bullets, 120% max HP durability (3 min cooldown), lasting until broken. HP regen stat heals the shield first while it's up.", 1]
         ];
     }
 
@@ -6110,19 +6431,11 @@
             (locked ? "[scarlet]" + tr("Cần cấp ", "Need Lv ") + minLv + "[]" : "[lightgray]" + tr("Miễn phí", "Free") + "[]");
         info.add("[accent]" + d[1] + "[]  " + tag).left().wrap().growX().minWidth(0).row();
         info.add("[lightgray]" + tr(d[2], d[3]) + "[]").left().wrap().growX().minWidth(0).padTop(3).row();
-        if (pi === PILOT_XNEO) {
-            info.label(new Prov({ get: function() {
-                let ls = localState();
-                let rp = ls != null ? (XNEO_ATK_PCT + xneoRamp(ls)) * 100 : XNEO_ATK_PCT * 100;
-                return "[lightgray]" + tr("Tấn công hiện tại: +", "Current attack: +") + (Math.round(rp * 10) / 10) + "%[]";
-            } })).left().padTop(3).row();
-        }
         if (pi === PILOT_EMPIX || pi === PILOT_XAKY || pi === PILOT_VANHAU) {
             info.label(new Prov({ get: function() {
-                let cdm = pi === PILOT_XAKY ? xakyCdAt : (pi === PILOT_VANHAU ? vhCdAt : empixCdAt);
-                let cdT = pi === PILOT_XAKY ? XAKY_CD : (pi === PILOT_VANHAU ? VH_CD : EMPIX_HEAL_CD);
+                let cdm = pi === PILOT_XAKY ? xakyCdAt : (pi === PILOT_VANHAU ? vanhauCdAt : empixCdAt);
                 let at = Vars.player != null ? cdm[Vars.player.id] : undefined;
-                let left = at === undefined ? 0 : Math.ceil((cdT - (Time.time - at)) / 60);
+                let left = at === undefined ? 0 : Math.ceil(((pi === PILOT_XAKY ? XAKY_CD : (pi === PILOT_VANHAU ? VANHAU_CD : EMPIX_HEAL_CD)) - (Time.time - at)) / 60);
                 if (at === undefined || left <= 0 || Time.time < at) return "[green]" + tr("Hồi chiêu: sẵn sàng", "Cooldown: ready") + "[]";
                 return "[scarlet]" + tr("Hồi chiêu: ", "Cooldown: ") + Math.floor(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
             } })).left().padTop(3).row();
@@ -6313,14 +6626,25 @@
         let f1 = function(v) { return (Math.round(v * 100) / 100).toString(); };
         out.push([tr("Unit đang điều khiển", "Controlled unit"), "[accent]" + ut.localizedName + "[]  " + tr("(cấp ", "(tier ") + activeTier(st) + ")"]);
         out.push([tr("Máu", "Health"), Math.round(u.health) + " / " + Math.round(u.maxHealth) + "  [lightgray]" + tr("(gốc ", "(base ") + Math.round(ut.health) + ")[]"]);
+        if (st.pi === PILOT_VANHAU) { // pilot VanHau: độ bền khiên lực
+            let vp = null, vf = null, vTxt;
+            try { vp = ownerPl(u); } catch (err) {}
+            let vid = vp != null ? vp.id : (u0 === undefined ? Vars.player.id : -1);
+            vf = vanhauField[vid];
+            if (vf != null && vf.hp > 0) vTxt = "[cyan]" + Math.round(vf.hp) + " / " + Math.round(vf.max) + "[]  [lightgray]" + Math.round(vf.hp / Math.max(1, vf.max) * 100) + "%[]";
+            else {
+                let at = vanhauCdAt[vid], left = at === undefined ? 0 : Math.ceil((VANHAU_CD - (Time.time - at)) / 60);
+                vTxt = left > 0 ? "[lightgray]" + tr("Không có khiên (hồi chiêu ", "No shield (cooldown ") + left + "s)[]" : "[lightgray]" + tr("Chưa kích hoạt (tự bật khi máu dưới 70%)", "Inactive (auto-activates below 70% HP)") + "[]";
+            }
+            out.push([tr("Khiên VanHau (độ bền)", "VanHau shield (durability)"), vTxt]);
+        }
         let hm = u.healthMultiplier > 0 ? u.healthMultiplier : 1;
         out.push([tr("Giáp", "Armor"), f1(u.armor) + "  [lightgray]" + tr("(gốc ", "(base ") + f1(ut.armor) + ")[]  " + tr("giảm sát thương nhận ", "damage taken reduced ") + f1((1 - 1 / hm) * 100) + "%"]);
-        out.push([tr("Tấn công", "Attack"), "x" + f1(u.damageMultiplier)]);
+        out.push([tr("Tấn công", "Attack"), f1((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + tr(" sát thương/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + f1(baseAttack(ut)) + ")  x" + f1(u.damageMultiplier) + "[]"]);
         out.push([tr("Tốc độ di chuyển", "Move speed"), f1(ut.speed * u.speedMultiplier) + "  [lightgray]" + tr("(gốc ", "(base ") + f1(ut.speed) + ")  x" + f1(u.speedMultiplier) + "[]"]);
         out.push([tr("Tốc độ bắn", "Fire rate"), "x" + f1(u.reloadMultiplier)]);
-        let cb5 = s[5] + (st.pi === PILOT_XNEO ? XNEO_CRIT_ADD : 0), cb6 = s[6] + (st.pi === PILOT_XNEO ? XNEO_CRIT_ADD : 0);
-        out.push([tr("Tỉ lệ bạo kích", "Crit chance"), (cb5 * 2) + "%"]);
-        out.push([tr("Sát thương bạo kích", "Crit damage"), (150 + cb6 * 12) + "%"]);
+        out.push([tr("Tỉ lệ bạo kích", "Crit chance"), (s[5] * 2) + "%"]);
+        out.push([tr("Sát thương bạo kích", "Crit damage"), (150 + s[6] * 12) + "%"]);
         out.push([tr("Xuyên giáp", "Armor pierce"), (s[7] * 5) + "%"]);
         out.push([tr("Hồi máu", "Regeneration"), f1(u.maxHealth * s[8] * REGEN_PCT / 100) + tr(" máu/giây (khi dưới 99%)", " HP/s (below 99%)")]);
         out.push([tr("Sát thương % máu tối đa", "Max HP % damage"), "+" + f1(s[9] * DMG_PCT_MAXHP) + tr("% máu tối đa mục tiêu/lần trúng", "% target max HP per hit")]);
