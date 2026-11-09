@@ -80,6 +80,20 @@
     const EMPIX_HEAL_HP = 0.5;       // máu tụt xuống dưới 50%
     const EMPIX_HEAL_CHANCE = 0.5;   // tỉ lệ 50% hồi đầy máu
     const EMPIX_HEAL_CD = 5 * 60 * 60; // hồi chiêu 5 phút (tick)
+    const PILOT_XNEO = 5;            // Xaky (Neo) Pilot
+    const XNEO_ATK_PCT = 0.05;       // +5% tấn công
+    const XNEO_RAMP_PER_MIN = 0.001; // mỗi phút +0.1% tấn công
+    const XNEO_RAMP_MAX = 1.0;       // cộng dồn tối đa +100%
+    const XNEO_CRIT_ADD = 1;         // +1 điểm cho tỉ lệ bạo kích & sát thương bạo kích
+    const XNEO_HIGH_HP = 0.5;        // mục tiêu trên 50% máu
+    const XNEO_HIGH_DMG = 0.35;      // gây thêm 35% sát thương
+    const XNEO_EXEC_HP = 0.05;       // mục tiêu dưới 5% máu bị kết liễu
+    const XNEO_EXEC_COST = 0.2;      // kết liễu: bản thân mất 20% máu tối đa
+    const PILOT_VANHAU = 6;          // VanHau Pilot
+    const VH_HP_THRESHOLD = 0.7;     // máu dưới 70% -> dựng khiên
+    const VH_SHIELD_MUL = 1.2;       // khiên = 120% máu tối đa
+    const VH_CD = 3 * 60 * 60;       // hồi chiêu 3 phút (tick)
+    let vhCdAt = {};                 // pid -> Time.time lần dựng khiên gần nhất
     let coreCine = null;               // hoạt ảnh lõi nổ (client): {x,y,t,dur}
     let coreKilled = {};               // lõi do ta chủ động cho nổ (đã chiếu hoạt ảnh)
     let coreDying = {};                // cb.id -> {b,t} (server): lõi đang chờ nổ
@@ -741,7 +755,7 @@
         let out = {};
         for (let id in byId) {
             let s = byId[id];
-            out[id] = [s.lv, Math.floor(s.exp), s.pts, s.s, s.d, s.u || 0, s.p, s.b || 0, s.pi || 0, s.kc || [0, 0, 0], s.cmd || 0, s.w === undefined ? WALL_NONE : s.w, s.wl || 0];
+            out[id] = [s.lv, Math.floor(s.exp), s.pts, s.s, s.d, s.u || 0, s.p, s.b || 0, s.pi || 0, s.kc || [0, 0, 0], s.cmd || 0, s.w === undefined ? WALL_NONE : s.w, s.wl || 0, Math.floor(s.xt || 0)];
         }
         if (Vars.net.server()) {
             try { Call.clientPacketReliable(SYNC_KIND, JSON.stringify({ d: out })); } catch (err) {}
@@ -757,7 +771,7 @@
                 let a = o.d[id];
                 let pp = (a[6] != null && a[4] != null && a[6].length === a[4].length) ? a[6] : [];
                 while (a[3].length < STATS.length) a[3].push(0);
-                n[id] = { lv: a[0], exp: a[1], pts: a[2], s: a[3], d: a[4], u: a[5] || 0, p: pp, b: a[7] || 0, pi: a[8] || 0, kc: a[9] || [0, 0, 0], cmd: a[10] || 0, w: a[11] === undefined ? WALL_NONE : a[11], wl: a[12] || 0 };
+                n[id] = { lv: a[0], exp: a[1], pts: a[2], s: a[3], d: a[4], u: a[5] || 0, p: pp, b: a[7] || 0, pi: a[8] || 0, kc: a[9] || [0, 0, 0], cmd: a[10] || 0, w: a[11] === undefined ? WALL_NONE : a[11], wl: a[12] || 0, xt: a[13] || 0 };
             }
             byId = n;
             stVer++;
@@ -775,7 +789,7 @@
                 get: function(content) { onShieldSync(content); }
             }));
             Vars.netClient.addPacketHandler(PFX_KIND, new Cons({
-                get: function(content) { try { let s0 = String(content); let id = parseInt(s0); pilotFxAt[id] = Time.time; if (s0.indexOf("x") >= 0) xakyCdAt[id] = Time.time; else empixCdAt[id] = Time.time; } catch (err) {} }
+                get: function(content) { try { let s0 = String(content); let id = parseInt(s0); pilotFxAt[id] = Time.time; if (s0.indexOf("x") >= 0) xakyCdAt[id] = Time.time; else if (s0.indexOf("v") >= 0) vhCdAt[id] = Time.time; else if (s0.indexOf("n") < 0) empixCdAt[id] = Time.time; } catch (err) {} }
             }));
             Vars.netClient.addPacketHandler(CORE_KIND, new Cons({
                 get: function(content) { try { let a = String(content).split("|"); coreDeathFx(parseFloat(a[0]), parseFloat(a[1]), parseFloat(a[2])); } catch (err) {} }
@@ -2527,6 +2541,14 @@
             for (let i = 0; i < h.length; i++) h[i] = i !== STAT_ARMY ? Math.min(st.s[i] + 1, statMax(i)) : st.s[i];
             return h;
         }
+        if (st.pi === PILOT_XNEO) { // xaky (neo): +1 điểm cho tỉ lệ bạo kích & sát thương bạo kích
+            let h = st._hs;
+            if (h == null) { h = st._hs = st.s.slice(); }
+            for (let i = 0; i < h.length; i++) h[i] = st.s[i];
+            h[5] = Math.min(st.s[5] + XNEO_CRIT_ADD, statMax(5));
+            h[6] = Math.min(st.s[6] + XNEO_CRIT_ADD, statMax(6));
+            return h;
+        }
         return st.s;
     }
 
@@ -2633,6 +2655,41 @@
         return true;
     }
 
+    // ===== Xaky (Neo) Pilot: +5% tấn công, mỗi phút +0.1% (tối đa +100%) =====
+    function xneoRamp(st) {
+        let mins = Math.floor((st.xt || 0) / 3600);
+        return Math.min(XNEO_RAMP_MAX, mins * XNEO_RAMP_PER_MIN);
+    }
+
+    function pilotPing(id, suffix) {
+        try { pilotFxAt[id] = Time.time; } catch (err) {}
+        try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + suffix); } catch (err) {}
+    }
+
+    // ===== VanHau Pilot: máu < 70% -> khiên vanilla = 120% máu tối đa, tồn tại tới khi vỡ, hồi chiêu 3 phút =====
+    function vhCheck(u, pl, st) {
+        if (u.dead || u.health <= 0 || u.shield > 0.5) return;
+        if (u.health >= u.maxHealth * VH_HP_THRESHOLD) return;
+        let id = pl.id;
+        let at = vhCdAt[id];
+        if (at !== undefined && Time.time >= at && Time.time - at < VH_CD) return;
+        u.shield = u.maxHealth * VH_SHIELD_MUL;
+        vhCdAt[id] = Time.time;
+        pilotPing(id, "v");
+        try { Fx.shieldApply.at(u.x, u.y, u.hitSize); } catch (err) {}
+        try { Call.effect(Fx.spawnShockwave, u.x, u.y, 0, Pal.shield); } catch (err) {}
+        toast(pl, tr("[accent]VanHau Pilot dựng khiên bảo vệ bạn! (hồi chiêu 3 phút)", "[accent]VanHau Pilot raised a shield for you! (3 min cooldown)"));
+    }
+
+    // chạy mỗi tick trên máy chủ cho từng người chơi / bot
+    function pilotTick(pl, st, u) {
+        if (st.pi === PILOT_XNEO) {
+            if (!u.dead) st.xt = (st.xt || 0) + Time.delta;
+        } else if (st.pi === PILOT_VANHAU) {
+            vhCheck(u, pl, st);
+        }
+    }
+
     function applyStats(unit) {
         if (!isActive() || (!isFull() && !isTierUnit(unit))) return;
         let s = statsOf(unit);
@@ -2667,6 +2724,7 @@
         if (s[5] > 0 && Math.random() < s[5] * 0.02) dm *= 1.5 + s[6] * 0.12;
         if (empixOn) dm *= 1 + EMPIX_ATK_PCT;
         if (histOn) dm *= 1 + HIST_STAT_PCT;
+        if (isPl && stOwn != null && stOwn.pi === PILOT_XNEO) dm *= 1 + XNEO_ATK_PCT + xneoRamp(stOwn);
         unit.damageMultiplier *= dm;
         if (empixOn && !Vars.net.client()) empixHeal(unit);
         let base = Math.max(0.1, unit.type.speed);
@@ -2684,8 +2742,14 @@
                 if (unit.shield < shCap) unit.shield = Math.min(shCap, unit.shield + shCap * 0.1 * Time.delta / 60);
             }
         }
-        if (s[8] > 0 && !Vars.net.client() && unit.health > 0 && unit.health < unit.maxHealth * REGEN_THRESHOLD) {
-            unit.health = Math.min(unit.maxHealth, unit.health + unit.maxHealth * s[8] * REGEN_PCT / 100 * Time.delta / 60);
+        if (s[8] > 0 && !Vars.net.client() && unit.health > 0) {
+            let regenAmt = unit.maxHealth * s[8] * REGEN_PCT / 100 * Time.delta / 60;
+            let vhCap = unit.maxHealth * VH_SHIELD_MUL;
+            if (isPl && stOwn != null && stOwn.pi === PILOT_VANHAU && unit.shield > 0 && unit.shield < vhCap) {
+                unit.shield = Math.min(vhCap, unit.shield + regenAmt); // vanhau: ưu tiên hồi độ bền cho khiên
+            } else if (unit.health < unit.maxHealth * REGEN_THRESHOLD) {
+                unit.health = Math.min(unit.maxHealth, unit.health + regenAmt);
+            }
         }
         if (s[10] > 0) unit.damageMultiplier *= 1 + s[10] * DMG_PER_ARMOR * unit.armor;
         if (isPl && malignEquipped(stOwn)) {
@@ -3168,6 +3232,7 @@
             }
             let u = pl.unit();
             if (u == null || !u.isValid()) return;
+            try { pilotTick(pl, st, u); } catch (err) { logOnce("pilottick", "pilot tick failed: " + err); }
             if (!isFull()) { extSwap(pl, st, u); return; }
             let dead = deadUnit[pl.id];
             if (dead !== undefined && u.id !== dead && !u.dead) {
@@ -4984,6 +5049,25 @@
                 try {
                     lastHitBy[tgt.id] = { pid: apid, t: Time.time };
                 } catch (err) {}
+                try {
+                    // xaky (neo): +35% sát thương lên mục tiêu trên 50% máu; mục tiêu dưới 5% máu bị kết liễu (bản thân mất 20% máu)
+                    let nst = byId[apid];
+                    if (nst != null && nst.pi === PILOT_XNEO && isUnitOwner && ownerPl(o) != null && !tgt.dead) {
+                        if (tgt.maxHealth > 0 && tgt.health / tgt.maxHealth > XNEO_HIGH_HP) {
+                            tgt.damage(b.damage * XNEO_HIGH_DMG);
+                        }
+                        if (!tgt.dead && tgt.health > 0 && tgt.health < tgt.maxHealth * XNEO_EXEC_HP) {
+                            let npl = ownerPl(o);
+                            try { Call.effect(Fx.spawnShockwave, tgt.x, tgt.y, 0, Color.valueOf("ff3b3b")); } catch (err) {}
+                            tgt.kill();
+                            if (!o.dead && o.isValid()) o.health = Math.max(1, o.health - o.maxHealth * XNEO_EXEC_COST);
+                            if (npl != null) {
+                                pilotPing(npl.id, "n");
+                                toast(npl, tr("[scarlet]Xaky (Neo) Pilot kết liễu mục tiêu! (-20% máu)", "[scarlet]Xaky (Neo) Pilot executed the target! (-20% HP)"));
+                            }
+                        }
+                    }
+                } catch (err) {}
                 if (!isUnitOwner) return;
                 try {
                     let rp = o.getPlayer();
@@ -5203,13 +5287,15 @@
             let st = reqState(player);
             if (st == null) return;
             let k = parseInt(payload);
-            if (k !== 0 && k !== PILOT_XIKI && k !== PILOT_EMPIX && k !== PILOT_XAKY && k !== PILOT_HIST) return;
+            if (k !== 0 && k !== PILOT_XIKI && k !== PILOT_EMPIX && k !== PILOT_XAKY && k !== PILOT_HIST && k !== PILOT_XNEO && k !== PILOT_VANHAU) return;
             if ((st.pi || 0) === k) return;
             if (k === PILOT_EMPIX && st.lv < EMPIX_MIN_LEVEL) return; // cần cấp 11
             st.pi = k;
             toast(player, k === PILOT_XIKI ? tr("[accent]Đã chiêu mộ Xiki Pilot!", "[accent]Recruited Xiki Pilot!") :
                 k === PILOT_XAKY ? tr("[accent]Đã chiêu mộ Xaky Pilot!", "[accent]Recruited Xaky Pilot!") :
                 k === PILOT_HIST ? tr("[accent]Đã chiêu mộ HistekaIMsp Pilot!", "[accent]Recruited HistekaIMsp Pilot!") :
+                k === PILOT_XNEO ? tr("[accent]Đã chiêu mộ Xaky (Neo) Pilot!", "[accent]Recruited Xaky (Neo) Pilot!") :
+                k === PILOT_VANHAU ? tr("[accent]Đã chiêu mộ VanHau Pilot!", "[accent]Recruited VanHau Pilot!") :
                 k === PILOT_EMPIX ? tr("[accent]Đã chiêu mộ Empixeand Pilot!", "[accent]Recruited Empixeand Pilot!") :
                 tr("[lightgray]Đã cho pilot nghỉ.", "[lightgray]Pilot dismissed."));
             changed();
@@ -5654,7 +5740,7 @@
     }
 
     function statRow(p, st, i, w) {
-        let lv = st.s[i] + (st.pi === PILOT_HIST && i !== STAT_ARMY ? 1 : 0); // histeka: hiển thị +1 cấp
+        let lv = st.s[i] + (st.pi === PILOT_HIST && i !== STAT_ARMY ? 1 : 0) + (st.pi === PILOT_XNEO && (i === 5 || i === 6) ? XNEO_CRIT_ADD : 0); // histeka / xaky neo: hiển thị +1 cấp
         let row = new Table(Styles.black6);
         row.margin(8);
         let col = new Table();
@@ -5885,6 +5971,16 @@
                 if (Core.atlas.has("xakypilot")) return Core.atlas.find("xakypilot");
                 return null;
             }
+            if (pi === PILOT_XNEO) {
+                if (Core.atlas.has("newex-xakyneo")) return Core.atlas.find("newex-xakyneo");
+                if (Core.atlas.has("xakyneo")) return Core.atlas.find("xakyneo");
+                return null;
+            }
+            if (pi === PILOT_VANHAU) {
+                if (Core.atlas.has("newex-vanhau")) return Core.atlas.find("newex-vanhau");
+                if (Core.atlas.has("vanhau")) return Core.atlas.find("vanhau");
+                return null;
+            }
             if (pi === PILOT_HIST) {
                 if (Core.atlas.has("newex-histeka")) return Core.atlas.find("newex-histeka");
                 if (Core.atlas.has("histeka")) return Core.atlas.find("histeka");
@@ -5985,7 +6081,13 @@
                 "-20% HP, +20% move speed. From level " + XAKY_MIN_LEVEL + ": taking damage makes you Dash in your move direction (10s cooldown). Ground units stop 1 tile short of walls/buildings; air units fly through.", 1],
             [PILOT_HIST, "HistekaIMsp Pilot",
                 "Mạnh toàn diện, không điểm yếu! +1 cấp cho mọi thẻ ở trang chỉ số.",
-                "All-rounder, no weakness! +1 level on every stat card in the stats page.", 1]
+                "All-rounder, no weakness! +1 level on every stat card in the stats page.", 1],
+            [PILOT_XNEO, "Xaky (Neo) Pilot",
+                "+5% tấn công (mỗi phút cộng dồn +0.1%, tối đa +100%). +1 điểm cho Tỉ lệ bạo kích và Sát thương bạo kích. Gây thêm 35% sát thương lên mục tiêu trên 50% máu. Kết liễu: mục tiêu dưới 5% máu sẽ bị hạ ngay nhưng bạn mất 20% máu tối đa.",
+                "+5% attack (+0.1% more every minute, max +100%). +1 point on Crit chance and Crit damage. Deal 35% extra damage to targets above 50% HP. Execute: targets below 5% HP are killed instantly, but you lose 20% of your max HP.", 1],
+            [PILOT_VANHAU, "VanHau Pilot",
+                "Máu dưới 70%: lập tức dựng khiên (khiên vanilla) bằng 120% máu tối đa, tồn tại đến khi vỡ (hồi chiêu 3 phút). Chỉ số Hồi máu sẽ ưu tiên hồi độ bền cho khiên.",
+                "Below 70% HP: instantly raise a vanilla shield worth 120% of max HP that lasts until broken (3 min cooldown). The Regeneration stat heals the shield first.", 1]
         ];
     }
 
@@ -6008,11 +6110,19 @@
             (locked ? "[scarlet]" + tr("Cần cấp ", "Need Lv ") + minLv + "[]" : "[lightgray]" + tr("Miễn phí", "Free") + "[]");
         info.add("[accent]" + d[1] + "[]  " + tag).left().wrap().growX().minWidth(0).row();
         info.add("[lightgray]" + tr(d[2], d[3]) + "[]").left().wrap().growX().minWidth(0).padTop(3).row();
-        if (pi === PILOT_EMPIX || pi === PILOT_XAKY) {
+        if (pi === PILOT_XNEO) {
             info.label(new Prov({ get: function() {
-                let cdm = pi === PILOT_XAKY ? xakyCdAt : empixCdAt;
+                let ls = localState();
+                let rp = ls != null ? (XNEO_ATK_PCT + xneoRamp(ls)) * 100 : XNEO_ATK_PCT * 100;
+                return "[lightgray]" + tr("Tấn công hiện tại: +", "Current attack: +") + (Math.round(rp * 10) / 10) + "%[]";
+            } })).left().padTop(3).row();
+        }
+        if (pi === PILOT_EMPIX || pi === PILOT_XAKY || pi === PILOT_VANHAU) {
+            info.label(new Prov({ get: function() {
+                let cdm = pi === PILOT_XAKY ? xakyCdAt : (pi === PILOT_VANHAU ? vhCdAt : empixCdAt);
+                let cdT = pi === PILOT_XAKY ? XAKY_CD : (pi === PILOT_VANHAU ? VH_CD : EMPIX_HEAL_CD);
                 let at = Vars.player != null ? cdm[Vars.player.id] : undefined;
-                let left = at === undefined ? 0 : Math.ceil(((pi === PILOT_XAKY ? XAKY_CD : EMPIX_HEAL_CD) - (Time.time - at)) / 60);
+                let left = at === undefined ? 0 : Math.ceil((cdT - (Time.time - at)) / 60);
                 if (at === undefined || left <= 0 || Time.time < at) return "[green]" + tr("Hồi chiêu: sẵn sàng", "Cooldown: ready") + "[]";
                 return "[scarlet]" + tr("Hồi chiêu: ", "Cooldown: ") + Math.floor(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
             } })).left().padTop(3).row();
@@ -6208,8 +6318,9 @@
         out.push([tr("Tấn công", "Attack"), "x" + f1(u.damageMultiplier)]);
         out.push([tr("Tốc độ di chuyển", "Move speed"), f1(ut.speed * u.speedMultiplier) + "  [lightgray]" + tr("(gốc ", "(base ") + f1(ut.speed) + ")  x" + f1(u.speedMultiplier) + "[]"]);
         out.push([tr("Tốc độ bắn", "Fire rate"), "x" + f1(u.reloadMultiplier)]);
-        out.push([tr("Tỉ lệ bạo kích", "Crit chance"), (s[5] * 2) + "%"]);
-        out.push([tr("Sát thương bạo kích", "Crit damage"), (150 + s[6] * 12) + "%"]);
+        let cb5 = s[5] + (st.pi === PILOT_XNEO ? XNEO_CRIT_ADD : 0), cb6 = s[6] + (st.pi === PILOT_XNEO ? XNEO_CRIT_ADD : 0);
+        out.push([tr("Tỉ lệ bạo kích", "Crit chance"), (cb5 * 2) + "%"]);
+        out.push([tr("Sát thương bạo kích", "Crit damage"), (150 + cb6 * 12) + "%"]);
         out.push([tr("Xuyên giáp", "Armor pierce"), (s[7] * 5) + "%"]);
         out.push([tr("Hồi máu", "Regeneration"), f1(u.maxHealth * s[8] * REGEN_PCT / 100) + tr(" máu/giây (khi dưới 99%)", " HP/s (below 99%)")]);
         out.push([tr("Sát thương % máu tối đa", "Max HP % damage"), "+" + f1(s[9] * DMG_PCT_MAXHP) + tr("% máu tối đa mục tiêu/lần trúng", "% target max HP per hit")]);
