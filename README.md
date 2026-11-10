@@ -6,6 +6,12 @@
 
 
 -------------------------------------------
+> Cập nhật mới:
++ NewMode PvP: thêm pháo Therdum vào trang update pháo (giá 10 điểm, vai trò Cận chiến). Nội tại: sát thương tối đa nhận vào mỗi hit là 100.
++ Thanh máu: bỏ số nhảy khi hồi máu; thay bằng làn sóng sáng nhẹ chạy mượt từ đầu tới cuối thanh máu.
+
+
+-------------------------------------------
 > Điều chỉnh cân bằng bản NeoWex 0.1:
 + Pháo Swordoder:  giảm thời gian effect xé không gian gấp đôi / mk2b: giảm tầm bắn 20%, giảm sát thương 60%, giảm kích thước nhát chém đi gấp đôi.
 

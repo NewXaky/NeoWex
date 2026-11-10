@@ -93,6 +93,8 @@ const therdumBulletBase = extend(BasicBulletType, {
     }
 });
 
+global.NexTherdum = { bullet: therdumBulletBase, fx: shootMuzzleFx };
+
 const therdum = extend(ItemTurret, "therdum", {
     configurable: true
 });

@@ -2,7 +2,7 @@
     const DRONE_IDS = [
         "duo", "scatter", "scorch", "hail", "wave", "lancer", "arc", "parallax", "swarmer",
         "salvo", "segment", "tsunami", "fuse", "ripple", "cyclone", "foreshadow", "spectre", "meltdown",
-        "breach", "diffuse", "sublimate", "titan", "disperse", "afflict", "lustre", "scathe", "smite", "malign"
+        "breach", "diffuse", "sublimate", "titan", "disperse", "afflict", "lustre", "scathe", "smite", "malign", "therdum"
     ];
 
     const MAP_ID = "pvpnewex3110";
@@ -89,6 +89,8 @@
     const XAKYNEO_HIGHHP_DMG = 0.35;     // +35% sát thương
     const XAKYNEO_EXECUTE_RATIO = 0.16;  // mục tiêu dưới 16% máu: kết liễu
     const XAKYNEO_EXECUTE_SELF_PCT = 0.09; // bản thân mất 9% máu tối đa khi kết liễu
+    const NEO_BLAST_R = 52.5;            // bán kính nổ = vòng tròn giữa của effect kết liễu (70 * 0.75)
+    const NEO_BLAST_ATK = 2, NEO_BLAST_ARMOR = 0.5, NEO_BLAST_HP = 0.5; // nổ: 200% tấn công + 50% giáp + 50% máu
     let xakyNeoStart = {};               // pid -> Time.time lúc pilot kích hoạt (mốc tăng dần tấn công)
     const PILOT_VANHAU = 6;              // VanHau Pilot
     const VANHAU_TRIGGER_HP = 0.7;       // dưới 70% máu
@@ -238,7 +240,7 @@
         segment: ROLE_DEFENSE, tsunami: ROLE_BRAWLER, fuse: ROLE_BRAWLER, ripple: ROLE_ATTACK, cyclone: ROLE_ATTACK,
         foreshadow: ROLE_DEALER, spectre: ROLE_ATTACK, meltdown: ROLE_BRAWLER, breach: ROLE_ATTACK, diffuse: ROLE_BRAWLER,
         sublimate: ROLE_BRAWLER, titan: ROLE_ATTACK, disperse: ROLE_ATTACK, afflict: ROLE_ATTACK, lustre: ROLE_ATTACK,
-        scathe: ROLE_DEALER, smite: ROLE_ATTACK, malign: ROLE_DEALER
+        scathe: ROLE_DEALER, smite: ROLE_ATTACK, malign: ROLE_DEALER, therdum: ROLE_BRAWLER
     };
 
     function roleText(id) {
@@ -287,8 +289,15 @@
         return n;
     }
 
+    const THERDUM_ID = "therdum";
+    const THERDUM_PRICE = 10;   // giá cố định (điểm)
+    const THERDUM_HIT_CAP = 100; // nội tại: sát thương tối đa nhận vào mỗi hit
+    const PRICE_OVERRIDE = { therdum: THERDUM_PRICE };
+    const thHp = {}; // unitId -> máu khung trước (cho nội tại Therdum)
+
     function roleDesc(id) {
         let s = roleDescBase(id);
+        if (id === THERDUM_ID) s += tr(". Nội tại: sát thương tối đa nhận vào mỗi hit là " + THERDUM_HIT_CAP, ". Passive: max damage taken per hit is " + THERDUM_HIT_CAP);
         if (id === LUSTRE_ID) s += tr(". Mỗi lustre trang bị thêm không bắn thêm tia, chỉ +" + LUSTRE_ATK_PCT + "% tấn công", ". Extra copies fire no extra beams, only +" + LUSTRE_ATK_PCT + "% attack each");
         if (id === "duo" || id === "breach") {
             s += tr(". Thêm: +" + LIGHT_SPD_PCT + "% tốc độ di chuyển (không cộng dồn)", ". Also: +" + LIGHT_SPD_PCT + "% move speed (does not stack)");
@@ -872,7 +881,7 @@
                 Log.warn("[NexPvp] DRONE_IDS: không tìm thấy pháo \"" + id + "\" (newex-" + id + " hoặc " + id + "), bỏ qua");
                 continue;
             }
-            let d = { id: id, block: blk, cost: costOf(blk), equip: true, mount: NO_MOUNT[id] !== true, ov: {}, kind: turretKind(blk) };
+            let d = { id: id, block: blk, cost: PRICE_OVERRIDE[id] != null ? PRICE_OVERRIDE[id] : costOf(blk), equip: true, mount: NO_MOUNT[id] !== true, ov: {}, kind: turretKind(blk) };
             list.push(d);
             map[d.id] = d;
         }
@@ -1696,6 +1705,28 @@
     }
 
     // ItemTurret / PowerTurret / LiquidTurret
+    // Therdum lắp lên unit: đạn trong ammoTypes chỉ là đạn giả, nên bắn shotgun thật (40 viên) như pháo xây.
+    function therdumFire(u, def, stt, aim) {
+        let T = global.NexTherdum;
+        let mp = mountPos(u, stt.k, stt.n);
+        let rot = stt.ang;
+        let mz = muzzle(u, def.block, mp, rot);
+        let sx = mz.x + Angles.trnsx(rot, 6), sy = mz.y + Angles.trnsy(rot, 6);
+        let own = u.isCoreHost === true ? u.build : u;
+        let range = turretRange(def);
+        let dm = Math.max(0.1, u.damageMultiplier);
+        if (!Vars.headless) { try { T.fx.at(sx, sy, rot); } catch (err) {} }
+        for (let i = 0; i < 40; i++) {
+            let sp = Mathf.random(3, 9);
+            let b = T.bullet.create(own, u.team, sx, sy, rot + Mathf.range(12));
+            if (b != null) {
+                b.vel.setLength(sp);
+                b.lifetime = range / sp;
+                b.damage = 24 * dm;
+            }
+        }
+    }
+
     function shootTurret(u, def, mp, ast, stt, key) {
         let blk = def.block;
         let bt = equipBullet(def);
@@ -1716,7 +1747,8 @@
         equipAng[key] = stt.ang;
         if (stt.q > 0 && fld(fld(blk, "shoot", null), "firstShotDelay", 0) > 0) return;
         if (Angles.angleDist(stt.ang, want) < fld(blk, "shootCone", 8) && stt.rel >= reload) {
-            fireTurret(u, def, bt, stt, aim.tx, aim.ty, null);
+            if (def.id === THERDUM_ID && global.NexTherdum != null) therdumFire(u, def, stt, aim);
+            else fireTurret(u, def, bt, stt, aim.tx, aim.ty, null);
             stt.rel = stt.rel % reload;
         }
     }
@@ -2847,15 +2879,28 @@
         if (neoExecuteShow(apid, tgt.id, tgt.x, tgt.y, b, o, isUnitOwner)) logOnce("neo-run2", "neo execute (đòn kết thúc) on " + tgt.type.name, true);
     }
 
+    // sau kết liễu: bản thân mất 9% máu tối đa (đang lắp therdum thì ĐẢO NGƯỢC thành hồi máu tức thì) + nổ lan quanh mục tiêu
+    function neoExecuteAfter(su, apid, ex, ey, atk) {
+        if (su == null || su.dead) return;
+        try {
+            let amt = su.maxHealth * XAKYNEO_EXECUTE_SELF_PCT;
+            if (equippedCount(byId[apid], THERDUM_ID) > 0) su.heal(amt); else su.damage(amt);
+        } catch (err) {}
+        try {
+            let dmg = NEO_BLAST_ATK * atk + NEO_BLAST_ARMOR * su.armor + NEO_BLAST_HP * su.maxHealth;
+            Damage.damage(su.team, ex, ey, NEO_BLAST_R, dmg, false, true, true);
+        } catch (err) { logOnce("neoblast", "neo blast failed: " + err); }
+    }
+
     // ===== Cơ chế mới: quét liên tục =====
     // mục tiêu bị đạn của Xaky(Neo) đánh trúng được đánh dấu; bất cứ lúc nào máu còn < 16% max HP (dù do đạn, sát thương cộng thêm hay hiệu ứng) -> kết liễu + effect
     let neoMark = {}, neoScanT = 0;
-    function neoExecuteUnit(u, apid) {
+    function neoExecuteUnit(u, apid, atk) {
         let ex = u.x, ey = u.y, tid = u.id;
         if (!u.dead) { try { u.damagePierce(u.health + u.maxHealth); } catch (err) { try { u.kill(); } catch (err2) {} } }
         logOnce("neo-scan", "neo execute (quét) on " + u.type.name + " hp=" + Math.round(u.health) + "/" + Math.round(u.maxHealth), true);
         if (neoExecuteShow(apid, tid, ex, ey, null, null, false)) {
-            try { let su = plUnit(apid); if (su != null && !su.dead) su.damage(su.maxHealth * XAKYNEO_EXECUTE_SELF_PCT); } catch (err) {}
+            neoExecuteAfter(plUnit(apid), apid, ex, ey, atk);
         }
     }
     Events.run(Trigger.update, new Runnable({
@@ -2872,12 +2917,12 @@
                     if (u.dead || !u.isValid() || now - m.t > 900) { stale.push(u.id); return; }
                     if (u.maxHealth > 0 && u.health / u.maxHealth < XAKYNEO_EXECUTE_RATIO) {
                         let st = byId[m.pid];
-                        if (st != null && st.pi === PILOT_XAKYNEO) todo.push([u, m.pid]);
+                        if (st != null && st.pi === PILOT_XAKYNEO) todo.push([u, m.pid, m.d]);
                         stale.push(u.id);
                     }
                 } }));
                 for (let i = 0; i < stale.length; i++) delete neoMark[stale[i]];
-                for (let i = 0; i < todo.length; i++) neoExecuteUnit(todo[i][0], todo[i][1]);
+                for (let i = 0; i < todo.length; i++) neoExecuteUnit(todo[i][0], todo[i][1], todo[i][2]);
             } catch (err) { logOnce("neoscan", "neo scan failed: " + err); }
         }
     }));
@@ -3077,6 +3122,15 @@
         let nSm = equippedCount(stOwn, SMITE_ID);
         if (nSm > 1) unit.damageMultiplier *= 1 + (nSm - 1) * SMITE_ATK_PCT / 100;
         if (equippedCount(stOwn, "duo") > 0 || equippedCount(stOwn, "breach") > 0) unit.speedMultiplier *= 1 + LIGHT_SPD_PCT / 100;
+        // Therdum: mỗi hit chỉ mất tối đa THERDUM_HIT_CAP máu (hoàn lại phần vượt)
+        if (!Vars.net.client()) {
+            let uid = unit.id;
+            if (equippedCount(stOwn, THERDUM_ID) > 0 && !unit.dead) {
+                let pv = thHp[uid];
+                if (pv !== undefined && pv - unit.health > THERDUM_HIT_CAP && unit.health > 0) unit.health = pv - THERDUM_HIT_CAP;
+                thHp[uid] = unit.health;
+            } else if (thHp[uid] !== undefined) delete thHp[uid];
+        }
         if (xakyOn && !Vars.net.client()) xakyCheck(unit, ownerPl(unit), stOwn);
         if (vanhauOn && !Vars.net.client()) vanhauCheck(unit, ownerPl(unit), stOwn);
     }
@@ -5366,7 +5420,7 @@
                 try {
                     // xaky(neo): +35% sát thương lên mục tiêu trên 50% máu
                     let xnst = byId[apid];
-                    if (xnst != null && xnst.pi === PILOT_XAKYNEO && (!isUnitOwner || soldierOwner[o.id] === undefined)) neoMark[tgt.id] = { pid: apid, t: Time.time }; // đánh dấu để bộ quét kết liễu
+                    if (xnst != null && xnst.pi === PILOT_XAKYNEO && (!isUnitOwner || soldierOwner[o.id] === undefined)) neoMark[tgt.id] = { pid: apid, t: Time.time, d: b.damage }; // đánh dấu để bộ quét kết liễu
                     if (xnst != null && xnst.pi === PILOT_XAKYNEO && !tgt.dead && tgt.isValid() && tgt.maxHealth > 0 && tgt.health / tgt.maxHealth > XAKYNEO_HIGHHP_RATIO) {
                         let exn = b.damage * XAKYNEO_HIGHHP_DMG;
                         try { tgt.damagePierce(exn); } catch (err) { tgt.damage(exn); }
@@ -5379,7 +5433,7 @@
                         if (!tgt.dead) { try { tgt.damagePierce(tgt.health + tgt.maxHealth); } catch (err) { try { tgt.kill(); } catch (err2) {} } }
                         logOnce("neo-run", "neo execute fired on " + tgt.type.name + " hp=" + Math.round(tgt.health) + "/" + Math.round(tgt.maxHealth), true);
                         if (neoExecuteShow(apid, tgt.id, ex, ey, b, o, isUnitOwner)) {
-                            try { let su = isUnitOwner ? o : plUnit(apid); if (su != null) su.damage(su.maxHealth * XAKYNEO_EXECUTE_SELF_PCT); } catch (err) {}
+                                            neoExecuteAfter(isUnitOwner ? o : plUnit(apid), apid, ex, ey, b.damage);
                         }
                     }
                 } catch (err) { logOnce("neoexec", "neo execute block failed: " + err); }
@@ -6404,12 +6458,69 @@
                 "Mạnh toàn diện, không điểm yếu! +1 cấp cho mọi thẻ ở trang chỉ số.",
                 "All-rounder, no weakness! +1 level on every stat card in the stats page.", 1],
             [PILOT_XAKYNEO, "Xaky(Neo) Pilot",
-                "+5% tấn công (mỗi phút +0.1%, tối đa +100%). +1 điểm tỉ lệ bạo kích, sát thương bạo kích & hồi máu. +35% sát thương lên mục tiêu trên 50% máu. Kết liễu mục tiêu dưới 16% máu (bản thân mất 9% máu tối đa; áp dụng cả đạn pháo trang bị và pháo xây).",
-                "+5% attack (ramps +0.1%/min, up to +100%). +1 point to crit chance, crit damage & regeneration. +35% damage to targets above 50% HP. Executes targets below 16% HP (costs 9% of your own max HP; applies to unit, mounted and built turret bullets).", 1],
+                "+5% tấn công (mỗi phút +0,1%, tối đa +100%). +1 điểm tỉ lệ bạo kích, sát thương bạo kích & hồi máu. +35% sát thương lên mục tiêu trên 50% máu. Kết liễu mục tiêu dưới 16% máu (bản thân mất 9% máu tối đa; áp dụng cả đạn pháo trang bị và pháo xây). Khi lắp pháo therdum, hiệu ứng bất lợi từ kết liễu (tụt máu) đảo ngược thành hồi máu tức thì. Kết liễu còn tạo vụ nổ bán kính, sát thương 200% tấn công + 50% giáp + 50% máu.",
+                "+5% attack (ramps +0,1%/min, up to +100%). +1 point to crit chance, crit damage & regeneration. +35% damage to targets above 50% HP. Executes targets below 16% HP (costs 9% of your own max HP; applies to unit, mounted and built turret bullets). While a therdum turret is equipped, the execute drawback (HP loss) is reversed into an instant heal. Execute also causes an explosion with a radius, dealing 200% attack + 50% armor + 50% HP.", 1],
             [PILOT_VANHAU, "VanHau Pilot",
                 "Máu dưới 70%: tự tạo khiên lực (như khối tạo khiên) bao quanh unit, chặn đạn địch, độ bền 120% máu tối đa (hồi chiêu 3 phút), tồn tại đến khi bị phá. Chỉ số hồi máu ưu tiên hồi độ bền khiên khi khiên còn tồn tại.",
                 "Below 70% HP: auto-creates a force-field shield (like a force projector) around you that blocks enemy bullets, 120% max HP durability (3 min cooldown), lasting until broken. HP regen stat heals the shield first while it's up.", 1]
         ];
+    }
+
+    function pilotTag(st, d) {
+        let on = st.pi === d[0], locked = st.lv < d[4];
+        let tag = on ? "[green]" + tr("Đã chiêu mộ", "Recruited") + "[]" :
+            (locked ? "[scarlet]" + tr("Cần cấp ", "Need Lv ") + d[4] + "[]" : "[lightgray]" + tr("Miễn phí", "Free") + "[]");
+        return "[accent]" + d[1] + "[]  " + tag;
+    }
+
+    function infoSection(t, text) {
+        t.add("[accent]" + text + "[]").left().padTop(8).row();
+        t.image().color(Color.gray).growX().height(2).padBottom(4).row();
+    }
+
+    // trang thông tin pilot (phong cách Thermion): avatar + tên, rồi các mục xếp gọn
+    function openPilotInfo(pi) {
+        let d = null, all = pilotList();
+        for (let i = 0; i < all.length; i++) if (all[i][0] === pi) d = all[i];
+        if (d == null) return;
+        let dlg = new BaseDialog(tr("Thông tin ", "Info ") + d[1]);
+        addClose(dlg);
+        let W = Math.min(panelW(), 520) - 40;
+        let body = new Table();
+        body.top().left();
+        body.defaults().left().pad(3);
+        let head = new Table();
+        let isz = narrowScreen() ? 56 : 72, reg = pilotIconRegion(pi);
+        if (reg != null) head.image(reg).size(isz).padRight(10); else head.add().size(isz).padRight(10);
+        let nm = new Table(); nm.left();
+        nm.add("[accent]" + d[1] + "[]").left().row();
+        nm.label(new Prov({ get: function() { let st = localState(); return st == null ? "" : (st.pi === pi ? "[green]" + tr("Đã chiêu mộ", "Recruited") + "[]" : (st.lv < d[4] ? "[scarlet]" + tr("Cần cấp ", "Need Lv ") + d[4] + "[]" : "[lightgray]" + tr("Miễn phí", "Free") + "[]")); } })).left();
+        head.add(nm);
+        body.add(head).left().padBottom(4).row();
+
+        infoSection(body, tr("Tổng quan", "Overview"));
+        body.add("[lightgray]" + tr("Yêu cầu cấp: ", "Required level: ") + "[]" + d[4]).left().row();
+        infoSection(body, tr("Hiệu ứng", "Effects"));
+        let lines = tr(d[2], d[3]).split(/\.\s+/);
+        for (let i = 0; i < lines.length; i++) {
+            let ln = lines[i].trim(); if (ln.length === 0) continue;
+            if (ln.charAt(ln.length - 1) !== ".") ln += ".";
+            body.add("[lightgray]- []" + ln).left().wrap().width(W).padLeft(10).row();
+        }
+        if (pi === PILOT_EMPIX || pi === PILOT_XAKY || pi === PILOT_VANHAU) {
+            infoSection(body, tr("Hồi chiêu", "Cooldown"));
+            body.label(new Prov({ get: function() {
+                let cdm = pi === PILOT_XAKY ? xakyCdAt : (pi === PILOT_VANHAU ? vanhauCdAt : empixCdAt);
+                let at = Vars.player != null ? cdm[Vars.player.id] : undefined;
+                let left = at === undefined ? 0 : Math.ceil(((pi === PILOT_XAKY ? XAKY_CD : (pi === PILOT_VANHAU ? VANHAU_CD : EMPIX_HEAL_CD)) - (Time.time - at)) / 60);
+                if (at === undefined || left <= 0 || Time.time < at) return "[green]" + tr("Sẵn sàng", "Ready") + "[]";
+                return "[scarlet]" + Math.floor(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
+            } })).left().padLeft(10).row();
+        }
+        let sp = dlg.cont.pane(body).width(W + 24).maxHeight(Math.max(100, listH())).get();
+        sp.setScrollingDisabled(true, false);
+        sp.setFadeScrollBars(false);
+        dlg.show();
     }
 
     function pilotCard(p, st, W, d) {
@@ -6427,23 +6538,12 @@
         } else box.add().size(isz).padRight(8);
         let info = new Table();
         info.left();
-        let tag = on ? "[green]" + tr("Đã chiêu mộ", "Recruited") + "[]" :
-            (locked ? "[scarlet]" + tr("Cần cấp ", "Need Lv ") + minLv + "[]" : "[lightgray]" + tr("Miễn phí", "Free") + "[]");
-        info.add("[accent]" + d[1] + "[]  " + tag).left().wrap().growX().minWidth(0).row();
-        info.add("[lightgray]" + tr(d[2], d[3]) + "[]").left().wrap().growX().minWidth(0).padTop(3).row();
-        if (pi === PILOT_EMPIX || pi === PILOT_XAKY || pi === PILOT_VANHAU) {
-            info.label(new Prov({ get: function() {
-                let cdm = pi === PILOT_XAKY ? xakyCdAt : (pi === PILOT_VANHAU ? vanhauCdAt : empixCdAt);
-                let at = Vars.player != null ? cdm[Vars.player.id] : undefined;
-                let left = at === undefined ? 0 : Math.ceil(((pi === PILOT_XAKY ? XAKY_CD : (pi === PILOT_VANHAU ? VANHAU_CD : EMPIX_HEAL_CD)) - (Time.time - at)) / 60);
-                if (at === undefined || left <= 0 || Time.time < at) return "[green]" + tr("Hồi chiêu: sẵn sàng", "Cooldown: ready") + "[]";
-                return "[scarlet]" + tr("Hồi chiêu: ", "Cooldown: ") + Math.floor(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
-            } })).left().padTop(3).row();
-        }
+        info.add(pilotTag(st, d)).left().wrap().growX().minWidth(0).row();
+        info.button(tr("Chi tiết thông tin", "Details"), Styles.flatBordert, new Runnable({ run: function() { openPilotInfo(pi); } })).growX().height(btnH() * 0.8).padTop(4);
         box.add(info).growX().minWidth(0).top();
         box.row();
         let txt = on ? tr("Cho nghỉ", "Dismiss") : (locked ? tr("Chưa đủ cấp " + minLv, "Need level " + minLv) : tr("Chiêu mộ", "Recruit"));
-        let b = box.button(txt, new Runnable({ run: function() { if (!on && locked) return; send(REQ_PILOT, on ? "0" : String(pi)); } })).growX().height(btnH()).colspan(2).padTop(6).get();
+        let b = box.button(txt, Styles.flatBordert, new Runnable({ run: function() { if (!on && locked) return; send(REQ_PILOT, on ? "0" : String(pi)); } })).growX().height(btnH()).colspan(2).padTop(6).get();
         if (!on && locked) b.setDisabled(true);
         p.add(box).width(W).pad(3).row();
     }

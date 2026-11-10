@@ -89,7 +89,7 @@ Events.run(Trigger.update, () => {
             const crit = diff >= 0.8 && takeCrit(u.id);
             if (crit) addCrit(u, diff, u.hitSize, true);
             if (m === "eatsuki" && diff >= 0.8) addEat(u, diff, u.hitSize, true, false);
-            else if (m === "popup" && Math.abs(diff) >= 0.8 && !crit) addFloat(u, -diff, u.hitSize, true, false);
+            else if (m === "popup" && diff >= 0.8 && !crit) addFloat(u, -diff, u.hitSize, true, false); // hồi máu: không nhảy số, đã có làn sóng trên thanh máu
         }
         hpCache.put(u.id, u.health);
     }));
@@ -124,7 +124,7 @@ function drawLine(font, text, x, y, crit, age, a){
 Events.run(Trigger.draw, () => {
     const m = mode();
     if (m === "none" || popups.size === 0) return;
-    Draw.z(116);
+    Draw.z(1003);
     const font = Fonts.outline, ox = font.getData().scaleX, oy = font.getData().scaleY;
     for (let i = 0; i < popups.size; i++){
         let p = popups.get(i), f = p.life / p.max, crit = p.critAge >= 0;
@@ -154,7 +154,7 @@ Events.on(BuildDamageEvent, e => {
     if (last != null) diff = last - b.health;
     else if (e.source != null) diff = Math.min(e.source.damage, b.health);
     hpCache.put(b.id, b.health);
-    if (Math.abs(diff) < 0.8) return;
+    if (diff < 0.8) return; // bỏ số hồi máu
     const size = b.block.size * Vars.tilesize, crit = diff > 0 && takeCrit(b.id);
     if (crit) addCrit(b, diff, size, false);
     if (m === "eatsuki") addEat(b, diff, size, false, false);
