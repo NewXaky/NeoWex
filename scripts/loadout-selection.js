@@ -43,6 +43,32 @@ const NexNet = global.NexNet;
     let countClearER = 0;
     let countDeleteOre = 0;
     let countRandomSpawnE = 0;
+    let countWipe = 0;
+    let countMega = 0;
+
+    // Tham chiếu tới các nút trên HUD để phím tắt cập nhật được bộ đếm
+    let hudButtons = {};
+
+    // Xác nhận 2 lần cho phím phá toàn bộ công trình (tránh bấm nhầm)
+    let wipeArmedUntil = 0;
+    const WIPE_CONFIRM_MS = 3000;
+
+    // --- BẢNG PHÍM TẮT (đổi phím tại đây) ---
+    const HOTKEYS = {
+        wave:     [KeyCode.num1, KeyCode.numpad1],
+        meteor:   [KeyCode.num2, KeyCode.numpad2],
+        wave10:   [KeyCode.num3, KeyCode.numpad3],
+        spawnE:   [KeyCode.num4, KeyCode.numpad4],
+        wipe:     [KeyCode.num5, KeyCode.numpad5],
+        mega:     [KeyCode.num6, KeyCode.numpad6]
+    };
+
+    function hotkeyTapped(codes) {
+        for (let i = 0; i < codes.length; i++) {
+            if (Core.input.keyTap(codes[i])) return true;
+        }
+        return false;
+    }
 
     let targetCamX = -1;
     let targetCamY = -1;
@@ -306,6 +332,27 @@ const NexNet = global.NexNet;
         Draw.reset();
     }));
 
+    // --- ĐỒNG BỘ CAMERA CHO TẤT CẢ NGƯỜI CHƠI (host + bạn bè vào host) ---
+    // Effect "vô hình" gửi qua NexNet.fx: mỗi máy nhận được sẽ tự lướt camera tới vị trí sự kiện.
+    // clip rất lớn để máy nhận vẫn xử lý effect dù vị trí nằm ngoài màn hình.
+    let lastCamPanEffectId = -1;
+    const camPanEffect = new Effect(10, 10000000, packCons((e) => {
+        if (e.id === lastCamPanEffectId) return;
+        lastCamPanEffectId = e.id;
+
+        // Bỏ qua nếu camera đã đang lướt tới đúng vị trí này (trường hợp host tự nhận lại effect)
+        if (targetCamX >= 0 && Math.abs(targetCamX - e.x) < 1 && Math.abs(targetCamY - e.y) < 1) return;
+
+        smoothPanTo(e.x, e.y);
+    }));
+
+    function panAllPlayers(x, y) {
+        smoothPanTo(x, y);
+        try {
+            NexNet.fx(camPanEffect, x, y);
+        } catch (err) {}
+    }
+
     function requesterTeam(player) {
         return player != null ? player.team() : Vars.state.rules.defaultTeam;
     }
@@ -414,7 +461,7 @@ const NexNet = global.NexNet;
         let targetX = Mathf.random(marginX, worldWidth - marginX);
         let targetY = Mathf.random(marginY, worldHeight - marginY);
 
-        smoothPanTo(targetX, targetY);
+        panAllPlayers(targetX, targetY);
 
         Vars.ui.showInfoToast(isEn() ? "[orange]Camera panning to meteor target...[]" : "[orange]Đang di chuyển camera đến mục tiêu thiên thạch...[]", 1.5);
 
@@ -538,7 +585,7 @@ const NexNet = global.NexNet;
         let targetY = spawnTile.worldy();
 
         // Lướt camera mượt tới vị trí spawn
-        smoothPanTo(targetX, targetY);
+        panAllPlayers(targetX, targetY);
 
         Vars.ui.showInfoToast(isEn() ? "[orange]Camera panning to enemy spawn target...[]" : "[orange]Đang di chuyển camera đến mục tiêu spawn địch...[]", 1.5);
 
@@ -547,6 +594,150 @@ const NexNet = global.NexNet;
         countRandomSpawnE++;
         if (btnActor != null) {
             btnActor.setText((isEn() ? "Random Spawn E" : "Spawn ngẫu nhiên E") + " (" + countRandomSpawnE + ")");
+        }
+    }
+    // -----------------------------------------------------------
+
+    // --- WIPE ALL BUILDINGS (EXCEPT CORES) + CLEAR CORE ITEMS ---
+    NexNet.on("wipeall", (player, payload) => {
+        if (Vars.state == null || !Vars.state.isGame()) return;
+
+        let team = requesterTeam(player);
+        if (team == null) return;
+
+        // 1. Xóa toàn bộ tài nguyên trong lõi
+        let cores = team.cores();
+        if (cores != null) {
+            cores.each(c => {
+                if (c != null && c.items != null) c.items.clear();
+            });
+        }
+
+        // 2. Thu thập mọi công trình của team (trừ lõi)
+        let list = new Seq();
+        Groups.build.each(b => {
+            if (b != null && b.team == team && !(b.block instanceof CoreBlock)) {
+                list.add(b);
+            }
+        });
+
+        let total = list.size;
+        let idx = 0;
+
+        // 3. Phá theo từng lô để tránh giật lag khi có quá nhiều công trình
+        function step() {
+            if (Vars.state == null || !Vars.state.isGame()) return;
+            let end = Math.min(idx + 120, list.size);
+            for (; idx < end; idx++) {
+                let b = list.get(idx);
+                if (b != null && b.isValid()) b.kill();
+            }
+            if (idx < list.size) {
+                Time.run(1, step);
+            }
+        }
+        step();
+
+        NexNet.toastTo(player, isEn()
+            ? "[red]Destroyed " + total + " buildings and cleared core resources![]"
+            : "[red]Đã phá " + total + " công trình và xóa sạch tài nguyên trong lõi![]", 3);
+    }, true, 1000);
+
+    function triggerWipeAll(btnActor) {
+        if (Vars.state == null || !Vars.state.isGame()) return;
+
+        let now = Time.millis();
+        if (now > wipeArmedUntil) {
+            wipeArmedUntil = now + WIPE_CONFIRM_MS;
+            Vars.ui.showInfoToast(isEn()
+                ? "[scarlet]Press again within 3s to DESTROY all buildings (except cores) and clear core items![]"
+                : "[scarlet]Bấm lại trong 3 giây để PHÁ toàn bộ công trình (trừ lõi) và xóa tài nguyên lõi![]", 3);
+            return;
+        }
+        wipeArmedUntil = 0;
+
+        NexNet.send("wipeall", "");
+
+        countWipe++;
+        if (btnActor != null) {
+            btnActor.setText((isEn() ? "Wipe Base" : "Phá hết công trình") + " (" + countWipe + ")");
+        }
+    }
+
+    // --- SPAWN UNLIMITED MEGA THAT FOLLOWS PLAYER & ASSISTS BUILDING ---
+    function createFollowAssistAI(ownerPlayer) {
+        return extend(AIController, {
+            updateMovement() {
+                let u = this.unit;
+                if (u == null) return;
+
+                let owner = (ownerPlayer != null) ? ownerPlayer.unit() : null;
+                if (owner == null || owner.dead) return;
+
+                u.updateBuilding = true;
+
+                if (owner.activelyBuilding()) {
+                    let plan = owner.buildPlan();
+                    if (plan != null) {
+                        // Làm giống BuilderAI: copy plan đang xây của người chơi
+                        u.plans.clear();
+                        u.plans.addFirst(plan);
+                        this.moveTo(plan.tile(), u.type.buildRange - 20);
+                        return;
+                    }
+                }
+
+                // Không xây thì bám theo người chơi
+                if (u.plans.size > 0) u.plans.clear();
+                this.moveTo(owner, 60);
+            }
+        });
+    }
+
+    NexNet.on("spawnmega", (player, payload) => {
+        if (Vars.state == null || !Vars.state.isGame()) return;
+
+        let team = requesterTeam(player);
+        if (team == null) return;
+
+        let ownerPlayer = player != null ? player : Vars.player;
+        let ownerUnit = ownerPlayer != null ? ownerPlayer.unit() : null;
+
+        let sx, sy;
+        if (ownerUnit != null && !ownerUnit.dead) {
+            sx = ownerUnit.x + Mathf.range(24);
+            sy = ownerUnit.y + Mathf.range(24);
+        } else {
+            let core = team.core();
+            if (core == null) return;
+            sx = core.x + Mathf.range(24);
+            sy = core.y + Mathf.range(24);
+        }
+
+        let mega = UnitTypes.mega.create(team);
+        if (mega == null) return;
+        mega.set(sx, sy);
+
+        try {
+            mega.controller(createFollowAssistAI(ownerPlayer));
+        } catch (e) {
+            // Nếu không gán được AI tùy chỉnh thì dùng AI hỗ trợ xây mặc định
+            try { mega.controller(new BuilderAI()); } catch (e2) {}
+        }
+
+        mega.add();
+        Fx.spawn.at(sx, sy);
+        NexNet.fx(Fx.spawn, sx, sy);
+    }, true, 150);
+
+    function triggerSpawnMega(btnActor) {
+        if (Vars.state == null || !Vars.state.isGame()) return;
+
+        NexNet.send("spawnmega", "");
+
+        countMega++;
+        if (btnActor != null) {
+            btnActor.setText((isEn() ? "Spawn Mega" : "Spawn Mega") + " (" + countMega + ")");
         }
     }
     // -----------------------------------------------------------
@@ -606,7 +797,7 @@ const NexNet = global.NexNet;
         oreTiles.shuffle();
         let sample = oreTiles.first();
 
-        smoothPanTo(sample.worldx(), sample.worldy());
+        panAllPlayers(sample.worldx(), sample.worldy());
 
         Vars.ui.showInfoToast(isEn() ? "[orange]Camera panning to ore deposit...[]" : "[orange]Đang di chuyển camera đến bãi khoáng sản...[]", 1.5);
 
@@ -748,7 +939,7 @@ const NexNet = global.NexNet;
         if (cores != null && !cores.isEmpty()) {
             let core = cores.first();
             if (core != null) {
-                smoothPanTo(core.x, core.y);
+                panAllPlayers(core.x, core.y);
 
                 Vars.ui.showInfoToast(isEn() ? "[red]Camera panning to core...[]" : "[red]Đang di chuyển camera tới lõi...[]", 1.5);
 
@@ -912,6 +1103,31 @@ const NexNet = global.NexNet;
                 triggerRandomSpawnEnemy(btnRandomSpawnE);
             });
             expandTable.add(btnRandomSpawnE).size(150, 36).pad(2).row();
+
+            let btnWipe = new TextButton(isEn() ? "Wipe Base" : "Phá hết công trình", Styles.flatTogglet);
+            btnWipe.getLabel().setFontScale(0.7);
+            btnWipe.getLabel().setColor(Color.valueOf("ff3333"));
+            btnWipe.clicked(() => {
+                triggerWipeAll(btnWipe);
+            });
+            expandTable.add(btnWipe).size(150, 36).pad(2).row();
+
+            let btnMega = new TextButton("Spawn Mega", Styles.flatTogglet);
+            btnMega.getLabel().setFontScale(0.75);
+            btnMega.getLabel().setColor(Color.valueOf("7fffd4"));
+            btnMega.clicked(() => {
+                triggerSpawnMega(btnMega);
+            });
+            expandTable.add(btnMega).size(150, 36).pad(2).row();
+
+            hudButtons = {
+                wave: btnWave,
+                wave10: btnWave10,
+                meteor: btnMeteor,
+                spawnE: btnRandomSpawnE,
+                wipe: btnWipe,
+                mega: btnMega
+            };
 
             container.add(expandTable).padTop(2).row();
 
@@ -1420,6 +1636,18 @@ const NexNet = global.NexNet;
                     }
                 }
 
+                // --- PHÍM TẮT 1-6 ---
+                let typing = Core.scene.hasKeyboard() || Core.scene.hasDialog() ||
+                    (Vars.ui.chatfrag != null && Vars.ui.chatfrag.shown());
+                if (!typing && !shiftPressed) {
+                    if (hotkeyTapped(HOTKEYS.wave))   triggerNextWave(hudButtons.wave);
+                    if (hotkeyTapped(HOTKEYS.meteor)) triggerRandomMeteor(hudButtons.meteor);
+                    if (hotkeyTapped(HOTKEYS.wave10)) triggerMultipleWaves(10, hudButtons.wave10);
+                    if (hotkeyTapped(HOTKEYS.spawnE)) triggerRandomSpawnEnemy(hudButtons.spawnE);
+                    if (hotkeyTapped(HOTKEYS.wipe))   triggerWipeAll(hudButtons.wipe);
+                    if (hotkeyTapped(HOTKEYS.mega))   triggerSpawnMega(hudButtons.mega);
+                }
+
                 if (showWaveBtnSetting) {
                     if (!waveBtnAdded) {
                         injectWaveButtonToHUD();
@@ -1450,6 +1678,8 @@ const NexNet = global.NexNet;
 
     Events.on(WorldLoadEvent, event => {
         waveBtnAdded = false;
+        hudButtons = {};
+        wipeArmedUntil = 0;
         if (customWaveContainer != null) {
             customWaveContainer.remove();
             customWaveContainer = null;
