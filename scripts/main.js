@@ -157,6 +157,7 @@ require("loadout-selection");
 require("newmode-survival");
 require("survivor-skills");
 require("newmode-pvp");
+require("archueng-pvp");
 require("newmode");
 require("shop");
 

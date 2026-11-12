@@ -106,6 +106,20 @@
     const CORE_DIE_TICKS = 240;        // 4s: camera lướt tới lõi rồi mới nổ
     let empixCdAt = {};              // pid -> Time.time lần hồi máu gần nhất
     let empixLow = {};               // pid -> đang dưới ngưỡng và đã tung xúc xắc
+
+    // ===== Đăng ký hồi chiêu pilot để hiện HUD ngoài menu (góc màn hình) =====
+    // Thêm 1 pilot mới có hồi chiêu: chỉ cần thêm 1 dòng {pi, at, cd} vào đây,
+    // HUD góc màn hình (xem drawPilotCdHud) sẽ tự hiện icon + hồi chiêu, KHÔNG cần sửa gì khác.
+    // Pilot nào không có hồi chiêu (không có trong danh sách) thì HUD tự ẩn, không cần khai báo riêng.
+    const PILOT_CDS = [
+        { pi: PILOT_XAKY, at: xakyCdAt, cd: XAKY_CD },
+        { pi: PILOT_VANHAU, at: vanhauCdAt, cd: VANHAU_CD },
+        { pi: PILOT_EMPIX, at: empixCdAt, cd: EMPIX_HEAL_CD }
+    ];
+    function pilotCdFor(pi) {
+        for (let i = 0; i < PILOT_CDS.length; i++) if (PILOT_CDS[i].pi === pi) return PILOT_CDS[i];
+        return null;
+    }
     const XIKI_EXP_PCT = 0.05;   // +5% EXP mỗi lần nhận EXP
     const XIKI_LVUP_PCT = 0.05;  // lên cấp: +5% EXP của cấp mới
     const XIKI_LVUP_FLAT = 500;  // lên cấp: +500 EXP
@@ -136,6 +150,9 @@
     const MAX_WAVE_UNITS = 200;
     const REIGN_HP_MUL = 1.5;
     const DISRUPT_SPEED_MUL = 2.2;
+    const TERRITORY_TILES = 100;        // trong 100 ô quanh lõi phe mình: +20% tốc độ di chuyển (buff độc lập)
+    const TERRITORY_RADIUS = TERRITORY_TILES * Vars.tilesize;
+    const TERRITORY_SPEED_MUL = 1.2;
 
     const EXP_PER_HP = 0.1;
     const DEATH_EXP_PCT = 10; // người thua nhận 10% EXP của unit mình
@@ -280,6 +297,7 @@
     const SMITE_ID = "smite";
     const LUSTRE_ID = "lustre";
     const LUSTRE_ATK_PCT = 18; // mỗi lustre trang bị thêm: +18% tấn công, không thêm tia
+    const SMITE_RELOAD_MUL = 0.5;  // trang bị smite: -50% tốc độ bắn (không cộng dồn)
     const SMITE_ATK_PCT = 18;  // mỗi smite trang bị thêm: +18% tấn công, không thêm đạn
     const LIGHT_SPD_PCT = 8;   // trang bị duo / breach: +8% tốc độ di chuyển (không cộng dồn)
     function equippedCount(st, id) {
@@ -306,8 +324,8 @@
     }
 
     function roleDescBase(id) {
-        if (id === SMITE_ID) return tr("Trang bị: +" + ROLE_ATK_PCT + "% tấn công (tối đa " + ROLE_ATK_MAX + "%). Mỗi pháo trang bị thêm không bắn thêm đạn, chỉ +" + SMITE_ATK_PCT + "% tấn công",
-            "Equipped: +" + ROLE_ATK_PCT + "% attack (max " + ROLE_ATK_MAX + "%). Extra copies fire no extra bullets, only +" + SMITE_ATK_PCT + "% attack each");
+        if (id === SMITE_ID) return tr("Trang bị: +" + ROLE_ATK_PCT + "% tấn công (tối đa " + ROLE_ATK_MAX + "%). Giảm 50% tốc độ bắn. Mỗi pháo trang bị thêm không bắn thêm đạn, chỉ +" + SMITE_ATK_PCT + "% tấn công",
+            "Equipped: +" + ROLE_ATK_PCT + "% attack (max " + ROLE_ATK_MAX + "%). -50% fire rate. Extra copies fire no extra bullets, only +" + SMITE_ATK_PCT + "% attack each");
         if (id === MALIGN_ID) {
             return tr("Trang bị: -" + Math.round((1 - MALIGN_SPEED_MUL) * 100) + "% tốc độ di chuyển, +" + MALIGN_ATK_PCT + "% tấn công, -" + Math.round((1 - MALIGN_RELOAD_MUL) * 100) + "% tốc độ bắn, -" + Math.round((1 - MALIGN_LIFE_MUL) * 100) + "% thời gian tồn tại của đạn",
                 "Equipped: -" + Math.round((1 - MALIGN_SPEED_MUL) * 100) + "% move speed, +" + MALIGN_ATK_PCT + "% attack, -" + Math.round((1 - MALIGN_RELOAD_MUL) * 100) + "% fire rate, -" + Math.round((1 - MALIGN_LIFE_MUL) * 100) + "% bullet lifetime");
@@ -463,9 +481,6 @@
     let recentUp = [[], [], [], []];
     let viewUp = [[], [], [], []];
     let lastUpTab = 0;
-    let upBodyEl = null;      // phần thân đang hiển thị (để chạy hiệu ứng thoát)
-    let upPending = null;     // thao tác chuyển trang đang chờ hiệu ứng thoát xong
-    let upEnterDir = 0;       // hướng lướt vào của trang mới (+1: sang phải, -1: về trái)
     let turCardHCache = { key: "", h: 0 };
     const UP_EXIT_MS = 90;
     const UP_ENTER_MS = 170;
@@ -2195,6 +2210,52 @@
         Groups.player.each(new Cons({ get: function(pl) { drawPilotFor(pl, true); } }));
         for (let bi = 0; bi < bots.length; bi++) drawPilotFor(bots[bi].botPl, true);
     }
+
+    // ===== HUD hồi chiêu pilot ở góc màn hình (ngoài menu pilot): tự động hiện cho MỌI pilot có trong PILOT_CDS =====
+    // vẽ chữ có viền (dùng cho thời gian hồi chiêu và thanh khiên)
+    function drawTxt(str, x, y, scale, col) {
+        try {
+            let fo = Packages.mindustry.ui.Fonts.outline, d = fo.getData(), os = d.scaleX;
+            d.setScale(scale);
+            fo.setColor(col);
+            fo.draw(str, x, y, 0, Packages.arc.util.Align.center, false);
+            d.setScale(os);
+            fo.setColor(Color.white);
+        } catch (err) { logOnce("drawtxt", "draw text failed: " + err); }
+    }
+    function fmtCd(ticks) {
+        let sec = Math.ceil(ticks / 60);
+        return sec >= 60 ? Math.floor(sec / 60) + ":" + (sec % 60 < 10 ? "0" : "") + (sec % 60) : sec + "s";
+    }
+    function drawPilotCdHud() {
+        if (Vars.player == null) return;
+        let st = localState();
+        if (st == null || !(st.pi > 0)) return;
+        let e = pilotCdFor(st.pi);
+        if (e == null) return; // pilot này không có hồi chiêu -> không hiện gì, không cần sửa code
+        let reg = pilotIconRegion(st.pi);
+        if (reg == null) return;
+        let at = e.at[Vars.player.id];
+        let left = (at !== undefined) ? Math.max(0, e.cd - (Time.time - at)) : 0;
+        let frac = e.cd > 0 ? Math.max(0, Math.min(1, left / e.cd)) : 0; // 0: sẵn sàng, 1: vừa dùng xong
+        let sz = (Vars.mobile ? 56 : 44) * uiScale();
+        let margin = 16 * uiScale();
+        let cx = screenW() - margin - sz / 2, cy = margin + sz / 2; // góc dưới-phải màn hình
+        Draw.color();
+        Draw.alpha(frac > 0 ? 0.45 : 1);
+        Draw.rect(reg, cx, cy, sz, sz);
+        if (frac > 0) {
+            // phủ tối từ trên xuống, vơi dần khi sắp hồi xong (giống đồng hồ cát hồi chiêu)
+            Draw.color(Color.black, 0.65);
+            let h = sz * frac;
+            Fill.rect(cx, cy + sz / 2 - h / 2, sz, h);
+        }
+        Draw.color(frac > 0 ? Color.lightGray : Pal.accent, 1);
+        Lines.stroke(2 * uiScale());
+        Lines.rect(cx - sz / 2, cy - sz / 2, sz, sz);
+        Draw.reset();
+        if (frac > 0) drawTxt(fmtCd(left), cx, cy + 6 * uiScale(), 0.45 * uiScale() * (Vars.mobile ? 1.2 : 1), Color.white); // thời gian hồi chiêu còn lại
+    }
     if (!Vars.headless) {
         Events.on(ClientLoadEvent, new Cons({
             get: function(e) {
@@ -2203,6 +2264,7 @@
                         draw() {
                             if (!isActive()) return;
                             try { drawPilotUI(); } catch (err) { logOnce("pilotui", "pilot ui failed: " + err); }
+                            try { drawPilotCdHud(); } catch (err) { logOnce("pilotcdhud", "pilot cd hud failed: " + err); }
                             Draw.reset();
                         }
                     });
@@ -2234,6 +2296,13 @@
             Lines.stroke(1.5 + f.fl * 1.5);
             Draw.alpha(0.85);
             Lines.poly(u.x, u.y, 6, R);
+            // thanh độ bền khiên phía trên unit
+            let bw = Math.max(28, u.hitSize * 1.1), bh = 3.5, by = u.y + u.hitSize / 2 + 12;
+            Draw.z(Layer.shields + 1);
+            Draw.color(Color.black, 0.7);
+            Fill.rect(u.x, by, bw + 2, bh + 2);
+            Draw.color(SHIELD_GLOW, SHIELD_COLOR, 1 - ratio);
+            Fill.rect(u.x - bw / 2 + bw * ratio / 2, by, Math.max(0.01, bw * ratio), bh);
             Draw.reset();
         }
     }
@@ -2987,43 +3056,47 @@
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "v"); } catch (err) {}
     }
 
-    function empixFx(id) {
+    // empixeand: tụt dưới 50% máu -> hồi đầy 1 lần; khi máu chạm 0 -> hồi sinh đầy máu thêm 1 lần. Dùng hết 2 lần mới tính hồi chiêu 5 phút.
+    // empixLow[id]: số lần đã dùng (0/1/2)
+    function empixFx(id, cd) {
         try { pilotFxAt[id] = Time.time; } catch (err) {}
-        try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, String(id)); } catch (err) {}
+        try { if (cd) empixCdAt[id] = Time.time; } catch (err) {}
+        try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, cd ? String(id) : id + "n"); } catch (err) {}
+    }
+    function empixUsed(id) { // số lần đã dùng; tự reset khi hết hồi chiêu
+        let n = empixLow[id] || 0;
+        if (n >= 2) {
+            let at = empixCdAt[id];
+            if (at !== undefined && Time.time >= at && Time.time - at < EMPIX_HEAL_CD) return 2;
+            empixLow[id] = n = 0;
+        }
+        return n;
     }
     function empixHeal(unit) {
-        let pl = null;
-        pl = ownerPl(unit);
+        let pl = ownerPl(unit);
         if (pl == null || unit.dead || unit.health <= 0) return;
         let id = pl.id;
-        if (unit.health >= unit.maxHealth * EMPIX_HEAL_HP) { empixLow[id] = false; return; }
-        if (empixLow[id]) return;
-        let at = empixCdAt[id];
-        if (at !== undefined && Time.time - at < EMPIX_HEAL_CD && Time.time >= at) return; // đang hồi chiêu
-        empixLow[id] = true;
-        if (Math.random() < EMPIX_HEAL_CHANCE) {
-            unit.health = unit.maxHealth;
-            empixCdAt[id] = Time.time;
-            empixFx(id);
-            try { Fx.healWaveMend.at(unit.x, unit.y, unit.hitSize); } catch (err) {}
-            toast(pl, tr("[accent]Empixeand Pilot đã hồi đầy máu cho bạn! (hồi chiêu 5 phút)", "[accent]Empixeand Pilot fully healed you! (5 min cooldown)"));
-        }
+        if (empixUsed(id) !== 0 || unit.health >= unit.maxHealth * EMPIX_HEAL_HP) return;
+        empixLow[id] = 1;
+        unit.health = unit.maxHealth;
+        empixFx(id, false);
+        try { Fx.healWaveMend.at(unit.x, unit.y, unit.hitSize); } catch (err) {}
+        toast(pl, tr("[accent]Empixeand Pilot hồi đầy máu (còn 1 lần hồi sinh khi chạm 0 máu)!", "[accent]Empixeand Pilot fully healed you (1 revive left at 0 HP)!"));
     }
 
-    // empixeand: bị hạ gục (vd. one hit) vẫn có 50% tỉ lệ hồi sinh đầy máu tại chỗ, dùng chung hồi chiêu 5 phút
     function empixRevive(u) {
-        let pl = null;
-        pl = ownerPl(u);
+        let pl = ownerPl(u);
+        if (pl == null) { // unit đã chết có thể mất liên kết người chơi -> tìm theo prevUnit
+            Groups.player.each(new Cons({ get: function(p) { if (pl == null && prevUnit[p.id] === u) pl = p; } }));
+            for (let i = 0; pl == null && i < bots.length; i++) if (prevUnit[bots[i].botPl.id] === u) pl = bots[i].botPl;
+        }
         if (pl == null) return false;
         let st = byId[pl.id];
         if (st == null || st.pi !== PILOT_EMPIX) return false;
         let id = pl.id;
-        if (empixLow[id]) return false; // đã tung xúc xắc ở lần tụt máu này
-        let at = empixCdAt[id];
-        if (at !== undefined && Time.time - at < EMPIX_HEAL_CD && Time.time >= at) return false;
-        empixLow[id] = true;
-        if (!(Math.random() < EMPIX_HEAL_CHANCE)) return false;
-        empixCdAt[id] = Time.time;
+        if (empixUsed(id) >= 2) return false;
+        empixLow[id] = 2;
+        empixCdAt[id] = Time.time; // hết 2 lần -> bắt đầu hồi chiêu 5 phút
         let type = u.type, team = u.team, x = u.x, y = u.y, rot = u.rotation, sbc = true;
         try { sbc = u.spawnedByCore; } catch (err) {}
         Time.run(1, new Runnable({ run: function() {
@@ -3038,13 +3111,22 @@
                 nu.health = nu.maxHealth;
                 pl.unit(nu);
                 prevUnit[pl.id] = nu;
-                empixLow[id] = false;
-                empixFx(id);
+                empixFx(id, true);
                 try { Fx.healWaveMend.at(x, y, nu.hitSize); } catch (err) {}
-                toast(pl, tr("[accent]Empixeand Pilot đã cứu bạn khỏi cái chết! (hồi chiêu 5 phút)", "[accent]Empixeand Pilot saved you from death! (5 min cooldown)"));
+                toast(pl, tr("[accent]Empixeand Pilot đã hồi sinh bạn khi chạm 0 máu! (hồi chiêu 5 phút)", "[accent]Empixeand Pilot revived you at 0 HP! (5 min cooldown)"));
             } catch (err) { logOnce("empixrevive", "empix revive failed: " + err); }
         } }));
         return true;
+    }
+
+    // trong phạm vi 100 ô quanh bất kỳ lõi nào của phe mình (đo theo ô lãnh địa, không phải pilot)
+    function inOwnTerritory(unit) {
+        let cores = unit.team.cores();
+        for (let i = 0; i < cores.size; i++) {
+            let c = cores.get(i);
+            if (c != null && c.isValid() && Mathf.dst(unit.x, unit.y, c.x, c.y) <= TERRITORY_RADIUS) return true;
+        }
+        return false;
     }
 
     function applyStats(unit) {
@@ -3091,6 +3173,7 @@
         if (isPl && unit.type === UnitTypes.disrupt) unit.speedMultiplier *= DISRUPT_SPEED_MUL;
         if (xakyOn) unit.speedMultiplier *= XAKY_SPD_MUL;
         if (histOn) unit.speedMultiplier *= 1 + HIST_STAT_PCT;
+        if (inOwnTerritory(unit)) unit.speedMultiplier *= TERRITORY_SPEED_MUL; // trong 100 ô lãnh địa: +20% tốc độ, ra khỏi thì mất ngay (tính lại mỗi tick)
         unit.reloadMultiplier *= 1 + s[4] * 0.06;
         if (histOn) {
             unit.reloadMultiplier *= 1 + HIST_STAT_PCT;
@@ -3120,6 +3203,7 @@
         let nLu = equippedCount(stOwn, LUSTRE_ID);
         if (nLu > 1) unit.damageMultiplier *= 1 + (nLu - 1) * LUSTRE_ATK_PCT / 100;
         let nSm = equippedCount(stOwn, SMITE_ID);
+        if (nSm > 0) unit.reloadMultiplier *= SMITE_RELOAD_MUL;
         if (nSm > 1) unit.damageMultiplier *= 1 + (nSm - 1) * SMITE_ATK_PCT / 100;
         if (equippedCount(stOwn, "duo") > 0 || equippedCount(stOwn, "breach") > 0) unit.speedMultiplier *= 1 + LIGHT_SPD_PCT / 100;
         // Therdum: mỗi hit chỉ mất tối đa THERDUM_HIT_CAP máu (hoàn lại phần vượt)
@@ -6214,6 +6298,7 @@
     let bagPage = 0;
     let bagRecent = [];
     let viewBag = []; // ảnh chụp thứ tự lúc mở túi: tương tác không làm thẻ nhảy, lần mở sau mới lên đầu
+    let bagNav = newPageNav(); // chuyển trang mượt cho dialog Túi đồ (dùng chung cơ chế với dialog Nâng cấp)
 
     function bagTouch(id) {
         let i = bagRecent.indexOf(id);
@@ -6311,6 +6396,7 @@
             list.add(row).width(W - 24).pad(3).row();
         }
         c.add(list).width(W).top().row();
+        bagNav.show(list);
         if (st.w === IN_BAG) {
             let wr = new Table(Styles.black6);
             wr.margin(8);
@@ -6324,10 +6410,10 @@
         if (totalPages > 1) {
             let nav = new Table();
             let navBtnW = narrowScreen() ? 56 : 72;
-            let prevBtn = nav.button("<", new Runnable({ run: function() { if (bagPage > 0) { bagPage--; ver++; } } })).size(navBtnW, btnH()).get();
+            let prevBtn = nav.button("<", new Runnable({ run: function() { if (bagPage > 0) bagNav.go(-1, function() { bagPage--; ver++; }); } })).size(navBtnW, btnH()).get();
             prevBtn.setDisabled(bagPage <= 0);
             nav.add("[white]" + (bagPage + 1) + "/" + totalPages + "[]").width(80).center();
-            let nextBtn = nav.button(">", new Runnable({ run: function() { if (bagPage < totalPages - 1) { bagPage++; ver++; } } })).size(navBtnW, btnH()).get();
+            let nextBtn = nav.button(">", new Runnable({ run: function() { if (bagPage < totalPages - 1) bagNav.go(1, function() { bagPage++; ver++; }); } })).size(navBtnW, btnH()).get();
             nextBtn.setDisabled(bagPage >= totalPages - 1);
             c.add(nav).width(W).pad(4).row();
         }
@@ -6427,6 +6513,7 @@
     let pilotLastW = -1;
     let pilotRecent = [];
     let viewPilot = [];
+    let pilotNav = newPageNav(); // chuyển trang mượt cho dialog Chiêu mộ pilot (dùng chung cơ chế với dialog Nâng cấp)
 
     function pilotTouch(pi) {
         let i = pilotRecent.indexOf(pi);
@@ -6449,8 +6536,8 @@
                 "+5% EXP mỗi lần nhận EXP. Khi lên cấp: +5% EXP cấp mới và +500 EXP, kèm hoạt ảnh icon.",
                 "+5% EXP on every EXP gain. On level up: +5% of new level EXP and +500 EXP, with an icon animation.", 1],
             [PILOT_EMPIX, "Empixeand Pilot",
-                "+5% tấn công và +5% máu. Máu dưới 50%: 50% hồi đầy máu (hồi chiêu 5 phút).",
-                "+5% attack and +5% HP. Below 50% HP: 50% chance to fully heal (5 min cooldown).", EMPIX_MIN_LEVEL],
+                "+5% tấn công và +5% máu. Tụt 50% máu: hồi đầy máu 1 lần; chạm 0 máu: hồi đầy máu thêm 1 lần (hồi chiêu 5 phút sau khi dùng cả 2).",
+                "+5% attack and +5% HP. At 50% HP: instantly fully heal once; at 0 HP: fully heal again once (5 min cooldown after both).", EMPIX_MIN_LEVEL],
             [PILOT_XAKY, "Xaky Pilot",
                 "-20% máu, +20% tốc độ di chuyển. Từ cấp " + XAKY_MIN_LEVEL + ": khi nhận sát thương sẽ Dash theo hướng di chuyển (hồi chiêu 10s). Bộ binh dừng cách tường/công trình 1 ô, không quân bay xuyên.",
                 "-20% HP, +20% move speed. From level " + XAKY_MIN_LEVEL + ": taking damage makes you Dash in your move direction (10s cooldown). Ground units stop 1 tile short of walls/buildings; air units fly through.", 1],
@@ -6576,13 +6663,14 @@
         sp.setFadeScrollBars(false);
         sp.setOverscroll(false, false);
         c.row();
+        pilotNav.show(sp);
         if (totalPages > 1) {
             let nav = new Table();
             let nb = narrowScreen() ? 56 : 72;
-            let pv = nav.button("<", new Runnable({ run: function() { if (pilotPage > 0) { pilotPage--; ver++; } } })).size(nb, btnH()).get();
+            let pv = nav.button("<", new Runnable({ run: function() { if (pilotPage > 0) pilotNav.go(-1, function() { pilotPage--; ver++; }); } })).size(nb, btnH()).get();
             pv.setDisabled(pilotPage <= 0);
             nav.add("[white]" + (pilotPage + 1) + "/" + totalPages + "[]").width(narrowScreen() ? 56 : 80).center();
-            let nx = nav.button(">", new Runnable({ run: function() { if (pilotPage < totalPages - 1) { pilotPage++; ver++; } } })).size(nb, btnH()).get();
+            let nx = nav.button(">", new Runnable({ run: function() { if (pilotPage < totalPages - 1) pilotNav.go(1, function() { pilotPage++; ver++; }); } })).size(nb, btnH()).get();
             nx.setDisabled(pilotPage >= totalPages - 1);
             c.add(nav).width(W + 24).pad(4).row();
         }
@@ -6593,6 +6681,7 @@
         let dialog = new BaseDialog(tr("Chiêu mộ pilot", "Recruit pilot"));
         pilotPage = 0;
         pilotLastW = -1;
+        pilotNav.reset();
         viewPilot = pilotRecent.slice();
         addClose(dialog);
         let lastVer = -1;
@@ -6600,7 +6689,9 @@
             run: function() {
                 if (!nearOwnCore()) { dialog.hide(); return; }
                 let w0 = Core.graphics.getWidth() * 10000 + Core.graphics.getHeight();
-                let cv = curVer(); if (lastVer !== cv || pilotLastW !== w0) { lastVer = cv; pilotLastW = w0; buildPilot(dialog); }
+                let cv = curVer();
+                if (pilotNav.pending != null && (lastVer !== cv || pilotLastW !== w0)) pilotNav.flush();
+                if (lastVer !== cv || pilotLastW !== w0) { lastVer = cv; pilotLastW = w0; buildPilot(dialog); }
             }
         }));
         dialog.show();
@@ -6612,6 +6703,7 @@
         let dialog = new BaseDialog(tr("Túi đồ", "Bag"));
         addClose(dialog);
         bagPage = 0;
+        bagNav.reset();
         viewBag = bagRecent.slice();
         let lastVer = -1;
         let lastW = -1;
@@ -6623,6 +6715,7 @@
                 }
                 let w = Core.graphics.getWidth() * 10000 + Core.graphics.getHeight();
                 let cv = curVer();
+                if (bagNav.pending != null && (lastVer !== cv || lastW !== w)) bagNav.flush();
                 if (lastVer !== cv || lastW !== w) {
                     lastVer = cv;
                     lastW = w;
@@ -6985,32 +7078,49 @@
         step();
     }
 
-    function upCommit(bump) {
-        let pd = upPending;
-        if (pd == null) return;
-        upPending = null;
-        pd.apply();
-        upEnterDir = pd.dir;
-        if (bump) ver++;
+    // ===== Bộ điều hướng trang dùng chung: tự gắn hiệu ứng lướt + mờ cho MỌI dialog có nút < / > =====
+    // Thêm 1 dialog/trang mới có nút chuyển trang: chỉ cần
+    //   1) khai báo "let xyzNav = newPageNav();" ở nơi khai báo các biến của dialog đó,
+    //   2) trong nút < / >: gọi xyzNav.go(dir, function() { (đổi trang ở đây); ver++; }) thay vì đổi trang trực tiếp,
+    //   3) ngay sau khi dựng xong phần thân trang (Table/ScrollPane): gọi xyzNav.show(thanTrang).
+    // Không cần đụng tới slideEl/UP_EXIT_MS/UP_ENTER_MS ở trên: cơ chế và mốc thời gian hiệu ứng dùng chung cho mọi trang.
+    function newPageNav() {
+        return {
+            body: null, pending: null, enterDir: 0,
+            go: function(dir, apply) {
+                if (this.body == null || this.pending != null) {
+                    if (this.pending != null) this.flush();
+                    apply();
+                    this.enterDir = dir;
+                    return;
+                }
+                this.pending = { apply: apply, dir: dir };
+                let self = this;
+                slideEl(this.body, dir, false, UP_EXIT_MS, function() { self.flush(); });
+            },
+            flush: function() {
+                let pd = this.pending;
+                if (pd == null) return;
+                this.pending = null;
+                pd.apply();
+                this.enterDir = pd.dir;
+            },
+            show: function(el) {
+                this.body = el;
+                if (this.enterDir !== 0) {
+                    let ed = this.enterDir;
+                    this.enterDir = 0;
+                    slideEl(el, ed, true, UP_ENTER_MS, null);
+                }
+            },
+            reset: function() { this.body = null; this.pending = null; this.enterDir = 0; }
+        };
     }
-
-    function upNavigate(dir, apply) {
-        let el = upBodyEl;
-        if (el == null || upPending != null) {
-            if (upPending != null) upCommit(false);
-            apply();
-            upEnterDir = dir;
-            ver++;
-            return;
-        }
-        upPending = { apply: apply, dir: dir };
-        slideEl(el, dir, false, UP_EXIT_MS, function() { upCommit(true); });
-    }
+    let upNav = newPageNav(); // bộ điều hướng trang của dialog Nâng cấp (tab Unit/Chỉ số/Pháo/Lính)
 
     function buildDialog(d) {
         let c = d.cont;
         c.clear();
-        upBodyEl = null;
         let st = localState();
         if (st == null) {
             c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row();
@@ -7076,7 +7186,7 @@
                 if (ix === upTab) { upPage = 0; ver++; return; }
                 let dir = ix > upTab ? 1 : -1;
                 for (let j = 0; j < tabBtns.length; j++) tabBtns[j].setChecked(j === ix);
-                upNavigate(dir, function() { upTab = ix; upPage = 0; });
+                upNav.go(dir, function() { upTab = ix; upPage = 0; ver++; });
             } })).growX().uniformX().minWidth(0).height(narrowScreen() ? Math.min(btnH(), 44) : btnH()).pad(2).get();
             try { if (narrowScreen()) tb.getLabel().setFontScale(0.85); } catch (err) {}
             tb.setChecked(upTab === i);
@@ -7178,10 +7288,10 @@
         if (totalPages > 1) {
             nav = new Table();
             let navBtnW = narrowScreen() ? 56 : 72;
-            let prevBtn = nav.button("<", new Runnable({ run: function() { if (upPage > 0) upNavigate(-1, function() { if (upPage > 0) upPage--; }); } })).size(navBtnW, btnH()).get();
+            let prevBtn = nav.button("<", new Runnable({ run: function() { if (upPage > 0) upNav.go(-1, function() { if (upPage > 0) upPage--; ver++; }); } })).size(navBtnW, btnH()).get();
             prevBtn.setDisabled(upPage <= 0);
             nav.add("[white]" + (upPage + 1) + "/" + totalPages + "[]").width(narrowScreen() ? 56 : 80).center();
-            let nextBtn = nav.button(">", new Runnable({ run: function() { if (upPage < totalPages - 1) upNavigate(1, function() { if (upPage < totalPages - 1) upPage++; }); } })).size(navBtnW, btnH()).get();
+            let nextBtn = nav.button(">", new Runnable({ run: function() { if (upPage < totalPages - 1) upNav.go(1, function() { if (upPage < totalPages - 1) upPage++; ver++; }); } })).size(navBtnW, btnH()).get();
             nextBtn.setDisabled(upPage >= totalPages - 1);
         }
         if (nav != null && Vars.mobile) c.add(nav).width(W).pad(4).row();
@@ -7202,12 +7312,7 @@
         sp.setOverscroll(false, false);
         sp.setSmoothScrolling(true);
         c.row();
-        upBodyEl = sp;
-        if (upEnterDir !== 0) {
-            let ed = upEnterDir;
-            upEnterDir = 0;
-            slideEl(sp, ed, true, UP_ENTER_MS, null);
-        }
+        upNav.show(sp);
         if (nav != null && !Vars.mobile) c.add(nav).width(W).pad(4).row();
     }
 
@@ -7226,9 +7331,7 @@
         let lastW = -1;
         upTab = lastUpTab;
         upPage = 0;
-        upPending = null;
-        upEnterDir = 0;
-        upBodyEl = null;
+        upNav.reset();
         viewUp = [recentUp[0].slice(), recentUp[1].slice(), recentUp[2].slice(), recentUp[3].slice()];
         dialog.update(new Runnable({
             run: function() {
@@ -7238,7 +7341,7 @@
                 }
                 let w = Core.graphics.getWidth() * 10000 + Core.graphics.getHeight();
                 let cv = curVer();
-                if (upPending != null && (lastVer !== cv || lastW !== w)) upCommit(false);
+                if (upNav.pending != null && (lastVer !== cv || lastW !== w)) upNav.flush();
                 if (lastVer !== cv || lastTab !== upTab || lastW !== w) {
                     lastVer = cv;
                     lastTab = upTab;
