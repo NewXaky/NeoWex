@@ -35,7 +35,10 @@
         if (a == null) return;
         try {
             if (field == null) {
-                field = java.lang.Class.forName("mindustry.content.UnitTypes").getField("disrupt");
+                // dùng thẳng UnitTypes.class thay vì Class.forName(chuỗi tên): Class.forName phụ thuộc classloader
+                // của thread gọi nó, và trên Android (mobile) nó không thấy được class mindustry.content.UnitTypes
+                // -> luôn ném ClassNotFoundException, khiến archueng không bao giờ được kích hoạt trên mobile
+                field = UnitTypes.class.getField("disrupt");
                 orig = field.get(null);
             }
             let want = isActive();
