@@ -2,6 +2,26 @@ const NexNet = global.NexNet;
 const PerfCore = global.PerfCore;
 const isEn = () => Core.settings.getString("locale").startsWith("en");
 
+// Nút bật/tắt hiển thị chi tiết quặng (Cài đặt > Game). Mặc định TẮT (nhẹ).
+const BERYI_KEY = "newex-beryi-detail-range";
+let beryiDetail = Core.settings.getBool(BERYI_KEY, false);
+
+Events.on(ClientLoadEvent, () => {
+    try {
+        Core.bundle.getProperties().put("setting." + BERYI_KEY + ".name",
+            isEn() ? "Beryi Drill: detailed range display (may lag)" : "Khối Beryi: hiển thị phạm vi chi tiết (có thể lag)");
+        Vars.ui.settings.game.checkPref(BERYI_KEY, false, v => { beryiDetail = v; });
+    } catch (e) {}
+});
+
+const drawLightRange = (cx, cy, r) => {
+    let size = (r * 2 + 1) * 8;
+    Draw.color(Pal.accent);
+    Lines.stroke(1.5);
+    Lines.rect(cx * 8 - r * 8 - 4, cy * 8 - r * 8 - 4, size, size);
+    Draw.reset();
+};
+
 const customExplosion = new Effect(35, e => {
     if (Vars.state.isPaused()) {
         e.time -= e.delta;
@@ -231,6 +251,7 @@ getTileDrop(t) {
             },
 
             drawSelect() {
+                if (!beryiDetail) { drawLightRange(this.tileX(), this.tileY(), this.radiusTiles); return; }
                 let tX = this.tileX();
                 let tY = this.tileY();
                 let minX = tX - this.radiusTiles;
@@ -321,6 +342,7 @@ Events.run(Trigger.draw, () => {
     if (build != null && build.name === "newex-beryi-drills") {
         let tile = Vars.world.tileWorld(Core.input.mouseWorldX(), Core.input.mouseWorldY());
         if (tile != null) {
+            if (!beryiDetail) { drawLightRange(tile.x, tile.y, 25); return; }
             let radiusTiles = 25;
             let minX = tile.x - radiusTiles;
             let maxX = tile.x + radiusTiles;

@@ -4657,12 +4657,24 @@
         let hpf = u.health / u.maxHealth;
         let t = BC.botTarget;
         let combat = t != null && t.isValid() && !t.dead && Mathf.dst(u.x, u.y, t.x, t.y) <= BOT_COMBAT_R;
-        if (combat && botUnfavorable(u)) { BC.botRetreatT = 240; BC.botFleeT = Math.max(BC.botFleeT || 0, 300); }
+        // gặp player địch: tung xúc xắc mỗi lần gặp -> 20% lui về biến về, 30% làm ngơ làm việc khác, 50% tới bắn + đuổi tới khi giết
+        BC.botEpT = (BC.botEpT || 0) - Time.delta;
+        if (BC.botEpT <= 0) { BC.botEpT = 20; BC.botEp = botNearestPlayer(u); }
+        let ep = BC.botEp, epNear = ep != null && ep.isValid() && !ep.dead && Mathf.dst(u.x, u.y, ep.x, ep.y) <= BOT_SEE_R * 0.7;
+        if (BC.botEncT > 0) BC.botEncT -= Time.delta;
+        if (BC.botEnc === 3 && (BC.botHuntU == null || !BC.botHuntU.isValid() || BC.botHuntU.dead || hpf < 0.15)) { BC.botEnc = 0; BC.botHuntU = null; BC.botEncT = 600; }
+        if (BC.botEnc !== 3 && BC.botEncT <= 0 && ep != null && (epNear || BC.botHitT > 0)) {
+            let rr = Math.random();
+            BC.botEnc = rr < 0.2 ? 1 : (rr < 0.5 ? 2 : 3);
+            BC.botEncT = BC.botEnc === 2 ? 1800 : 3600;
+            if (BC.botEnc === 1) { BC.botRetreatT = 240; BC.botFleeT = Math.max(BC.botFleeT || 0, 300); }
+            else if (BC.botEnc === 3) { BC.botHuntU = ep; BC.botRetreatT = 0; BC.botFleeT = 0; }
+        }
+        let quiet = BC.botEnc === 3 || (BC.botEnc === 2 && BC.botEncT > 0);
+        if (combat && botUnfavorable(u) && !(quiet && epNear)) { BC.botRetreatT = 240; BC.botFleeT = Math.max(BC.botFleeT || 0, 300); }
         if (BC.botHitT > 0) {
             BC.botHitT -= Time.delta;
-            if (BC.botRetreatT < 120) BC.botRetreatT = 120; // bị player địch bắn: rút về nền/biến về
-            BC.botRevengeT = 3600;                          // xong sẽ quay lại đánh player
-            BC.botFleeT = 600;                              // rút liên tục tới khi biến về được (không quay đầu tiến lên)
+            if (BC.botEnc === 1) { if (BC.botRetreatT < 120) BC.botRetreatT = 120; BC.botFleeT = 600; }
         } else if (BC.botRevengeT > 0) BC.botRevengeT -= Time.delta;
         if (BC.botFleeT > 0) BC.botFleeT -= Time.delta;
         BC.botPlanT -= Time.delta;
@@ -4675,7 +4687,9 @@
         let bx = BC.botBase != null ? BC.botBase.x : core.x;
         let by = BC.botBase != null ? BC.botBase.y : core.y;
 
-        if (BC.botHome || BC.botRetreatT > 0 || BC.botFleeT > 0) {
+        if (BC.botEnc === 3 && !BC.botHome && BC.botHuntU != null) {
+            botChase(u, BC.botHuntU, maxR, minR); // đuổi + bắn player tới khi giết
+        } else if (BC.botHome || BC.botRetreatT > 0 || BC.botFleeT > 0) {
             // máu thấp / bất lợi: về nền đặt lõi gần nhất, vừa lùi vừa bắn nếu địch còn trong tầm
             botGo(u, bx, by, 8);
             // đứng trên nền đặt lõi (nửa map phe ta) thì mới được biến về lõi: unit mới hồi sinh đầy máu
@@ -4775,6 +4789,7 @@
         BC.botTarget = null;
         BC.botHome = false;
         BC.botRetreatT = 0;
+        BC.botEnc = 0; BC.botHuntU = null;
         try { botApplySwap(pl); } catch (err) { logOnce("botswap", "bot swap failed: " + err); }
         BC.botResetPend = false;
         BC.botFleeT = 0;
