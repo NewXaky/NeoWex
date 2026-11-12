@@ -344,4 +344,4 @@
     } else {
         Events.on(WorldLoadEvent, new Cons({ get: function(e) { cdEndSrv = {}; fans = []; spins = {}; } }));
     }
-})();
+})(); 
