@@ -13,7 +13,7 @@
     const COL = Color.valueOf("5ab4ff"), COL2 = Color.valueOf("bff4ff"), GOLD = Color.valueOf("ffc83c");
     const FIRE = Color.valueOf("ff8a3c"), FIRE2 = Color.valueOf("ff3c1e");
 
-    let arch = null, field = null, orig = null, swapped = false, netOk = false;
+    let arch = null, orig = null, swapped = false, netOk = false;
     let fans = [], spins = {}, cdEnd = 0, cdEndSrv = {};
     // luồng bấm 3 lần: 0 = rảnh, 1 = đang chờ bấm lần 2 để chọn hướng, 2 = đã chọn hướng, chờ bấm lần 3 để tung
     let phase = 0, aimAng = 0, uiTapConsumed = false, wasTouchedPrev = false;
@@ -30,21 +30,37 @@
         try { return global.NexPvp != null && global.NexPvp.isActive() === true; } catch (err) { return false; }
     }
     // thay disrupt -> archueng khi mode đang chạy (tierType() của newmode-pvp đọc UnitTypes.disrupt mỗi lần gọi)
+    // Ghi thẳng vào trường static UnitTypes.disrupt (Rhino cho phép gán trường static không final).
+    // KHÔNG dùng reflection kiểu Packages...UnitTypes.getField(...): trên Android (Rhino) "getField" không phải
+    // thành viên static của UnitTypes nên văng InternalError mỗi frame -> unit không bao giờ được thay.
+    function setDisrupt(v) {
+        try {
+            Packages.mindustry.content.UnitTypes.disrupt = v;
+            if (Packages.mindustry.content.UnitTypes.disrupt === v) return true;
+        } catch (err) {}
+        // dự phòng: reflection qua classloader của mod (đúng trên Android)
+        try {
+            let cl = Vars.mods.mainLoader();
+            let cls = java.lang.Class.forName("mindustry.content.UnitTypes", true, cl);
+            let f = cls.getField("disrupt");
+            f.set(null, v);
+            return f.get(null) === v;
+        } catch (err2) { Log.err("[Archueng] swap failed: " + err2); }
+        return false;
+    }
+    let swapFails = 0;
     function syncType() {
         let a = findArch();
-        if (a == null) return;
+        if (a == null || swapFails > 5) return;
         try {
-            if (field == null) {
-                // dùng Packages.mindustry.content.UnitTypes (cách này file mod đã dùng ở nơi khác, vd.
-                // Packages.mindustry.gen.LegsUnit, Packages.arc.graphics.Blending) thay vì Class.forName(chuỗi
-                // tên) hay ".class": Class.forName phụ thuộc classloader của thread gọi nó nên lỗi
-                // ClassNotFoundException trên Android, còn ".class" thì engine JS trên máy bạn không hỗ trợ
-                field = Packages.mindustry.content.UnitTypes.getField("disrupt");
-                orig = field.get(null);
-            }
+            if (orig == null) orig = Packages.mindustry.content.UnitTypes.disrupt;
+            if (orig === a) return; // đã bị thay từ trước (vd. reload script), không có bản gốc để khôi phục
             let want = isActive();
-            if (want !== swapped) { field.set(null, want ? a : orig); swapped = want; }
-        } catch (err) { Log.err("[Archueng] swap failed: " + err); }
+            if (want !== swapped) {
+                if (setDisrupt(want ? a : orig)) swapped = want;
+                else swapFails++;
+            }
+        } catch (err) { swapFails++; Log.err("[Archueng] swap failed: " + err); }
     }
     function isArch(u) { return u != null && arch != null && u.type === arch; }
 
