@@ -35,10 +35,11 @@
         if (a == null) return;
         try {
             if (field == null) {
-                // dùng thẳng UnitTypes.class thay vì Class.forName(chuỗi tên): Class.forName phụ thuộc classloader
-                // của thread gọi nó, và trên Android (mobile) nó không thấy được class mindustry.content.UnitTypes
-                // -> luôn ném ClassNotFoundException, khiến archueng không bao giờ được kích hoạt trên mobile
-                field = UnitTypes.class.getField("disrupt");
+                // dùng Packages.mindustry.content.UnitTypes (cách này file mod đã dùng ở nơi khác, vd.
+                // Packages.mindustry.gen.LegsUnit, Packages.arc.graphics.Blending) thay vì Class.forName(chuỗi
+                // tên) hay ".class": Class.forName phụ thuộc classloader của thread gọi nó nên lỗi
+                // ClassNotFoundException trên Android, còn ".class" thì engine JS trên máy bạn không hỗ trợ
+                field = Packages.mindustry.content.UnitTypes.getField("disrupt");
                 orig = field.get(null);
             }
             let want = isActive();
