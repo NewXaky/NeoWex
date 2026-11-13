@@ -18,7 +18,10 @@
 
     let arch = null, field = null, orig = null, swapped = false, netOk = false;
     let fans = [], spins = {}, cdEnd = 0, cdEndSrv = {};
-    // luồng bấm 3 lần: 0 = rảnh, 1 = đang chờ bấm lần 2 để chọn hướng, 2 = đã chọn hướng, chờ bấm lần 3 để tung
+    // PC: bấm 3 lần: 0 = rảnh, 1 = chờ bấm lần 2 để chọn hướng, 2 = đã chọn hướng, chờ bấm lần 3 để tung
+    // MOBILE: bấm 4 lần: 0 = rảnh, 1 = (lần 1: bấm nút skill) chờ chạm màn hình chọn hướng,
+    //   2 = (lần 2: chạm màn hình) đã đặt hướng, có thể chạm màn hình tiếp để đổi hướng, nút hiện "KHÓA",
+    //   3 = (lần 3: bấm nút skill = KHÓA) đã chốt hướng, nút hiện "TUNG", (lần 4: bấm nút skill) kích hoạt skill
     let phase = 0, aimAng = 0, uiTapConsumed = false, wasTouchedPrev = false;
 
     function findArch() {
@@ -37,15 +40,25 @@
         let a = findArch();
         if (a == null) return;
         try {
-            if (field == null) {
-                field = java.lang.Class.forName("mindustry.content.UnitTypes").getField("disrupt");
-                orig = field.get(null);
-            }
+            if (orig == null) orig = UnitTypes.disrupt; // gán trực tiếp, không dùng Class.forName (lỗi ClassNotFoundException trên Android)
             let want = isActive();
-            if (want !== swapped) { field.set(null, want ? a : orig); swapped = want; }
+            if (want !== swapped) { UnitTypes.disrupt = want ? a : orig; swapped = want; }
         } catch (err) { Log.err("[Archueng] swap failed: " + err); }
     }
     function isArch(u) { return u != null && arch != null && u.type === arch; }
+    // phase "sẵn sàng tung": mobile = 3 (sau khi khóa), PC = 2
+    function firePhase() { return Vars.mobile ? 3 : 2; }
+    // điểm thế giới mà người chơi vừa chạm (mobile lấy từ vị trí chạm, PC lấy từ chuột)
+    function touchWorld() {
+        try {
+            if (Vars.mobile) { let w = Core.input.mouseWorld(Core.input.mouseX(), Core.input.mouseY()); return { x: w.x, y: w.y }; }
+        } catch (err) {}
+        return { x: Vars.player.mouseX, y: Vars.player.mouseY };
+    }
+    // lần chạm rơi vào UI (joystick, nút, dialog...) thì không tính là chạm chọn hướng
+    function touchOnUi() {
+        try { return Vars.mobile && Core.scene != null && Core.scene.hasMouse(Core.input.mouseX(), Core.input.mouseY()); } catch (err) { return false; }
+    }
 
     // ---- server: nhận yêu cầu dùng skill ----
     function onReq(player, payload) {
@@ -137,9 +150,18 @@
             let pu = Vars.player.unit();
             if (phase !== 0 && (!isArch(pu) || pu.dead)) phase = 0; // đổi unit hoặc chết thì huỷ luôn
             let touched = Core.input.isTouched();
-            if (touched && !wasTouchedPrev && !uiTapConsumed && phase === 1 && isArch(pu) && !pu.dead) {
-                aimAng = Angles.angle(pu.x, pu.y, Vars.player.mouseX, Vars.player.mouseY);
-                phase = 2;
+            if (touched && !wasTouchedPrev && !uiTapConsumed && isArch(pu) && !pu.dead) {
+                if (Vars.mobile) {
+                    // mobile: lần chạm màn hình thứ 2 đặt hướng; chạm thêm lần nữa (khi chưa khóa) để đổi hướng
+                    if ((phase === 1 || phase === 2) && !touchOnUi()) {
+                        let tp = touchWorld();
+                        aimAng = Angles.angle(pu.x, pu.y, tp.x, tp.y);
+                        phase = 2;
+                    }
+                } else if (phase === 1) {
+                    aimAng = Angles.angle(pu.x, pu.y, Vars.player.mouseX, Vars.player.mouseY);
+                    phase = 2;
+                }
             }
             if (!touched) uiTapConsumed = false;
             wasTouchedPrev = touched;
@@ -164,13 +186,15 @@
             if (!wreg.found()) wreg = Core.atlas.find("archueng-weapon");
 
             // đường ngắm: lần 1 đã bấm (đang chờ lần 2) theo chuột/điểm chạm sống; lần 2 đã bấm (chờ lần 3) thì đứng yên theo hướng đã chốt
-            if (Vars.player != null && (phase === 1 || phase === 2)) {
+            // mobile: phase 1 chưa có hướng (chưa chạm màn hình) nên không vẽ; phase 2 = hướng đang chỉnh (xanh); phase 3 = đã khóa (cam)
+            if (Vars.player != null && phase !== 0 && !(Vars.mobile && phase === 1)) {
                 let pu = Vars.player.unit();
                 if (isArch(pu) && !pu.dead) {
-                    let ang = phase === 2 ? aimAng : Angles.angle(pu.x, pu.y, Vars.player.mouseX, Vars.player.mouseY);
+                    let locked = phase === firePhase();
+                    let ang = phase >= 2 ? aimAng : Angles.angle(pu.x, pu.y, Vars.player.mouseX, Vars.player.mouseY);
                     let ex = pu.x + Angles.trnsx(ang, 160), ey = pu.y + Angles.trnsy(ang, 160);
                     Draw.z(Layer.flyingUnit + 2);
-                    Drawf.dashLine(phase === 2 ? FIRE : COL2, pu.x, pu.y, ex, ey);
+                    Drawf.dashLine(locked ? FIRE : COL2, pu.x, pu.y, ex, ey);
                     Draw.reset();
                 }
             }
@@ -302,7 +326,8 @@
                 let left = cdEnd - Time.time;
                 if (left > 0) { lbl.setText((Math.ceil(left / 6) / 10).toFixed(1) + "s"); lbl.setColor(Color.gray); }
                 else if (phase === 1) { lbl.setText("CHỌN HƯỚNG"); lbl.setColor(COL2); }
-                else if (phase === 2) { lbl.setText("TUNG"); lbl.setColor(FIRE); }
+                else if (phase === 2 && Vars.mobile) { lbl.setText("KHÓA"); lbl.setColor(GOLD); }
+                else if (phase === firePhase()) { lbl.setText("TUNG"); lbl.setColor(FIRE); }
                 else { lbl.setText("SKILL"); lbl.setColor(COL2); }
             } }));
             t.visibility = new Boolp({ get: function() {
@@ -330,8 +355,11 @@
                             if (Time.time >= cdEnd && isArch(u) && !u.dead) phase = 1;
                         } else if (phase === 1) {
                             phase = 0; // bấm lại nút khi đang chờ chọn hướng -> huỷ
-                        } else if (phase === 2) {
-                            // lần bấm 3: tung chiêu theo hướng đã chốt ở lần bấm 2, giờ mới tính hồi chiêu
+                        } else if (phase === 2 && Vars.mobile) {
+                            // mobile, lần bấm 3: khóa hướng (nút đổi chữ thành "TUNG"), chưa tung
+                            phase = 3;
+                        } else if (phase === firePhase()) {
+                            // PC lần bấm 3 / mobile lần bấm 4: tung chiêu theo hướng đã chốt, giờ mới tính hồi chiêu
                             cdEnd = Time.time + CD_T;
                             global.NexNet.send(REQ, String(aimAng));
                             phase = 0;
