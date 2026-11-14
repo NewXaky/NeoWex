@@ -55,6 +55,7 @@ require("holyder-system");
 require("reguilater");
 
 require("flazerd");
+require("flarmed");
 
 require("blaw");
 

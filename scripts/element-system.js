@@ -15,7 +15,7 @@
     const ASSOC_RADIUS = 200;
     const MIN_DROP = 0.5;
 
-    const TURRET_NAMES = ["aether-spiral", "bayrowfyr", "blaw", "blixalum", "buffetles", "dor", "drone-launcher", "dtg-soldern", "emperfum", "emperical", "endyr", "erysidus", "flazerd", "forstarsilum", "galaxvorram", "heliyron", "hitekalum", "holyder", "indeniter", "lavunder", "laytery", "lazash", "lyvervon", "maxitoner", "nethyr", "nucleytor", "overyr", "persefer", "plasanod", "rangtaturs", "ravendes", "reflecounum", "reguilater", "repulsyron", "sonicor", "swordoder", "tankani2k", "tankani4k", "tankani500", "tenytisyr", "therdum", "thermion", "tyber", "tyteryi", "vendicum", "xylaon", "zoj"];
+    const TURRET_NAMES = ["aether-spiral", "bayrowfyr", "blaw", "blixalum", "buffetles", "dor", "drone-launcher", "dtg-soldern", "emperfum", "emperical", "endyr", "erysidus", "flarmed", "flazerd", "forstarsilum", "galaxvorram", "heliyron", "hitekalum", "holyder", "indeniter", "lavunder", "laytery", "lazash", "lyvervon", "maxitoner", "nethyr", "nucleytor", "overyr", "persefer", "plasanod", "rangtaturs", "ravendes", "reflecounum", "reguilater", "repulsyron", "sonicor", "swordoder", "tankani2k", "tankani4k", "tankani500", "tenytisyr", "therdum", "thermion", "tyber", "tyteryi", "vendicum", "xylaon", "zoj"];
 
     const AURA_TURRETS = { "newex-thermion": 45 };
 
