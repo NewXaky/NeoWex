@@ -1,11 +1,6 @@
 const C = (h) => Color.valueOf(h);
 const cRed = C("e8321a"), cOr = C("ff8c1f"), cYel = C("ffd23a"), cWht = C("fff6b0"), cSoot = C("120a08"), cGry = C("5c5a58");
-const sBong = extend(StatusEffect, "bong", { localizedName: "Bỏng", color: cOr, damage: 10 / 60, permanent: false });
-const sViem = extend(StatusEffect, "viem-hoa", {
-    localizedName: "Viêm hỏa", color: cRed,
-    update(u, time) { u.damageContinuousPierce((100 + u.maxHealth * 0.01) / 60); }
-});
-const WIND = 8, GROW = 22, FADE = 30;
+const WIND = 8, GROW = 22, TRAIL = 48, FADE = 30;
 
 const widthAt = (u) => 4 + 20 * Math.pow(u, 1.2);
 const pt = (mx, my, r, d, off) => [mx + Angles.trnsx(r, d) + Angles.trnsx(r + 90, off), my + Angles.trnsy(r, d) + Angles.trnsy(r + 90, off)];
@@ -59,11 +54,12 @@ function makeFlame(dmg, burnTime, range, lifetime) {
             if (Vars.state.isPaused() || Time.delta <= 0) return;
             let o = b.owner;
             if (o == null || !o.isValid()) { b.remove(); return; }
-            if (b.data == null) b.data = o.rotation;
-            let r = +b.data; o.rotation = r;
-            let t = b.time, mx = o.x + Angles.trnsx(r, 14), my = o.y + Angles.trnsy(r, 14);
+            if (!(b.data instanceof Array)) b.data = [];
+            let h = b.data, t = b.time, r = o.rotation, mx = o.x + Angles.trnsx(r, 14), my = o.y + Angles.trnsy(r, 14);
             let grow = ease((t - WIND) / GROW), len = range * grow;
+            while (h.length > 0 && t - h[0].t > TRAIL) h.shift();
             if (grow <= 0) return;
+            if (b.timer.get(5, 3)) h.push({ t: t, r: r, x: mx, y: my, l: len });
             let tp = pt(mx, my, r, len, 0);
             if (b.timer.get(4, 30)) Effect.shake(0.8 * grow, 10, tp[0], tp[1]);
             if (Vars.net.client() || grow < 0.2 || !b.timer.get(0, 6)) return;
@@ -73,9 +69,9 @@ function makeFlame(dmg, burnTime, range, lifetime) {
                 return al > 0 && al <= len + hs && pp <= widthAt(Math.min(al / range, 1)) * 0.6 + hs;
             };
             Units.nearbyEnemies(b.team, mx - range, my - range, range * 2, range * 2, new Cons({ get: u => {
-                if (u.dead || u.isFlying() || !inCone(u.x, u.y, u.hitSize / 2)) return;
+                if (u.dead || !inCone(u.x, u.y, u.hitSize / 2)) return;
                 u.damage(dmg);
-                [sBong, sViem, StatusEffects.melting, StatusEffects.burning, StatusEffects.sapped].forEach(e => u.apply(e, burnTime));
+                u.apply(StatusEffects.burning, burnTime);
             }}));
             Units.nearbyBuildings(mx, my, range + 16, new Cons({ get: bd => {
                 if (bd.team == b.team || bd.team == Team.derelict || !inCone(bd.x, bd.y, bd.block.size * 4)) return;
@@ -86,9 +82,8 @@ function makeFlame(dmg, burnTime, range, lifetime) {
         draw(b) {
             let o = b.owner;
             if (o == null || !o.isValid()) return;
-            let T = b.time;
-            let r = b.data == null ? o.rotation : +b.data; o.rotation = r;
-            let mx = o.x + Angles.trnsx(r, 14), my = o.y + Angles.trnsy(r, 14);
+            let T = b.time, h = (b.data instanceof Array) ? b.data : [];
+            let r = o.rotation, mx = o.x + Angles.trnsx(r, 14), my = o.y + Angles.trnsy(r, 14);
             let grow = ease((T - WIND) / GROW), pilot = ease(T / WIND);
             let a = 1 - Mathf.clamp((T - (lifetime - FADE)) / FADE);
             let len = range * grow;
@@ -102,15 +97,21 @@ function makeFlame(dmg, burnTime, range, lifetime) {
             Draw.blend();
             if (grow <= 0) { Draw.reset(); return; }
 
-            let tc = pt(mx, my, r, len, Math.sin(T * 0.3 - 16 * 0.7) * widthAt(1) * 0.15), fl = 1 + 0.1 * Math.sin(T * 0.5);
+            for (let i = 0; i < h.length; i++) {
+                let s = h[i], age = (T - s.t) / TRAIL;
+                if (age >= 1 || Math.abs(Angles.angleDist(s.r, r)) < 5) continue;
+                drawJet(s.x, s.y, s.r, s.l, a * 0.8 * Math.pow(1 - age, 1.4), s.t, b.id + i, false);
+            }
+
+            let tc = pt(mx, my, r, len * 0.97, 0), fl = 1 + 0.1 * Math.sin(T * 0.5);
 
             Draw.z(Layer.bullet);
             for (let k = 0; k < 16; k++) {
                 let s = b.id * 5 + k * 17, p = (T * 0.016 + rnd(s)) % 1;
-                let q = pt(tc[0], tc[1], r, 40 * p + (rnd(s + 1) * 2 - 1) * 10, (rnd(s + 2) * 2 - 1) * 10 + Math.sin(T * 0.04 + k) * 6 * p);
+                let sx = (rnd(s + 1) * 2 - 1) * 14, sy = (rnd(s + 2) * 2 - 1) * 10;
                 Draw.color(cSoot, cGry, p);
                 Draw.alpha(0.55 * a * Math.sin(Math.PI * Math.pow(p, 0.6)));
-                Fill.circle(q[0], q[1] + 12 * p, (8 + 20 * p) * (0.5 + 0.5 * grow));
+                Fill.circle(tc[0] + sx + Angles.trnsx(r, 40 * p) + Math.sin(T * 0.04 + k) * 6 * p, tc[1] + sy + Angles.trnsy(r, 40 * p) + 34 * p, (8 + 20 * p) * (0.5 + 0.5 * grow));
             }
             Draw.z(Layer.bullet + 1);
 

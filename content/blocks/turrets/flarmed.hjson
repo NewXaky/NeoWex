@@ -1,0 +1,37 @@
+type: ItemTurret
+name: Flarmed
+description: "Súng phun lửa tầm ngắn. Mỗi đợt phun một luồng lửa thon dài, loe dần và tắt ở đầu, thiêu cháy mọi kẻ địch (cả không quân) trong vùng hình nón. Dùng than hoặc pyratite."
+size: 3
+health: 1800
+category: turret
+ammoTypes: {}
+outlineColor: 313131FF
+targetAir: true
+targetGround: true
+range: 170
+reload: 480
+rotateSpeed: 4
+shootCone: 12
+inaccuracy: 0
+recoil: 1.5
+shootSound: flame
+shootEffect: none
+smokeEffect: none
+maxAmmo: 30
+ammoPerShot: 1
+coolant: {
+  type: ConsumeCoolant
+  amount: 0.2
+}
+drawer: {
+  type: DrawTurret
+  basePrefix: reinforced-
+}
+requirements: [
+  copper/180
+  graphite/140
+  silicon/90
+  titanium/60
+]
+research: newex
+researchCostMultiplier: 1
