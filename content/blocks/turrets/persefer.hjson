@@ -1,4 +1,3 @@
-type: ItemTurret
 name: Persefer
 description: "Gatling 6 nòng phòng không. Bắn càng lâu, tốc độ bắn và xoay nòng càng nhanh."
 size: 4

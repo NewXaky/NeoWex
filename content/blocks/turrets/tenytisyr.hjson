@@ -1,4 +1,3 @@
-type: ItemTurret
 name: tenytisyr
 description: "Càng bắn càng nóng: tốc độ bắn tối đa +250%, sát thương tối đa +500%. Nâng cấp MK2 hoặc MK2B với hiệu ứng nổ hoặc sát thương theo % máu khi đầy nhiệt."
 health: 3000

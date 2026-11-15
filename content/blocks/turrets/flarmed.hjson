@@ -1,12 +1,12 @@
 type: ItemTurret
 name: Flarmed
-description: "Súng phun lửa tầm ngắn. Mỗi đợt phun một luồng lửa thon dài, loe dần và tắt ở đầu, thiêu cháy mọi kẻ địch (cả không quân) trong vùng hình nón. Dùng than hoặc pyratite."
+description: "Súng phun lửa tầm ngắn. Mỗi đợt phun một luồng lửa thon dài, loe dần và tắt ở đầu, thiêu cháy bộ binh địch (không bắn không quân) trong vùng hình nón, gắn ấn Bỏng, Viêm hỏa, Melting, Burning, Sapped. Khóa hướng khi đang phun. Dùng than hoặc pyratite."
 size: 3
 health: 1800
 category: turret
 ammoTypes: {}
 outlineColor: 313131FF
-targetAir: true
+targetAir: false
 targetGround: true
 range: 170
 reload: 480

@@ -1,7 +1,6 @@
 name: "ravendes"
 localizedName: "Ravendes"
 description: "Siêu pháo hoàng gia bắn đạn sao 4 cánh. Sát thương đổi theo tầm bắn, có nhiều nhánh nâng cấp."
-type: "PowerTurret"
 size: 3
 health: 1200
 reload: 6.0
