@@ -76,6 +76,7 @@ import newex.content.Persefer;
 import newex.content.Plasanod;
 import newex.content.Suv27;
 import newex.content.Honivery;
+import newex.content.HoniveryPvp;
 import newex.content.Tank15;
 import newex.content.Cos;
 import newex.content.Swordoder;
@@ -190,6 +191,7 @@ public class NexMod extends Mod {
         CargoDrone.init();
         Repulsyron.init();
         ArchuengPvp.init();
+        HoniveryPvp.init(); // dua Honivery vao trang unit NewMode PvP (bac 5) + nut skill 1s hoi chieu
         Erysidus.init();
         Ravendes.init();
         Persefer.init();
