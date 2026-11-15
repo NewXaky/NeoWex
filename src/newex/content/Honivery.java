@@ -205,8 +205,8 @@ public final class Honivery {
             float z = Draw.z();
             Draw.z(z + 0.1f);
             // viền tối rồi tới thân sáng
-            drawStar(cx, cy, unit.rotation, outline, Pal.darkOutline);
-            drawStar(cx, cy, unit.rotation, 0f, HONIVERY_COLOR);
+            drawStar(cx, cy, unit.rotation, 1f, outline, Pal.darkOutline, 1f);
+            drawStar(cx, cy, unit.rotation, 1f, 0f, HONIVERY_COLOR, 1f);
             // lõi trắng nhỏ ở tâm
             Draw.color(Color.white);
             Fill.circle(cx, cy, innerRad * 0.8f);
@@ -214,13 +214,29 @@ public final class Honivery {
             Draw.z(z);
         }
 
+        /**
+         * Bóng của thanh kiếm (dùng cho hiệu ứng khi tung skill): vẽ y hệt thanh kiếm tại vị trí hiện tại của unit,
+         * phóng to theo {@code scale}, trong suốt {@code alpha}, màu {@code col}. Gọi trong lúc vẽ (blend cộng do bên gọi đặt).
+         */
+        public void drawGhost(Unit unit, float scale, Color col, float alpha) {
+            float rot = unit.rotation - 90f;
+            float cx = unit.x + Angles.trnsx(rot, x, y);
+            float cy = unit.y + Angles.trnsy(rot, x, y);
+            drawStar(cx, cy, unit.rotation, scale, 0f, col, alpha);
+            Draw.color(Color.white);
+            Draw.alpha(alpha);
+            Fill.circle(cx, cy, innerRad * 0.8f * scale);
+            Draw.reset();
+        }
+
         /** 4 cánh tại góc rot, rot+90, rot+180, rot+270; cánh góc rot (hướng phía trước) là lưỡi dài. */
-        private void drawStar(float cx, float cy, float rot, float grow, Color col) {
+        private void drawStar(float cx, float cy, float rot, float scale, float grow, Color col, float alpha) {
             Draw.color(col);
+            Draw.alpha(alpha);
             for (int i = 0; i < 4; i++) {
                 float a = rot + i * 90f;
-                float len = (i == 0 ? armLen * bladeMul : armLen) + grow;
-                float ir = innerRad + grow;
+                float len = (i == 0 ? armLen * bladeMul : armLen) * scale + grow;
+                float ir = innerRad * scale + grow;
                 // mỗi cánh là 1 hình thoi: tâm -> đỉnh lõm trái -> đỉnh cánh -> đỉnh lõm phải
                 float lx = cx + Angles.trnsx(a - 45f, ir * 1.4142f), ly = cy + Angles.trnsy(a - 45f, ir * 1.4142f);
                 float rx = cx + Angles.trnsx(a + 45f, ir * 1.4142f), ry = cy + Angles.trnsy(a + 45f, ir * 1.4142f);

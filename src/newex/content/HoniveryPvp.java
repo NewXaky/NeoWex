@@ -23,6 +23,7 @@ import mindustry.entities.Effect;
 import mindustry.entities.Units;
 import mindustry.game.Team;
 import mindustry.gen.Call;
+import mindustry.gen.Groups;
 import mindustry.gen.Sounds;
 import mindustry.graphics.Layer;
 import mindustry.game.EventType.ClientLoadEvent;
@@ -31,6 +32,7 @@ import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.gen.Player;
 import mindustry.gen.Unit;
 import mindustry.type.UnitType;
+import mindustry.type.Weapon;
 import mindustry.ui.Styles;
 import newex.NexNet;
 
@@ -79,7 +81,26 @@ public final class HoniveryPvp {
 
     static final class Combo {
         final Player pl; float t = 0f; int idx = 0;
-        Combo(Player pl) { this.pl = pl; }
+        /** Thu tu goc nghieng (TILTS) cua cac cu chem thuong, xao tron ngau nhien moi lan tung. */
+        final int[] order = new int[TILTS.length];
+        Combo(Player pl) {
+            this.pl = pl;
+            for (int i = 0; i < order.length; i++) order[i] = i;
+            for (int i = order.length - 1; i > 0; i--) { int j = Mathf.random(i); int tmp = order[i]; order[i] = order[j]; order[j] = tmp; }
+        }
+    }
+    /** Bong thanh kiem phong to dan roi mat khi tung 1 cu chem. */
+    static final class Ghost {
+        int uid; float t = 0f, life; boolean big; Color col;
+    }
+    static final ArrayList<Ghost> ghosts = new ArrayList<>();
+    static Honivery.HoniverySwordDrawer swordW;
+    static Honivery.HoniverySwordDrawer sword() {
+        if (swordW != null) return swordW;
+        UnitType h = Honivery.honivery;
+        if (h == null) return null;
+        for (Weapon w : h.weapons) if (w instanceof Honivery.HoniverySwordDrawer) { swordW = (Honivery.HoniverySwordDrawer) w; break; }
+        return swordW;
     }
     static final class Slash {
         float x, y, ang, tilt, t = 0f, life; int dir; boolean big;
@@ -96,6 +117,7 @@ public final class HoniveryPvp {
         if (Vars.state == null || !Vars.state.isGame()) {
             if (!combos.isEmpty()) combos.clear();
             if (!slashes.isEmpty()) slashes.clear();
+            if (!ghosts.isEmpty()) ghosts.clear();
             return;
         }
         if (Vars.state.isPaused()) return;
@@ -104,6 +126,11 @@ public final class HoniveryPvp {
             Slash sl = slashes.get(i);
             sl.t += Time.delta;
             if (sl.t >= sl.life) slashes.remove(i);
+        }
+        for (int i = ghosts.size() - 1; i >= 0; i--) {
+            Ghost g = ghosts.get(i);
+            g.t += Time.delta;
+            if (g.t >= g.life) ghosts.remove(i);
         }
     }
 
@@ -135,7 +162,7 @@ public final class HoniveryPvp {
             Combo c = it.next();
             Unit u = c.pl.unit();
             if (!isActive() || !isHon(u) || u.dead) { it.remove(); continue; }
-            while (c.idx < COUNT && c.t >= c.idx * GAP) { doSlash(u, c.idx); c.idx++; }
+            while (c.idx < COUNT && c.t >= c.idx * GAP) { doSlash(u, c); c.idx++; }
             c.t += Time.delta;
             if (c.idx >= COUNT) it.remove();
         }
@@ -148,15 +175,18 @@ public final class HoniveryPvp {
     }
 
     /** Server: 1 cu chem. Tam chem nam giua unit va muc tieu gan nhat (toi da LEAD tu unit); cu cuoi la vong 360 do. */
-    static void doSlash(Unit u, int idx) {
+    static void doSlash(Unit u, Combo c) {
+        int idx = c.idx;
         boolean fin = idx == COUNT - 1;
-        int dir = (idx % 2 == 0) ? 1 : -1;
+        // cu thuong: huong quet + goc nghieng + lech huong deu ngau nhien (khong theo thu tu); cu cuoi: vong 360 phang
+        final int dir = Mathf.chance(0.5) ? 1 : -1;
+        int ti = c.order[idx % c.order.length];
         mindustry.gen.Teamc tg = null;
         try { tg = Units.closestTarget(u.team, u.x, u.y, SEEK, e -> !e.dead, b -> true); } catch (Throwable err) {}
         float ang = tg != null ? Angles.angle(u.x, u.y, tg.x(), tg.y()) : u.rotation;
         float reach = tg != null ? Math.min(Mathf.dst(u.x, u.y, tg.x(), tg.y()), LEAD) : LEAD * 0.5f;
         final float cx = u.x + Angles.trnsx(ang, reach), cy = u.y + Angles.trnsy(ang, reach);
-        final float face = fin ? ang : ang + dir * 28f;
+        final float face = fin ? ang : ang + Mathf.range(35f);
         final float half = fin ? 180f : HALF;
         final float rad = fin ? RAD * FIN_RAD_MUL : RAD;
         final float dmg = DMG * (fin ? FIN_DMG_MUL : 1f) * Math.max(0.1f, u.damageMultiplier);
@@ -172,7 +202,7 @@ public final class HoniveryPvp {
             b.damage(dmg);
             try { Call.effect(Fx.hitLaserBlast, b.x, b.y, face, dir > 0 ? COL_A : COL_B); } catch (Throwable err) {}
         });
-        NexNet.broadcast(FX, cx + "," + cy + "," + face + "," + dir + "," + (fin ? 1 : 0) + "," + idx);
+        NexNet.broadcast(FX, cx + "," + cy + "," + face + "," + dir + "," + (fin ? 1 : 0) + "," + ti + "," + u.id);
     }
 
     // ---- moi may: nhan 1 cu chem -> tao vet chem de ve ----
@@ -187,8 +217,16 @@ public final class HoniveryPvp {
             sl.dir = Integer.parseInt(p[3]);
             sl.big = Integer.parseInt(p[4]) == 1;
             sl.life = sl.big ? FIN_LIFE : LIFE;
-            int idx = p.length > 5 ? Integer.parseInt(p[5]) : 0;
-            sl.tilt = TILTS[Math.floorMod(idx, TILTS.length)];
+            int ti = p.length > 5 ? Integer.parseInt(p[5]) : 0;
+            sl.tilt = TILTS[Math.floorMod(ti, TILTS.length)];
+            if (p.length > 6) {
+                Ghost g = new Ghost();
+                g.uid = Integer.parseInt(p[6]);
+                g.big = sl.big;
+                g.life = sl.big ? 30f : 20f;
+                g.col = sl.big ? COL_B : (sl.dir > 0 ? COL_A : COL_B);
+                ghosts.add(g);
+            }
             slashes.add(sl);
             Effect.shake(sl.big ? 5f : 2f, sl.big ? 12f : 6f, sl.x, sl.y);
             Sounds.shootReign.at(sl.x, sl.y, sl.big ? 0.7f : 1.3f + sl.dir * 0.08f, 0.5f);
@@ -277,13 +315,43 @@ public final class HoniveryPvp {
         }
     }
 
+    /** Cu cuoi: vung tron hitbox that su (ban kinh = ban kinh quat 360 do), ve ro de nguoi choi biet pham vi trung. */
+    static void drawZone(Slash s) {
+        float p = s.t / s.life;
+        float fade = 1f - Mathf.clamp((p - 0.5f) / 0.5f);
+        float R = RAD * FIN_RAD_MUL;
+        Draw.color(COL_B, Color.white, 0.25f);
+        Draw.alpha(0.08f * fade);
+        Fill.circle(s.x, s.y, R);
+        Draw.color(COL_A, Color.white, 0.35f);
+        Draw.alpha(0.4f * fade);
+        arc.graphics.g2d.Lines.stroke(1.6f);
+        arc.graphics.g2d.Lines.circle(s.x, s.y, R);
+    }
+
+    /** Bong thanh kiem: y het thanh kiem, phong to dan va mo dan. */
+    static void drawGhosts() {
+        Honivery.HoniverySwordDrawer sw = sword();
+        if (sw == null) return;
+        for (Ghost g : ghosts) {
+            Unit u = Groups.unit.getByID(g.uid);
+            if (u == null || u.dead) continue;
+            float p = g.t / g.life;
+            float scale = 1f + (g.big ? 2.4f : 1.6f) * Interp.pow2Out.apply(p);
+            float alpha = 0.7f * (1f - p) * (1f - p);
+            sw.drawGhost(u, scale, g.col, alpha);
+        }
+    }
+
     static void draw() {
-        if (slashes.isEmpty() || Vars.state == null || !Vars.state.isGame()) return;
+        if (Vars.state == null || !Vars.state.isGame() || (slashes.isEmpty() && ghosts.isEmpty())) return;
         float z = Draw.z();
         Draw.z(Layer.effect + 1f);
         Draw.blend(Blending.additive);
+        drawGhosts();
         for (Slash s : slashes) {
             if (s.big) {
+                drawZone(s);
                 drawArc(s, COL_B, 1f, 1f);
                 drawArc(s, COL_A, 0.86f, 0.8f);
             } else {
@@ -353,7 +421,7 @@ public final class HoniveryPvp {
                 try { build(); } catch (Throwable err) { Log.err("[HoniveryPvp] ui: " + err); }
             });
             Events.run(Trigger.draw, HoniveryPvp::draw);
-            Events.on(WorldLoadEvent.class, e -> { cdEnd = 0; cdEndSrv.clear(); combos.clear(); slashes.clear(); });
+            Events.on(WorldLoadEvent.class, e -> { cdEnd = 0; cdEndSrv.clear(); combos.clear(); slashes.clear(); ghosts.clear(); });
         } else {
             Events.on(WorldLoadEvent.class, e -> { cdEndSrv.clear(); combos.clear(); });
         }
