@@ -13,7 +13,6 @@ import arc.util.Log;
 import arc.util.Strings;
 import arc.util.Time;
 import mindustry.Vars;
-import mindustry.content.UnitTypes;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
@@ -26,34 +25,20 @@ import newex.NexNet;
 import java.util.HashMap;
 
 /**
- * Dua unit Honivery (xem {@link Honivery}) vao "trang unit" (tab Unit) cua NewMode PvP,
- * bang cach ghi thang vao mang NewModePvp.tierList (xem {@link #ensureTierSlot()} de biet
- * vi sao khong the dung kieu "trao field UnitTypes.xxx" nhu ArchuengPvp lam voi disrupt).
- * Khong can sua them file NewModePvp.java: isActive() goi thang NewModePvp.apiIsActive(),
- * con tierList thi ghi truc tiep tu ngoai vao (field do la package-private, khong final).
- *
- * Bac dang dung: TIER = 5 (thay cho UnitTypes.collaris, bac cao nhat trong 5 bac thuong 1-5).
- * Bac 6 (reign) dang duoc Cin.java dung rieng (kiem tra u.type == UnitTypes.reign) va bac 7
- * (disrupt) da bi ArchuengPvp chiem, nen khong dung 2 bac do. Muon doi sang bac 1-4 khac, chi
- * can doi hang so TIER ben duoi (TIER phai trong khoang 1-5, vi chi cac bac nay di qua mang
- * tierList; bac 6/7 co co che rieng, khac voi co che o day).
- *
+ * Honivery la unit THEM MOI (bac dac biet 8) trong tab Unit cua NewMode PvP: xem
+ * NewModePvp.tierType(8) / TIER_MAX. Khong thay the unit nao (Collaris van la bac 5).
  * Da co nut skill tren HUD (keo tha duoc), hoi chieu 1 giay. Noi dung ky nang se dien
- * sau vao {@link #onReq} / {@link #onFx} (hien chi la cho trong, bam nut moi co hieu ung
- * nhap nhay bao da kich hoat).
+ * sau vao {@link #onReq} / {@link #onFx}.
  */
 public final class HoniveryPvp {
     private HoniveryPvp() {}
-
-    /** Bac (tier 1-5) ma Honivery se thay the khi PvP dang hoat dong. Doi so nay de chuyen bac khac. */
-    static final int TIER = 5;
 
     static final String REQ = "newex-honivery-skill", FX = "newex-honivery-fx", KEY = "newex-honivery-btn";
     /** 1 giay hoi chieu (60 tick/s). */
     static final float CD_T = 60f;
     static final Color COL = Color.valueOf("ffd27a");
 
-    static boolean tierSet = false, netOk = false;
+    static boolean netOk = false;
     static float cdEnd = 0;
     static final HashMap<Integer, Float> cdEndSrv = new HashMap<>();
     static Table btn = null;
@@ -62,31 +47,8 @@ public final class HoniveryPvp {
         try { return NewModePvp.apiIsActive(); } catch (Throwable err) { return false; }
     }
 
-    /**
-     * Gan Honivery vao o bac TIER trong NewModePvp.tierList.
-     * LUU Y: bac 1-5 duoc NewModePvp cache 1 lan vao mang tierList (khong doc lai UnitTypes.xxx
-     * sau do), nen KHONG the dung kieu "trao field UnitTypes.xxx" nhu ArchuengPvp lam voi bac 7
-     * (disrupt doc truc tiep, khong qua cache) - phai ghi thang vao mang tierList nay. Vi tierList
-     * la package-private/khong final nen goi duoc tu day. Chi can gan 1 lan, khong phu thuoc
-     * isActive(): mang nay chi duoc NewModePvp doc khi dang trong tran pvp nen khong anh huong
-     * UnitTypes.collaris o cho khac trong game.
-     */
-    static void ensureTierSlot() {
-        if (tierSet) return;
-        UnitType h = Honivery.honivery;
-        if (h == null) return;
-        try {
-            if (NewModePvp.tierList == null) {
-                NewModePvp.tierList = new UnitType[]{UnitTypes.merui, UnitTypes.cleroi, UnitTypes.anthicus, UnitTypes.tecta, UnitTypes.collaris};
-            }
-            NewModePvp.tierList[TIER - 1] = h;
-            tierSet = true;
-        } catch (Throwable err) { Log.err("[HoniveryPvp] gan vao tierList that bai: " + err); }
-    }
-
     static void syncType() {
         tryNet();
-        ensureTierSlot();
     }
 
     static boolean isHon(Unit u) { return u != null && Honivery.honivery != null && u.type == Honivery.honivery; }

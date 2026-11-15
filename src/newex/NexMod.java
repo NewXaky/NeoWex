@@ -191,7 +191,7 @@ public class NexMod extends Mod {
         CargoDrone.init();
         Repulsyron.init();
         ArchuengPvp.init();
-        HoniveryPvp.init(); // dua Honivery vao trang unit NewMode PvP (bac 5) + nut skill 1s hoi chieu
+        HoniveryPvp.init(); // nut skill Honivery (unit bậc 8 trong NewMode PvP)
         Erysidus.init();
         Ravendes.init();
         Persefer.init();

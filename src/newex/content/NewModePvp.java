@@ -210,7 +210,7 @@ public class NewModePvp {
     static final int STAT_PER_PAGE = 4;
     static final int TURRET_PER_PAGE = 5;
     static final int UNIT_PER_PAGE = 5;
-    static final int TIER_MAX = 7;
+    static final int TIER_MAX = 8; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery
     static final int STAT_MAX = 20;
     static final int STAT_MAIN = 12;
     static final int STAT_ARMY = 12;
@@ -602,10 +602,11 @@ public class NewModePvp {
     static UnitType tierType(int lv) {
         if (lv == 6) return UnitTypes.reign;
         if (lv == 7) return UnitTypes.disrupt;
+        if (lv == 8) { UnitType h = Honivery.honivery; return h != null ? h : UnitTypes.collaris; }
         if (tierList == null) tierList = new UnitType[]{UnitTypes.merui, UnitTypes.cleroi, UnitTypes.anthicus, UnitTypes.tecta, UnitTypes.collaris};
         return tierList[Math.min(5, Math.max(1, lv)) - 1];
     }
-    static boolean isExtraTier(int lv) { return lv == 6 || lv == 7; }
+    static boolean isExtraTier(int lv) { return lv >= 6; }
     static int tierCap(int lv) { return Math.min(5, Math.max(1, lv)); }
     static int activeTier(St st) {
         int cap = tierCap(st.lv);
@@ -6239,7 +6240,7 @@ public class NewModePvp {
         final int tab = upTab, cols = gridCols(), cw = cardW();
         final float innerW = W - 24, navH = btnH() + 12, availH = Math.max(60f, listH() - navH);
         ArrayList<Object> unitBase = new ArrayList<>();
-        for (int k = 1; k <= 7; k++) unitBase.add(k);
+        for (int k = 1; k <= TIER_MAX; k++) unitBase.add(k);
         final ArrayList<Object> unitList = (tab == 0 && st.lv >= FREE_SWITCH_LEVEL) ? orderedBy(0, unitBase) : null;
         ArrayList<Object> statBase = new ArrayList<>();
         for (int q = 0; q < STATS.length; q++) if (q != STAT_ARMY) statBase.add(q);
