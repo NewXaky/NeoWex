@@ -95,8 +95,8 @@ public final class Honivery {
             constructor = LegsUnit::create;
 
             localizedName = "Honivery";
-            description = "Cơ giáp 4 chân nhỏ gọn, trang bị 2 súng máy Gatling hạng nặng và 2 bệ phòng thủ điểm tự bắn hạ đạn địch ở cự ly gần.";
-            details = "Súng Gatling xoay nòng bắn đạn xuyên tối đa 2 mục tiêu, kèm nổ lan nhỏ và tia sét, mỗi viên bỏ qua 50% giáp mục tiêu. "
+            description = "Cơ giáp 4 chân nhỏ gọn, trang bị 2 súng máy Gatling hạng nặng, 1 bệ phòng thủ điểm tự bắn hạ đạn địch ở cự ly gần và 1 thanh kiếm hình sao 4 cánh bên hông.";
+            details = "Súng Gatling xoay nòng bắn đạn thường, mỗi viên bỏ qua 50% giáp mục tiêu. "
                 + "Bắn liên tục quá lâu súng sẽ quá nhiệt và ngừng bắn cho tới khi nguội. "
                 + "Bệ phòng thủ điểm bắn hạ đạn địch trong bán kính 12 ô.";
 
@@ -153,25 +153,18 @@ public final class Honivery {
                     smokeEffect = Fx.none;
                     width = 7f;
                     height = 7f;
-                    pierce = true;
-                    pierceCap = 2;
                     shrinkX = 0.2f;
                     shrinkY = 0f;
-                    backColor = lightningColor = trailColor = hitColor = HONIVERY_COLOR;
+                    backColor = trailColor = hitColor = HONIVERY_COLOR;
                     trailLength = 5;
                     trailWidth = 1.3f;
                     lifetime = 18.66f;
-                    splashDamageRadius = 12f;
-                    splashDamage = 20f;
                     armorMultiplier = 0.5f;
-                    lightningDamage = 10f;
-                    lightning = 1;
-                    lightningLength = 5;
-                    lightningCone = 15f;
                 }};
             }}, new PointDefenseWeapon("newex-honivery-point-weapon") {{
                 x = 24 / 4f;
                 y = -28 / 4f;
+                mirror = false; // chi giu 1 ben (ben phai)
                 reload = 5f;
                 color = HONIVERY_COLOR;
                 rotateSpeed = 35f;
@@ -183,8 +176,74 @@ public final class Honivery {
                     maxRange = 12 * 8;
                     damage = 35f;
                 }};
+            }}, new HoniverySwordDrawer("newex-honivery-sword") {{
+                x = -24 / 4f; // ben trai: thay cho be phong thu diem da bo
+                y = -4f;
             }});
         }};
+    }
+
+    // ================================================================== thanh kiếm hình sao (chỉ để vẽ)
+
+    /**
+     * Vũ khí chỉ để trang trí: vẽ 1 ngôi sao 4 cánh, trong đó 1 cánh dài gấp 3 các cánh còn lại làm lưỡi kiếm,
+     * lưỡi chỉ về phía trước mũi unit. Không bắn, không gây sát thương.
+     */
+    public static class HoniverySwordDrawer extends Weapon {
+        /** Độ dài cánh ngắn (3 cánh) và hệ số của cánh dài (lưỡi kiếm). */
+        public float armLen = 5f, bladeMul = 3f;
+        /** Bán kính các đỉnh lõm giữa 2 cánh, và độ mở của chuôi. */
+        public float innerRad = 1.7f;
+        public float outline = 1f;
+
+        public HoniverySwordDrawer(String name) {
+            super(name);
+            mirror = false;
+            rotate = false;
+            controllable = false;
+            autoTarget = false;
+            alternate = false;
+            top = false;
+        }
+
+        @Override
+        public void update(Unit unit, WeaponMount mount) {
+            // vũ khí trang trí: không bắn, không tìm mục tiêu
+            mount.shoot = false;
+            mount.rotate = false;
+        }
+
+        @Override
+        public void draw(Unit unit, WeaponMount mount) {
+            float rot = unit.rotation - 90f;
+            float cx = unit.x + Angles.trnsx(rot, x, y);
+            float cy = unit.y + Angles.trnsy(rot, x, y);
+            float z = Draw.z();
+            Draw.z(z + 0.1f);
+            // viền tối rồi tới thân sáng
+            drawStar(cx, cy, unit.rotation, outline, Pal.darkOutline);
+            drawStar(cx, cy, unit.rotation, 0f, HONIVERY_COLOR);
+            // lõi trắng nhỏ ở tâm
+            Draw.color(Color.white);
+            Fill.circle(cx, cy, innerRad * 0.8f);
+            Draw.reset();
+            Draw.z(z);
+        }
+
+        /** 4 cánh tại góc rot, rot+90, rot+180, rot+270; cánh góc rot (hướng phía trước) là lưỡi dài. */
+        private void drawStar(float cx, float cy, float rot, float grow, Color col) {
+            Draw.color(col);
+            for (int i = 0; i < 4; i++) {
+                float a = rot + i * 90f;
+                float len = (i == 0 ? armLen * bladeMul : armLen) + grow;
+                float ir = innerRad + grow;
+                // mỗi cánh là 1 hình thoi: tâm -> đỉnh lõm trái -> đỉnh cánh -> đỉnh lõm phải
+                float lx = cx + Angles.trnsx(a - 45f, ir * 1.4142f), ly = cy + Angles.trnsy(a - 45f, ir * 1.4142f);
+                float rx = cx + Angles.trnsx(a + 45f, ir * 1.4142f), ry = cy + Angles.trnsy(a + 45f, ir * 1.4142f);
+                float tx = cx + Angles.trnsx(a, len), ty = cy + Angles.trnsy(a, len);
+                Fill.quad(cx, cy, lx, ly, tx, ty, rx, ry);
+            }
+        }
     }
 
     // ================================================================== súng Gatling quá nhiệt
