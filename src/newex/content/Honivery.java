@@ -198,6 +198,14 @@ public final class Honivery {
         public float bx, by, width;
         public float keepWarmup = 45f;
         public float overheatSpeed = 0.01f, overheatDurationTime = 3 * 60f;
+        /** Bullet lifetime randomization range (like velocityRnd, but for lifetime). */
+        public float lifeRnd = 0f;
+        /** Extra flat bullet lifetime added on top of the randomized base (like extraVelocity, but for lifetime). */
+        public float extraLife = 0f;
+        /** Minimum unit velocity required before this weapon is allowed to shoot. */
+        public float minShootVelocity = 0f;
+        /** Maximum unit velocity allowed for shooting; -1 disables the cap. */
+        public float maxShootVelocity = -1f;
         public boolean inversion = false;
         public Color overheatColor = Pal.turretHeat;
         public TextureRegion barrel, barrelHeat;
