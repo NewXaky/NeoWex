@@ -30,13 +30,12 @@ import mindustry.graphics.Drawf;
 import mindustry.graphics.Pal;
 import mindustry.type.UnitType;
 import mindustry.type.Weapon;
-import mindustry.type.weapons.PointDefenseWeapon;
 import mindustry.world.meta.Env;
 
 /**
  * Unit Honivery - chuyển từ mod Multi Dimensional sang NeoWex.
  *
- * <p>Cơ giáp 4 chân, hai súng Gatling xoay nòng (quá nhiệt nếu bắn liền quá lâu) và hai bệ phòng thủ điểm.
+ * <p>Cơ giáp 4 chân, một súng Gatling xoay nòng (quá nhiệt nếu bắn liền quá lâu) và một thanh kiếm hình sao.
  * Sprite nằm ở sprites/units/honivery/.
  */
 public final class Honivery {
@@ -95,10 +94,10 @@ public final class Honivery {
             constructor = LegsUnit::create;
 
             localizedName = "Honivery";
-            description = "Cơ giáp 4 chân nhỏ gọn, trang bị 2 súng máy Gatling hạng nặng, 1 bệ phòng thủ điểm tự bắn hạ đạn địch ở cự ly gần và 1 thanh kiếm hình sao 4 cánh bên hông.";
+            description = "Cơ giáp 4 chân nhỏ gọn, trang bị 1 súng máy Gatling hạng nặng và 1 thanh kiếm hình sao 4 cánh bên hông.";
             details = "Súng Gatling xoay nòng bắn đạn thường, mỗi viên bỏ qua 50% giáp mục tiêu. "
                 + "Bắn liên tục quá lâu súng sẽ quá nhiệt và ngừng bắn cho tới khi nguội. "
-                + "Bệ phòng thủ điểm bắn hạ đạn địch trong bán kính 12 ô.";
+                + "Thanh kiếm hình sao 4 cánh (cánh dài gấp 3 làm lưỡi) chỉ để trang trí.";
 
             outlineColor = Pal.darkOutline;
             envDisabled = Env.none;
@@ -125,7 +124,7 @@ public final class Honivery {
                 by = 29 / 4f;
                 width = 9 / 4f;
                 inclineRotation = -37f;
-                mirror = true;
+                mirror = false; // chi giu 1 sung (ben phai), ben trai la thanh kiem
                 rotate = true;
                 rotationLimit = 16;
                 rotateSpeed = 1f;
@@ -161,24 +160,9 @@ public final class Honivery {
                     lifetime = 18.66f;
                     armorMultiplier = 0.5f;
                 }};
-            }}, new PointDefenseWeapon("newex-honivery-point-weapon") {{
-                x = 24 / 4f;
-                y = -28 / 4f;
-                mirror = false; // chi giu 1 ben (ben phai)
-                reload = 5f;
-                color = HONIVERY_COLOR;
-                rotateSpeed = 35f;
-                targetInterval = 8f;
-                targetSwitchInterval = 8f;
-                bullet = new BulletType() {{
-                    shootEffect = Fx.sparkShoot;
-                    hitEffect = Fx.pointHit;
-                    maxRange = 12 * 8;
-                    damage = 35f;
-                }};
             }}, new HoniverySwordDrawer("newex-honivery-sword") {{
-                x = -24 / 4f; // ben trai: thay cho be phong thu diem da bo
-                y = -4f;
+                x = -49 / 4f; // ben trai: thay cho sung Gatling thu 2 da bo
+                y = -6 / 4f;
             }});
         }};
     }
