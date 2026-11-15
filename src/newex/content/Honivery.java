@@ -314,7 +314,7 @@ public final class Honivery {
 
                 boolean shootNow = false;
                 if (mount.target != null) {
-                    shootNow = mount.target.within(mountX, mountY, bullet.range + Math.abs(shootY) + (mount.target instanceof Sized s ? s.hitSize() / 2f : 0f)) && can;
+                    shootNow = mount.target.within(mountX, mountY, bullet.range + Math.abs(shootY) + (mount.target instanceof Sized ? ((Sized) mount.target).hitSize() / 2f : 0f)) && can;
                     if (predictTarget) {
                         Vec2 to = Predict.intercept(unit, mount.target, bullet);
                         mount.aimX = to.x;
