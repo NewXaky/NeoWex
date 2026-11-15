@@ -62,6 +62,13 @@ public final class HoniveryPvp {
     /** Sat thuong moi cu (nhan damageMultiplier cua unit); cu cuoi nhan FIN_DMG_MUL. */
     static final float DMG = 120f, FIN_DMG_MUL = 2.5f;
     static final float LIFE = 16f, FIN_LIFE = 26f;
+    /**
+     * Goc nghieng (do) cua mat phang moi cu chem thuong so voi mat dat, de tao cam giac chem 3D nhu video:
+     * 0 = chem ngang sat mat dat, ~90 = chem doc tu tren xuong. Dau am = nghieng nguoc phia.
+     */
+    static final float[] TILTS = {28f, -42f, 62f, -20f, 48f, -58f, 34f};
+    /** He so day do cao len man hinh (huong "len" cua the gioi 3D la huong +y tren man hinh top-down). */
+    static final float LIFT = 0.85f, BODY_LIFT = 8f;
     static final Color COL = Color.valueOf("ffd27a"), COL_A = Color.valueOf("7fd8ff"), COL_B = Color.valueOf("ff9ad0");
 
     static boolean netOk = false;
@@ -75,7 +82,7 @@ public final class HoniveryPvp {
         Combo(Player pl) { this.pl = pl; }
     }
     static final class Slash {
-        float x, y, ang, t = 0f, life; int dir; boolean big;
+        float x, y, ang, tilt, t = 0f, life; int dir; boolean big;
     }
     static final HashMap<Integer, Float> cdEndSrv = new HashMap<>();
     static Table btn = null;
@@ -165,7 +172,7 @@ public final class HoniveryPvp {
             b.damage(dmg);
             try { Call.effect(Fx.hitLaserBlast, b.x, b.y, face, dir > 0 ? COL_A : COL_B); } catch (Throwable err) {}
         });
-        NexNet.broadcast(FX, cx + "," + cy + "," + face + "," + dir + "," + (fin ? 1 : 0));
+        NexNet.broadcast(FX, cx + "," + cy + "," + face + "," + dir + "," + (fin ? 1 : 0) + "," + idx);
     }
 
     // ---- moi may: nhan 1 cu chem -> tao vet chem de ve ----
@@ -180,6 +187,8 @@ public final class HoniveryPvp {
             sl.dir = Integer.parseInt(p[3]);
             sl.big = Integer.parseInt(p[4]) == 1;
             sl.life = sl.big ? FIN_LIFE : LIFE;
+            int idx = p.length > 5 ? Integer.parseInt(p[5]) : 0;
+            sl.tilt = TILTS[Math.floorMod(idx, TILTS.length)];
             slashes.add(sl);
             Effect.shake(sl.big ? 5f : 2f, sl.big ? 12f : 6f, sl.x, sl.y);
             Sounds.shootReign.at(sl.x, sl.y, sl.big ? 0.7f : 1.3f + sl.dir * 0.08f, 0.5f);
@@ -214,6 +223,60 @@ public final class HoniveryPvp {
         }
     }
 
+    /**
+     * Vet chem thuong ve nhu 1 cung tron nam tren mat phang nghieng trong khong gian 3D roi chieu xuong man hinh
+     * top-down: truc "tien" nam ngang theo huong chem, truc con lai nghieng len cao theo goc tilt (phan do cao tro thanh
+     * do lech theo +y tren man hinh). Nua cung gan camera (thap hon tren man hinh) day va sang hon, nua xa thi mong hon.
+     */
+    static void drawArc3d(Slash s, Color col) {
+        float p = s.t / s.life;
+        float head = Interp.pow2Out.apply(Mathf.clamp(p / 0.4f));
+        float tail = head * Mathf.clamp((p - 0.1f) / 0.9f);
+        float fade = 1f - Mathf.clamp((p - 0.45f) / 0.55f);
+        if (head - tail < 0.01f || fade <= 0f) return;
+        final float half = 95f, R = RAD, W = R * 0.40f;
+        final int N = 22;
+        float cosT = Mathf.cosDeg(s.tilt), sinT = Mathf.sinDeg(s.tilt);
+        float ax = Mathf.cosDeg(s.ang), ay = Mathf.sinDeg(s.ang);     // truc tien (ngang)
+        float hx = -ay, hy = ax;                                       // truc ngang vuong goc
+        float oy = s.y + BODY_LIFT;
+        // vong mat phang chem rat mo, de nhin ra mat phang nghieng
+        Draw.color(col, Color.white, 0.3f);
+        Draw.alpha(0.16f * fade);
+        for (int k = 0; k < 28; k++) {
+            float t1 = k * 360f / 28f, t2 = (k + 1) * 360f / 28f;
+            float x1 = R * Mathf.cosDeg(t1), l1 = R * Mathf.sinDeg(t1), x2 = R * Mathf.cosDeg(t2), l2 = R * Mathf.sinDeg(t2);
+            arc.graphics.g2d.Lines.stroke(1.2f);
+            arc.graphics.g2d.Lines.line(
+                s.x + x1 * ax + l1 * cosT * hx, oy + x1 * ay + l1 * cosT * hy + l1 * sinT * LIFT,
+                s.x + x2 * ax + l2 * cosT * hx, oy + x2 * ay + l2 * cosT * hy + l2 * sinT * LIFT);
+        }
+        // cung chem
+        for (int k = 0; k < N; k++) {
+            float f1 = Mathf.lerp(tail, head, k / (float) N), f2 = Mathf.lerp(tail, head, (k + 1) / (float) N);
+            float tp = (k + 0.5f) / N;
+            float t1 = s.dir * Mathf.lerp(-half, half, f1), t2 = s.dir * Mathf.lerp(-half, half, f2);
+            float c1 = Mathf.cosDeg(t1), n1 = Mathf.sinDeg(t1), c2 = Mathf.cosDeg(t2), n2 = Mathf.sinDeg(t2);
+            float w1 = W * (float) Math.pow(Mathf.sinDeg(f1 * 180f), 0.7) * (0.25f + 0.75f * (k / (float) N));
+            float w2 = W * (float) Math.pow(Mathf.sinDeg(f2 * 180f), 0.7) * (0.25f + 0.75f * ((k + 1) / (float) N));
+            float ro1 = R, ri1 = R - w1, ro2 = R, ri2 = R - w2;
+            float[] v = new float[8];
+            float[] rr = {ro1, ro2, ri2, ri1}, cc = {c1, c2, c2, c1}, nn = {n1, n2, n2, n1};
+            float yoSum = 0f;
+            for (int q = 0; q < 4; q++) {
+                float fw = rr[q] * cc[q], lat = rr[q] * nn[q];
+                v[q * 2] = s.x + fw * ax + lat * cosT * hx;
+                v[q * 2 + 1] = oy + fw * ay + lat * cosT * hy + lat * sinT * LIFT;
+                yoSum += v[q * 2 + 1] - oy;
+            }
+            // gan camera (thap tren man hinh) -> sang va day hon, xa -> mo
+            float near = Mathf.clamp(-(yoSum / 4f) / R, -1f, 1f);
+            Draw.color(col, Color.white, Mathf.clamp(tp + near * 0.25f));
+            Draw.alpha(fade * (0.75f + 0.25f * near));
+            Fill.quad(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
+        }
+    }
+
     static void draw() {
         if (slashes.isEmpty() || Vars.state == null || !Vars.state.isGame()) return;
         float z = Draw.z();
@@ -224,7 +287,7 @@ public final class HoniveryPvp {
                 drawArc(s, COL_B, 1f, 1f);
                 drawArc(s, COL_A, 0.86f, 0.8f);
             } else {
-                drawArc(s, s.dir > 0 ? COL_A : COL_B, 1f, 1f);
+                drawArc3d(s, s.dir > 0 ? COL_A : COL_B);
             }
         }
         Draw.blend();
