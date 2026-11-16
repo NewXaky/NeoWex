@@ -1,4 +1,4 @@
-package newex.content;
+package newex;
 
 import arc.Core;
 import arc.Events;
@@ -21,6 +21,8 @@ import mindustry.gen.Tex;
 import mindustry.type.UnitType;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
+import newex.content.ArchuengPvp;
+import newex.content.Honivery;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -159,7 +161,6 @@ public final class UnitSkillInfo {
                 Element target = event.targetActor;
                 if (target == null) return false;
 
-                // Bỏ qua nếu người chơi đang bấm vào nút thi triển skill trên HUD
                 if (isInsideSkillCastButton(target)) return false;
 
                 SkillProfile matched = findProfileFromElement(target);
@@ -188,12 +189,10 @@ public final class UnitSkillInfo {
     }
 
     private static SkillProfile findProfileFromElement(Element target) {
-        // Kiểm tra trực tiếp Image nếu là icon unit
         if (target instanceof Image) {
             SkillProfile p = matchDrawable(((Image) target).getDrawable());
             if (p != null) return p;
         }
-        // Kiểm tra con trực tiếp nếu chạm trúng khung viền bọc quanh icon unit trên HUD
         if (target instanceof Group) {
             for (Element child : ((Group) target).getChildren()) {
                 if (child instanceof Image) {
@@ -222,7 +221,6 @@ public final class UnitSkillInfo {
         return null;
     }
 
-    /** Mở trang hiển thị thông tin kỹ năng của Unit. */
     public static void showDialog(SkillProfile p) {
         if (p == null) return;
         try { Sounds.uiButton.play(); } catch (Throwable ignored) {}
@@ -233,7 +231,6 @@ public final class UnitSkillInfo {
         Table card = new Table(Styles.black8);
         card.margin(14f);
 
-        // Header: Icon Unit + Tên kỹ năng + Nhãn phân loại đòn đánh
         Table header = new Table();
         header.setBackground(Tex.whiteui);
         header.setColor(new Color(0.08f, 0.10f, 0.14f, 0.95f));
@@ -265,7 +262,6 @@ public final class UnitSkillInfo {
         card.add(header).growX().padBottom(10f).row();
         card.image(Tex.whiteui, p.accent).growX().height(2.5f).padBottom(10f).row();
 
-        // Nội dung chi tiết cuộn dọc
         Table body = new Table();
         body.top().left();
 
