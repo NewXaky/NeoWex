@@ -484,6 +484,38 @@ final class ChaosMode {
         return t;
     }
 
+    /** Một dòng thông tin thẻ (icon, tên, có lợi, bất lợi); onEquip != null thì thêm nút Trang bị. */
+    static Table cardRow(int c, Runnable onEquip) {
+        Card cd = DECK[c];
+        Table row = new Table(Styles.black6);
+        row.margin(8f);
+        Item it = itemOf(cd);
+        if (it != null) row.add(new Image(it.uiIcon)).size(40f).padRight(8f).top();
+        Table col = new Table(); col.left();
+        col.add(hex(cd.col) + name(c) + "[]").left().growX().wrap().width(230f).row();
+        col.add("[#4dff88]+ " + tr(cd.viPro, cd.enPro) + "[]").left().growX().wrap().width(230f).row();
+        col.add("[#ff4d4d]- " + tr(cd.viCon, cd.enCon) + "[]").left().growX().wrap().width(230f).row();
+        row.add(col).growX().left();
+        if (onEquip != null) row.button(tr("Trang bị", "Equip"), Styles.flatBordert, onEquip).size(96f, 44f).padLeft(8f);
+        return row;
+    }
+
+    /** Xem tất cả thẻ của chế độ Hỗn loạn (dùng được ngoài trận). */
+    static void openAll() {
+        BaseDialog d = new BaseDialog(tr("Tất cả thẻ Hỗn loạn", "All Chaos cards"));
+        d.addCloseButton();
+        Table body = new Table();
+        body.top().margin(8f);
+        body.add("[lightgray]" + tr("Mỗi 10 phút chọn 1 trong 3 thẻ (tối đa 3 lần). Thẻ áp dụng cho cả hai phe khi pilot được gắn thẻ đang được chiêu mộ.",
+            "Every 10 minutes pick 1 of 3 cards (max 3 times). Cards affect both teams while the pilot carrying them is recruited.") + "[]").left().growX().wrap().width(340f).padBottom(8f).row();
+        for (int i = 0; i < CARDS; i++) body.add(cardRow(i, null)).growX().pad(4f).row();
+        ScrollPane sp = new ScrollPane(body, Styles.noBarPane);
+        sp.setScrollingDisabled(false, false);
+        sp.setFlickScroll(true);
+        d.cont.add(sp).grow().maxWidth(Math.max(320f, Core.scene.getWidth() - 40f));
+        d.show();
+    }
+
     // ------------------------------------------------------------------ trang bị thẻ cho pilot
     static String equippedText(NewModePvp.St st, int pi) {
         if (st == null) return "";
@@ -507,22 +539,16 @@ final class ChaosMode {
         body.top().margin(8f);
         body.add("[lightgray]" + tr("Thẻ đã gắn vào pilot sẽ không thể tháo hay chuyển sang pilot khác. Thẻ chỉ có hiệu lực khi bạn đang chiêu mộ pilot này.",
             "A card equipped on a pilot cannot be removed or moved to another pilot. It only works while you have this pilot recruited.") + "[]").left().growX().wrap().width(340f).padBottom(8f).row();
-        String eq = equippedText(st, pi);
-        if (!eq.isEmpty()) body.add(eq).left().growX().wrap().width(340f).padBottom(8f).row();
+        boolean anyEq = false;
+        for (int[] e : st.chEq) {
+            if (e[0] != pi) continue;
+            if (!anyEq) { anyEq = true; body.add("[accent]" + tr("Thẻ đã trang bị cho pilot này", "Cards equipped on this pilot") + "[]").left().padBottom(4f).row(); }
+            body.add(cardRow(e[1], null)).growX().pad(4f).row();
+        }
+        if (anyEq) body.add("[accent]" + tr("Thẻ trong tay", "Cards in hand") + "[]").left().padTop(8f).padBottom(4f).row();
         if (st.chHand.isEmpty()) body.add("[lightgray]" + tr("Bạn chưa có thẻ nào để trang bị.", "You have no cards to equip.") + "[]").left().row();
         for (final int c : new ArrayList<>(st.chHand)) {
-            Card cd = DECK[c];
-            Table row = new Table(Styles.black6);
-            row.margin(8f);
-            Item it = itemOf(cd);
-            if (it != null) row.add(new Image(it.uiIcon)).size(40f).padRight(8f);
-            Table col = new Table(); col.left();
-            col.add(hex(cd.col) + name(c) + "[]").left().growX().wrap().row();
-            col.add("[#4dff88]+ " + tr(cd.viPro, cd.enPro) + "[]").left().growX().wrap().width(230f).row();
-            col.add("[#ff4d4d]- " + tr(cd.viCon, cd.enCon) + "[]").left().growX().wrap().width(230f).row();
-            row.add(col).growX().left();
-            row.button(tr("Trang bị", "Equip"), Styles.flatBordert, () -> { NewModePvp.send(REQ_EQUIP, pi + "|" + c); d.hide(); }).size(96f, 44f).padLeft(8f);
-            body.add(row).growX().pad(4f).row();
+            body.add(cardRow(c, () -> { NewModePvp.send(REQ_EQUIP, pi + "|" + c); d.hide(); })).growX().pad(4f).row();
         }
         ScrollPane sp = new ScrollPane(body, Styles.noBarPane);
         sp.setScrollingDisabled(false, false);

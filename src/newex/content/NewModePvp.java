@@ -5310,6 +5310,7 @@ public class NewModePvp {
         chBtn[0] = content.button("", Styles.flatBordert, () -> { chaos[0] = !chaos[0]; chBtn[0].setText(chaosLabel(chaos[0])); }).width(300).height(48).pad(6).get();
         chBtn[0].setText(chaosLabel(chaos[0]));
         content.row();
+        content.button(tr("Xem tất cả thẻ Hỗn loạn", "View all Chaos cards"), Styles.flatBordert, () -> ChaosMode.openAll()).width(300).height(48).pad(6).row();
         content.add("[lightgray]" + tr("Mỗi 10 phút chọn 1 trong 3 thẻ buff/debuff (tối đa 3 lần). Chỉ số và buff pháo không còn giới hạn. Áp dụng cho cả hai phe; cần mở lại map để có hiệu lực.",
             "Every 10 minutes pick 1 of 3 buff/debuff cards (max 3 times). Stats and turret buffs become unlimited. Affects both teams; reopen the map to apply.") + "[]").width(320).wrap().left().row();
         return () -> {
