@@ -1,22 +1,12 @@
 package newex;
 
 import arc.Core;
-import arc.Events;
 import arc.graphics.Color;
-import arc.graphics.g2d.TextureRegion;
-import arc.input.KeyCode;
-import arc.scene.Element;
-import arc.scene.Group;
-import arc.scene.style.TextureRegionDrawable;
-import arc.scene.event.InputEvent;
-import arc.scene.event.InputListener;
 import arc.scene.ui.Image;
 import arc.scene.ui.Label;
 import arc.scene.ui.ScrollPane;
 import arc.scene.ui.layout.Table;
 import arc.util.Align;
-import mindustry.Vars;
-import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.gen.Sounds;
 import mindustry.gen.Tex;
 import mindustry.type.UnitType;
@@ -88,7 +78,6 @@ public final class UnitSkillInfo {
 
     private static final Map<String, SkillProfile> profiles = new HashMap<>();
     private static final Map<Integer, DamageKind> lastHitKinds = new HashMap<>();
-    private static boolean listenerAttached = false;
 
     public static void markLastDamageBasic(int targetUnitId) {
         lastHitKinds.put(targetUnitId, DamageKind.BASIC_ATTACK);
@@ -146,84 +135,15 @@ public final class UnitSkillInfo {
     public static void init() {
         registerHonivery();
         registerArchueng();
-
-        if (Vars.headless) return;
-        Events.on(ClientLoadEvent.class, e -> attachSceneListener());
-        attachSceneListener();
     }
 
-    private static void attachSceneListener() {
-        if (listenerAttached || Core.scene == null) return;
-        listenerAttached = true;
-
-        Core.scene.root.addCaptureListener(new InputListener() {
-            @Override
-            public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button) {
-                Element target = event.targetActor;
-                if (target == null) return false;
-
-                if (isInsideSkillCastButton(target)) return false;
-
-                SkillProfile matched = findProfileFromElement(target);
-                if (matched != null) {
-                    event.stop();
-                    showDialog(matched);
-                    return true;
-                }
-                return false;
-            }
-        });
+    /** Có hồ sơ kỹ năng cho unit này không (dùng để hiện nút "i"). */
+    public static boolean has(String unitName) {
+        return unitName != null && profiles.containsKey(unitName);
     }
 
-    private static boolean isInsideSkillCastButton(Element el) {
-        Element cur = el;
-        while (cur != null) {
-            String n = cur.name;
-            if ("newex-honivery-skill-btn".equals(n)
-                || "newex-honivery-combo-btn".equals(n)
-                || "newex-skill-info-card".equals(n)
-                || "newex-archueng-skill".equals(n)
-                || "newex-archueng-cancel".equals(n)) {
-                return true;
-            }
-            cur = cur.parent;
-        }
-        return false;
-    }
-
-    private static SkillProfile findProfileFromElement(Element target) {
-        if (target instanceof Image) {
-            SkillProfile p = matchDrawable(((Image) target).getDrawable());
-            if (p != null) return p;
-        }
-        if (target instanceof Group) {
-            for (Element child : ((Group) target).getChildren()) {
-                if (child instanceof Image) {
-                    SkillProfile p = matchDrawable(((Image) child).getDrawable());
-                    if (p != null) return p;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static boolean sameRegion(TextureRegion a, TextureRegion b) {
-        if (a == null || b == null) return false;
-        if (a == b) return true;
-        return a.texture == b.texture && a.u == b.u && a.v == b.v && a.u2 == b.u2 && a.v2 == b.v2;
-    }
-
-    /** So sanh VUNG ANH that cua drawable (toString cua TextureRegionDrawable chi tra ve ten lop, khong dung duoc). */
-    private static SkillProfile matchDrawable(arc.scene.style.Drawable drawable) {
-        if (!(drawable instanceof TextureRegionDrawable)) return null;
-        TextureRegion reg = ((TextureRegionDrawable) drawable).getRegion();
-        if (reg == null) return null;
-        for (SkillProfile p : profiles.values()) {
-            UnitType ut = p.unitSupplier != null ? p.unitSupplier.get() : null;
-            if (ut == null) continue;
-            if (sameRegion(reg, ut.uiIcon) || sameRegion(reg, ut.fullIcon)) return p;
-        }
-        return null;
+    public static void showDialog(String unitName) {
+        showDialog(unitName == null ? null : profiles.get(unitName));
     }
 
     public static void showDialog(SkillProfile p) {
@@ -234,7 +154,6 @@ public final class UnitSkillInfo {
         dialog.addCloseButton();
 
         Table card = new Table(Styles.black8);
-        card.name = "newex-skill-info-card";
         card.margin(14f);
 
         Table header = new Table();
