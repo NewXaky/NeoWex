@@ -140,6 +140,7 @@ public class NexMod extends Mod {
         PerfCore.init();
         NexNet.init();
         NexFree.init();
+        MachineUi.init();
         ShowHp.init();
         FixSave.init();
         DamageDisplay.init();

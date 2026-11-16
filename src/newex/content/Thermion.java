@@ -12,6 +12,7 @@ import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
 import arc.input.KeyCode;
+import arc.math.Mathf;
 import arc.scene.ui.Label;
 import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Cell;
@@ -1894,13 +1895,23 @@ public class Thermion {
     static void beginCutscene(float x, float y, Color col) {
         CS.on = true; CS.age = 0; CS.stage = 0; CS.t = 0; CS.ox = x; CS.oy = y; CS.sx = Core.camera.position.x; CS.sy = Core.camera.position.y;
         CS.col = col; for (int i = 0; i < 4; i++) CS.stars[i] = 0;
-        try { Vars.control.input.logicCutscene = true; } catch (Throwable ignored) {}
+        try {
+            Vars.control.input.logicCutscene = true;
+            // giữ nguyên mức zoom hiện tại (mặc định logicCutsceneZoom = -1 sẽ ép zoom ra xa nhất rồi kéo lại -> giật hình)
+            float mn = Vars.renderer.minZoom, mx = Vars.renderer.maxZoom;
+            Vars.control.input.logicCutsceneZoom = Mathf.clamp((Vars.renderer.getScale() - mn) / Math.max(0.001f, mx - mn));
+        } catch (Throwable ignored) {}
     }
     static void endCutscene() {
         CS.on = false;
         try { Vars.control.input.logicCutscene = false; } catch (Throwable ignored) {}
     }
-    static void csCam(float x, float y) { Core.camera.position.set(x, y); }
+    /** InputHandler.update() mỗi khung hình tự lerp camera về logicCamPan khi logicCutscene bật (mặc định 0,0, tốc độ 0.1)
+     *  -> đánh nhau với camera của ta gây giật. Ghi đích của ta vào logicCamPan với tốc độ 1 để cả hai cùng một vị trí. */
+    static void csCam(float x, float y) {
+        try { Vars.control.input.logicCamPan.set(x, y); Vars.control.input.logicCamSpeed = 1f; } catch (Throwable ignored) {}
+        Core.camera.position.set(x, y);
+    }
     static void csUpdate() {
         // trạng thái bền: không có Thermion lv5 -> xóa; có sẵn lúc vào map (không có cutscene) -> hiện luôn đủ
         ThermionBuild b5 = anyLevel5();
@@ -1957,6 +1968,45 @@ public class Thermion {
         beamTo(CS.ox, CS.oy, hx, hy, 4 * (1 - 0.5f * p), CS.col); bloom(hx, hy, 26, CS.col, 0.9f);
         Draw.reset(); Draw.z(z);
     }
+    // ---------- hố đen ở 4 góc (thay cho ngôi sao 2 cánh): hút nhẹ (lực cấp 1) + 1000 sát thương/giây lên kẻ địch trong lõi ----------
+    static final float HOLE_IN = 28f, HOLE_OUT = 140f, HOLE_DMG_RAD = TS * 6, HOLE_PULL_RAD = TS * 12, HOLE_PULL = 0.35f, HOLE_DPS = 1000f, HOLE_TICK = 10f;
+    static float holeTimer = 0;
+    static ThermionBuild holeOwner;
+    static final arc.func.Cons<mindustry.gen.Unit> holePull = u -> {
+        if (u == null || holeOwner == null || !u.targetable(holeOwner.team)) return;
+        float dx = holeX - u.x, dy = holeY - u.y, d = Math.max(Mathf.len(dx, dy), 1f);
+        float f = (1f - Math.min(d / HOLE_PULL_RAD, 1f)) * HOLE_PULL * holePower * Time.delta / d;
+        u.vel.add(dx * f, dy * f); u.vel.limit(5f);
+    };
+    static final arc.func.Cons<mindustry.gen.Unit> holeHit = u -> {
+        if (u != null && holeOwner != null && u.targetable(holeOwner.team)) u.damagePierce(HOLE_DPS * HOLE_TICK / 60f);
+    };
+    static float holeX, holeY, holePower;
+    /** hút + gây sát thương ở 4 góc; chỉ chạy ở máy chủ/đơn, và chỉ khi các hố đen đã hiện xong (sau cutscene hoặc từng góc đã bung) */
+    static void holesUpdate() {
+        if (Vars.net.client() || !Vars.state.isGame() || Vars.state.isPaused()) return;
+        ThermionBuild b = anyLevel5();
+        if (b == null) return;
+        holeOwner = b; holeTimer += Time.delta;
+        boolean hit = holeTimer >= HOLE_TICK; if (hit) holeTimer -= HOLE_TICK;
+        for (int i = 0; i < 4; i++) {
+            float pop = markShown ? 1 : (CS.on ? CS.stars[i] : (CS.pending != null ? 0 : 1));
+            if (pop < 0.5f) continue;
+            float[] c = csCorner(i); holeX = c[0]; holeY = c[1]; holePower = pop;
+            Units.nearbyEnemies(b.team, c[0], c[1], HOLE_PULL_RAD, holePull);
+            if (hit) Units.nearbyEnemies(b.team, c[0], c[1], HOLE_DMG_RAD, holeHit);
+        }
+    }
+    static void drawCornerHole(float x, float y, float e, int i) {
+        float pz = Draw.z();
+        newex.NexBlackHole.add(x, y, HOLE_IN * 0.5f * e, HOLE_OUT * 1.3f * e, Math.min(1f, e + 0.1f), 1f);
+        // viền sáng mảnh quanh lõi để thấy rõ hố đen ngay cả khi shader tắt
+        Draw.z(newex.NexBlackHole.CORE_Z + 0.5f); additive();
+        float pulse = 0.85f + 0.15f * (float) Math.sin(Time.time * 0.12 + i * 1.7);
+        Draw.color(markCol); Draw.alpha(0.55f * pulse * e); Lines.stroke(2.2f); Lines.circle(x, y, HOLE_IN * 0.9f * e);
+        Draw.alpha(0.25f * pulse * e); Lines.stroke(1.2f); Lines.circle(x, y, HOLE_IN * 1.5f * e);
+        Draw.blend(); Draw.reset(); Draw.z(pz);
+    }
     /** vẽ mỗi khung hình: 4 ngôi sao ở 4 góc, cho tới khi không còn Thermion level 5 */
     static void drawWorldMarks() {
         if (Vars.headless || !Vars.state.isGame()) return;
@@ -1968,8 +2018,9 @@ public class Thermion {
             float pop = markShown ? 1 : (CS.on ? CS.stars[i] : (CS.pending != null ? 0 : 1));
             if (pop <= 0) continue;
             float[] c = csCorner(i); float len = (float) (STAR_LEN * (1 - Math.pow(1 - pop, 3)));
-            if (Math.abs(c[0] - cx) > hw + len * 1.8f || Math.abs(c[1] - cy) > hh + len * 1.8f) continue;
-            drawWingStar(c[0], c[1], len, t, i);
+            if (Math.abs(c[0] - cx) > hw + HOLE_OUT * 1.4f || Math.abs(c[1] - cy) > hh + HOLE_OUT * 1.4f) continue;
+            float e = (float) (1 - Math.pow(1 - pop, 3));
+            drawCornerHole(c[0], c[1], e, i);
         }
         Draw.z(pz); Draw.reset();
     }
@@ -1994,7 +2045,7 @@ public class Thermion {
     public static void init() {
         if (inited) return; inited = true;
         Events.on(WorldLoadEvent.class, e -> { CS.pending = null; if (CS.on) endCutscene(); markShown = false; });
-        Events.run(Trigger.update, Thermion::csUpdate);
+        Events.run(Trigger.update, () -> { csUpdate(); holesUpdate(); });
         Events.on(ContentInitEvent.class, e -> {
             thermion = Vars.content.block("newex-thermion");
             if (thermion == null) { Log.err("[Thermion] không tìm thấy block newex-thermion — kiểm tra content/blocks/thermion.hjson"); return; }

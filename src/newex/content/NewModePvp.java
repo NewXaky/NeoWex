@@ -377,10 +377,10 @@ public class NewModePvp {
         new Stat("Sát thương quái spawn ngẫu nhiên", "Random-spawn monster damage", l -> "+" + (l * WRAND_DMG_PCT) + "% " + tr("sát thương khi đánh trúng quái từ đợt spawn ngẫu nhiên", "damage when hitting monsters from random spawn waves"))
     };
     /** Hai chi so dau (Mau, Giap) khong gioi han; JS: STATS[i].mx khong ton tai nen cac chi so khac = STAT_MAX. */
-    static boolean statUnlimited(int i) { return i == 0 || i == 1; }
+    static boolean statUnlimited(int i) { return i == 0 || i == 1 || ChaosMode.unlimited(); }
     static int statMax(int i) { return statUnlimited(i) ? Integer.MAX_VALUE : STAT_MAX; }
     static String statMaxLabel(int i) { return statUnlimited(i) ? "\u221e" : String.valueOf(STAT_MAX); }
-    static float armorCut(int l) { return Math.min(ARM_CUT_MAX, l * ARM_CUT); }
+    static float armorCut(int l) { return ChaosMode.armorCutCap(l * ARM_CUT, ARM_CUT_MAX); }
 
     // ===== tuong / linh =====
     static Block[] wallBlocks = null;
@@ -438,6 +438,8 @@ public class NewModePvp {
         ArrayList<String> d = new ArrayList<>();
         ArrayList<Integer> p = new ArrayList<>();
         Object eqC, hs, xns;
+        /** Hỗn loạn: vòng thẻ đã chọn, số thẻ đã chọn, thẻ trong tay, thẻ đã gắn {pilot, thẻ}; chs = cache chỉ số +thẻ (không lưu). */
+        int chRound = 0, chPicks = 0; ArrayList<Integer> chHand = new ArrayList<>(); ArrayList<int[]> chEq = new ArrayList<>(); int[] chs;
         void padStats() { if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length); }
     }
 
@@ -659,7 +661,7 @@ public class NewModePvp {
         if (st.lv >= maxLevel()) return;
         if (st.pi == PILOT_XIKI) amount = amount * (1 + XIKI_EXP_PCT);
         if (st.pi == PILOT_HIST) amount = amount * (1 + HIST_STAT_PCT);
-        amount = amount * expBonusMul(pl);
+        amount = amount * expBonusMul(pl) * ChaosMode.expMul();
         st.exp += amount;
         if (!quiet) notifyExp(pl, amount);
         int before = st.lv, up = 0;
@@ -707,7 +709,7 @@ public class NewModePvp {
                     .append(",\"exp\":").append(Float.isNaN(s.exp) ? 0f : s.exp).append(",\"pts\":").append(s.pts).append(",\"u\":").append(s.u).append(",\"s\":");
                 arr(sb, s.s); sb.append(",\"d\":"); strs(sb, s.d); sb.append(",\"p\":"); ints(sb, s.p);
                 sb.append(",\"b\":").append(s.b).append(",\"pi\":").append(s.pi).append(",\"kc\":"); arr(sb, s.kc);
-                sb.append(",\"w\":").append(s.w).append(",\"wl\":").append(s.wl).append(",\"cmd\":").append(s.cmd).append('}');
+                sb.append(",\"w\":").append(s.w).append(",\"wl\":").append(s.wl).append(",\"cmd\":").append(s.cmd).append(",\"ch\":\"").append(ChaosMode.enc(s)).append("\"}");
             }
             tags.put(TAG_STORE, sb.append('}').toString());
         } catch (Throwable err) { logOnce("persiststore", "persist store failed: " + err, false); }
@@ -732,6 +734,7 @@ public class NewModePvp {
         int[] kc = readInts(o.get("kc"), 3, null);
         if (kc != null) s.kc = kc;
         s.w = o.getInt("w", WALL_NONE); s.wl = o.getInt("wl", 0); s.cmd = o.getInt("cmd", 0);
+        ChaosMode.dec(s, o.getString("ch", ""));
         return s;
     }
     static void restoreStore() {
@@ -757,15 +760,17 @@ public class NewModePvp {
             sb.append('"').append(e.getKey()).append("\":[").append(s.lv).append(',').append((int) Math.floor(s.exp)).append(',').append(s.pts).append(',');
             arr(sb, s.s); sb.append(','); strs(sb, s.d); sb.append(',').append(s.u).append(','); ints(sb, s.p);
             sb.append(',').append(s.b).append(',').append(s.pi).append(','); arr(sb, s.kc);
-            sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(']');
+            sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\"]");
         }
-        sb.append("}}");
+        sb.append("},\"cr\":").append(ChaosMode.round).append(",\"th\":").append(ChaosMode.hideFlag ? 1 : 0).append("}");
         if (Vars.net.server()) { try { Call.clientPacketReliable(SYNC_KIND, sb.toString()); } catch (Throwable err) {} }
         stVer++;
     }
     static void onSync(String content) {
         try {
-            JsonValue d = new JsonReader().parse(content).get("d");
+            JsonValue root0 = new JsonReader().parse(content);
+            JsonValue d = root0.get("d");
+            ChaosMode.round = root0.getInt("cr", 0); ChaosMode.hideFlag = root0.getInt("th", 0) == 1;
             HashMap<Integer, St> n = new HashMap<>();
             for (JsonValue a = d.child; a != null; a = a.next) {
                 St s = new St();
@@ -779,6 +784,7 @@ public class NewModePvp {
                 int[] kc = readInts(a.get(9), 3, null);
                 if (kc != null) s.kc = kc;
                 s.cmd = a.get(10).asInt(); s.w = a.get(11).asInt(); s.wl = a.get(12).asInt();
+                if (a.size > 13) ChaosMode.dec(s, a.get(13).asString());
                 n.put(Integer.parseInt(a.name), s);
             }
             byId = n;
@@ -1075,6 +1081,7 @@ public class NewModePvp {
         return spotFree(tx, ty, blk.size, off);
     }
     static int placeTurret(Player pl, Def def, int tx, int ty) {
+        if (ChaosMode.noBuild()) return -1;
         CoreBlock.CoreBuild core = pl.team().core();
         if (core == null) return -1;
         if (!canBuildAt(core, enemyCores(core.team), def.block, tx, ty)) return -1;
@@ -1274,6 +1281,7 @@ public class NewModePvp {
     static final ArrayList<Def> EMPTY_DEFS = new ArrayList<>();
     static ArrayList<Def> equipList(St st, Defs defs) {
         if (st == null || st.p.size() != st.d.size()) return EMPTY_DEFS;
+        if (ChaosMode.noMount()) return EMPTY_DEFS;
         EquipSum c = equipSummary(st);
         if (c != null && c.defsReady) return c.eqList;
         ArrayList<Def> out = new ArrayList<>();
@@ -1745,6 +1753,7 @@ public class NewModePvp {
         Aim ast = null;
         for (int k = 0; k < n; k++) {
             Def def = list.get(k);
+            if (ChaosMode.silenced(def.id) || ChaosMode.skipFrame()) continue;   // Hỗn loạn: thẻ Thể trạng khổng lồ / Thời gian ngừng trôi
             String key = pl.id + ":" + pfx + k + ":" + def.id;
             MpOut mp = mountPos(u, k, n);
             MState stt = mstate(key, u);
@@ -2117,6 +2126,7 @@ public class NewModePvp {
     }
     static void startCoreDeath(CoreBlock.CoreBuild cb) {
         if (coreDying.containsKey(cb.id)) return;
+        if (ChaosMode.coreExtraLife(cb)) return;
         CoreDie d = new CoreDie(); d.b = cb; coreDying.put(cb.id, d);
         coreDeathFx(cb.x, cb.y, CORE_DIE_TICKS);
         try { if (Vars.net.server()) Call.clientPacketReliable(CORE_KIND, Math.round(cb.x) + "|" + Math.round(cb.y) + "|" + CORE_DIE_TICKS); } catch (Throwable err) {}
@@ -2332,6 +2342,10 @@ public class NewModePvp {
     // ===== chi so hieu dung =====
     static int[] effectiveStats(St st) {
         if (st == null) return null;
+        return ChaosMode.adjustStats(st, effectiveStatsBase(st));
+    }
+    static int[] effectiveStatsBase(St st) {
+        if (st == null) return null;
         if (st.pi == PILOT_HIST) {
             int[] h = (int[]) st.hs;
             if (h == null) { h = st.s.clone(); st.hs = h; }
@@ -2379,7 +2393,7 @@ public class NewModePvp {
         if (r == null || r.u != unit.id || r.mh != unit.maxHealth || hp >= r.hp - 0.01f) return;
         if (st.lv < XAKY_MIN_LEVEL || unit.dead) return;
         Float at = xakyCdAt.get(id);
-        if (at != null && Time.time >= at && Time.time - at < XAKY_CD) return;
+        if (at != null && Time.time >= at && Time.time - at < ChaosMode.cd(XAKY_CD)) return;
         float ang = unit.vel.len() > 0.1f ? unit.vel.angle() : unit.rotation;
         float d = xakyDashDist(unit, ang);
         if (d < 4) return;
@@ -2708,7 +2722,7 @@ public class NewModePvp {
         if (vanhauShieldOn.get(id) != null && vanhauShieldOn.get(id)) vanhauShieldOn.put(id, false);
         if (unit.health >= unit.maxHealth * VANHAU_TRIGGER_HP) return;
         Float at = vanhauCdAt.get(id);
-        if (at != null && Time.time >= at && Time.time - at < VANHAU_CD) return;
+        if (at != null && Time.time >= at && Time.time - at < ChaosMode.cd(VANHAU_CD)) return;
         VanhauField f = new VanhauField();
         f.uid = unit.id; f.hp = unit.maxHealth * VANHAU_SHIELD_PCT; f.max = f.hp; f.r = vanhauR(unit); f.fl = 0; f.st = 0;
         vanhauField.put(id, f);
@@ -2729,7 +2743,7 @@ public class NewModePvp {
         int n = n0 == null ? 0 : n0;
         if (n >= 2) {
             Float at = empixCdAt.get(id);
-            if (at != null && Time.time >= at && Time.time - at < EMPIX_HEAL_CD) return 2;
+            if (at != null && Time.time >= at && Time.time - at < ChaosMode.cd(EMPIX_HEAL_CD)) return 2;
             empixLow.put(id, 0); n = 0;
         }
         return n;
@@ -2829,7 +2843,7 @@ public class NewModePvp {
         boolean isPl = pl != null;
         float tHp = unit.type.health;
         if (isPl && unit.type == UnitTypes.reign) tHp *= REIGN_HP_MUL;
-        float hpT = (tHp * (1 + s[0] * HP_PCT / 100f) + s[0] * HP_FLAT) * (1 + Math.min(ROLE_HP_MAX, rc.brl * ROLE_HP_PCT) / 100f);
+        float hpT = (tHp * (1 + s[0] * HP_PCT / 100f) + s[0] * HP_FLAT) * (1 + ChaosMode.capRole(ROLE_HP_MAX, rc.brl * ROLE_HP_PCT) / 100f);
         int pi = isPl ? stOwn.pi : 0;
         boolean empixOn = pi == PILOT_EMPIX;
         if (empixOn) hpT *= 1 + EMPIX_HP_PCT;
@@ -2837,6 +2851,7 @@ public class NewModePvp {
         if (xakyOn) hpT *= XAKY_HP_MUL;
         boolean histOn = pi == PILOT_HIST;
         if (histOn) hpT *= 1 + HIST_STAT_PCT;
+        hpT *= ChaosMode.hpMul();
         boolean xakyNeoOn = pi == PILOT_XAKYNEO, vanhauOn = pi == PILOT_VANHAU;
         if (Math.abs(unit.maxHealth - hpT) > 0.5f) {
             float diff = hpT - unit.maxHealth;
@@ -2846,11 +2861,12 @@ public class NewModePvp {
 
         unit.armor = (unit.type.armor + s[1] * ARM_FLAT) * (1 + rc.def * ROLE_ARM_PCT / 100f) + rc.def * ROLE_ARM_FLAT;
         if (histOn) unit.armor *= 1 + HIST_STAT_PCT;
-        float cut = Math.min((float) ROLE_CUT_CAP, armorCut(s[1]) + rc.def * ROLE_CUT_PCT);
+        float cut = ChaosMode.capCut((float) ROLE_CUT_CAP, armorCut(s[1]) + rc.def * ROLE_CUT_PCT);
+        if (ChaosMode.noArmor()) { unit.armor = 0f; cut = 0f; }
         if (cut > 0) unit.healthMultiplier *= 1 / (1 - cut / 100f);
 
-        float dm = (1 + s[2] * ATK_PCT / 100f) * (1 + Math.min(ROLE_ATK_MAX, rc.atk * ROLE_ATK_PCT) / 100f);
-        if (s[5] > 0 && Math.random() < s[5] * 0.02) dm *= 1.5f + s[6] * 0.12f;
+        float dm = (1 + s[2] * ATK_PCT / 100f) * (1 + ChaosMode.capRole(ROLE_ATK_MAX, rc.atk * ROLE_ATK_PCT) / 100f);
+        dm *= ChaosMode.critMul(s[5], s[6]);
         if (empixOn) dm *= 1 + EMPIX_ATK_PCT;
         if (histOn) dm *= 1 + HIST_STAT_PCT;
         if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT + xakyNeoRampPct(unit, pl);
@@ -2967,8 +2983,9 @@ public class NewModePvp {
         if (s[2] > 0) { try { b.damage += s[2] * ATK_FLAT; } catch (Throwable err) {} }
         if (!isUnitOwner) {
             try {
-                if (s[5] > 0 && Math.random() < s[5] * 0.02) b.damage *= 1.5f + s[6] * 0.12f;
+                b.damage *= ChaosMode.critMul(s[5], s[6]);
                 if (s[10] > 0) b.damage *= 1 + s[10] * DMG_PER_ARMOR * (s[1] * ARM_FLAT);
+                b.damage *= ChaosMode.builtDmgMul();
             } catch (Throwable err) {}
         }
         boolean histPierce = isUnitOwner && st.pi == PILOT_HIST;
@@ -2985,6 +3002,7 @@ public class NewModePvp {
         for (St st : byId.values()) {
             int[] s = st.s;
             if (s[2] > 0 || s[5] > 0 || s[7] > 0 || s[10] > 0 || s[11] > 0) return true;
+            if (ChaosMode.has(ChaosMode.C_BDMG)) return true;
             if (malignEquipped(st)) return true;
             if (st.pi == PILOT_HIST) return true;
         }
@@ -3429,7 +3447,7 @@ public class NewModePvp {
         if (type == null || pl.team().core() == null) return;
         Float t0 = barrackT.get(pl.id);
         float t = t0 == null ? cfg.sec * 60f : t0;
-        t -= Time.delta;
+        t -= Time.delta * ChaosMode.barrackMul();
         if (t > 0) { barrackT.put(pl.id, t); return; }
         ArrayList<Integer> alive = aliveSoldiers(pl.id);
         int room = cfg.cap + wallBonus(st) - alive.size();
@@ -4674,7 +4692,7 @@ public class NewModePvp {
         try {
             St ost = byId.get(apid);
             int[] os = ost != null ? ost.s : null;
-            if (os != null && os[9] > 0 && tgt.maxHealth > 0) { float ex = tgt.maxHealth * os[9] * DMG_PCT_MAXHP / 100f; try { tgt.damagePierce(ex); } catch (Throwable err) { tgt.damage(ex); } }
+            if (os != null && os[9] > 0 && tgt.maxHealth > 0) { float ex = tgt.maxHealth * ChaosMode.pctMaxHp(os[9], DMG_PCT_MAXHP) / 100f; try { tgt.damagePierce(ex); } catch (Throwable err) { tgt.damage(ex); } }
             if (os != null && os[13] > 0 && tgt.team == Vars.state.rules.waveTeam) { float exw = b.damage * os[13] * WRAND_DMG_PCT / 100f; try { tgt.damagePierce(exw); } catch (Throwable err) { tgt.damage(exw); } }
         } catch (Throwable err) {}
         try {
@@ -4894,6 +4912,7 @@ public class NewModePvp {
         bonusWaveT = 0; matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldRecs.clear(); shieldEnded = false; shieldSyncT = 0;
         shieldView = new ShieldView(); shieldFlash.clear(); shieldSeenHit.clear();
         vanhauField.clear();
+        ChaosMode.reset();
         resetUiState();
         respawnLock.clear(); deadUnit.clear(); spawnBuff.clear(); swapPending.clear(); prevUnit.clear(); extPvp.clear();
         barrackT.clear(); rally.clear(); soldiers.clear(); soldierOwner.clear(); mountSt.clear(); lastHitBy.clear(); teamHit.clear();
@@ -4948,6 +4967,7 @@ public class NewModePvp {
     }
     static final String BAD_SPOT = "[scarlet]Vị trí không hợp lệ: phải là nền đặt lõi còn trống ở nửa map phe ta!";
     static void defineRequests() {
+        ChaosMode.define();
         onReq(REQ_UP, 60, (player, payload) -> {
             St st = reqState(player); if (st == null) return;
             Integer k = leadInt(payload);
@@ -5012,6 +5032,8 @@ public class NewModePvp {
                 return;
             }
             if (cur >= 0 || cur == EQUIPPED) return;
+            if (mode.equals("e") && ChaosMode.noMount()) { toast(player, tr("[scarlet]Thẻ Pháo hủy diệt: không thể lắp pháo lên unit!", "[scarlet]Doom turrets card: turrets cannot be mounted on units!")); return; }
+            if (mode.equals("b") && ChaosMode.noBuild()) { toast(player, tr("[scarlet]Thẻ Năm mạng: không thể xây thêm pháo!", "[scarlet]Five lives card: no more turrets can be built!")); return; }
             if (mode.equals("e")) {
                 if (!d.equip || !d.mount) { toast(player, tr("[scarlet]Pháo này không thể gắn lên unit!", "[scarlet]This turret cannot be mounted!")); return; }
                 if (equipCount(st) >= equipSlots(st)) { toast(player, tr("[scarlet]Hết ô gắn!", "[scarlet]No free mount slot!")); return; }
@@ -5205,6 +5227,7 @@ public class NewModePvp {
         winning = false; seenBoth = false; byId = new HashMap<>(); teamsCache = null;
         mindustry.game.Rules r = Vars.state.rules;
         r.tags.put(TAG_ACTIVE, "1");
+        ChaosMode.stampTag(); ChaosMode.reset();
         store = new LinkedHashMap<>();
         r.tags.put(TAG_STORE, "{}");
         matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldEnded = false;
@@ -5258,6 +5281,7 @@ public class NewModePvp {
         content.add(t).pad(5).row();
         return f;
     }
+    static String chaosLabel(boolean on) { return tr("Hỗn loạn: ", "Chaos: ") + (on ? tr("[green]BẬT[]", "[green]ON[]") : tr("[scarlet]TẮT[]", "[scarlet]OFF[]")); }
     static int clampParse(TextField f, int def, int min, int max) {
         Integer v = leadInt(f.getText());
         int x = (v == null || v < min) ? def : v;
@@ -5280,7 +5304,16 @@ public class NewModePvp {
         final TextField mlField = numField(content, tr("Cấp tối đa (PvP):", "Max level (PvP):"), maxLevel(), 3, tr("cấp (1 - " + LIMIT_MAXLV + ", mặc định " + MAX_LEVEL + ")", "level (1 - " + LIMIT_MAXLV + ", default " + MAX_LEVEL + ")"), false);
         final TextField shField = numField(content, tr("Thời gian khiên bất tử của lõi đầu trận (phút, 0 = tắt):", "Core invincible shield time at match start (minutes, 0 = off):"), shieldMinutes(), 4,
             tr("phút (0 - " + LIMIT_SHIELD_MIN + ", mặc định " + DEFAULT_SHIELD_MIN + "; " + LIMIT_SHIELD_MIN + " = lõi bất tử vĩnh viễn)", "min (0 - " + LIMIT_SHIELD_MIN + ", default " + DEFAULT_SHIELD_MIN + "; " + LIMIT_SHIELD_MIN + " = core invincible forever)"), true);
+        final boolean[] chaos = {Core.settings.getBool(ChaosMode.KEY, false)};
+        final TextButton[] chBtn = new TextButton[1];
+        content.add(tr("[scarlet]-- CHẾ ĐỘ HỖN LOẠN --[]", "[scarlet]-- CHAOS MODE --[]")).padTop(12).row();
+        chBtn[0] = content.button("", Styles.flatBordert, () -> { chaos[0] = !chaos[0]; chBtn[0].setText(chaosLabel(chaos[0])); }).width(300).height(48).pad(6).get();
+        chBtn[0].setText(chaosLabel(chaos[0]));
+        content.row();
+        content.add("[lightgray]" + tr("Mỗi 10 phút chọn 1 trong 3 thẻ buff/debuff (tối đa 3 lần). Chỉ số và buff pháo không còn giới hạn. Áp dụng cho cả hai phe; cần mở lại map để có hiệu lực.",
+            "Every 10 minutes pick 1 of 3 buff/debuff cards (max 3 times). Stats and turret buffs become unlimited. Affects both teams; reopen the map to apply.") + "[]").width(320).wrap().left().row();
         return () -> {
+            Core.settings.put(ChaosMode.KEY, chaos[0]);
             Core.settings.put(KEY_SHIELD, clampParse(shField, DEFAULT_SHIELD_MIN, 0, LIMIT_SHIELD_MIN));
             Core.settings.put(KEY_MAXLV, clampParse(mlField, MAX_LEVEL, 1, LIMIT_MAXLV));
             Core.settings.put(KEY_EXP, clampParse(expField, DEFAULT_EXP, 0, LIMIT_EXP));
@@ -5836,6 +5869,12 @@ public class NewModePvp {
         Table info = new Table();
         info.left();
         info.add(pilotTag(st, d)).left().wrap().growX().minWidth(0).row();
+        if (ChaosMode.on()) {
+            String et = ChaosMode.equippedText(st, pi);
+            if (!et.isEmpty()) info.add(et).left().wrap().growX().minWidth(0).row();
+            final String pn = d.name;
+            info.button(tr("Trang bị thẻ", "Equip card") + (st.chHand.isEmpty() ? "" : " (" + st.chHand.size() + ")"), Styles.flatBordert, () -> ChaosMode.openEquip(pi, pn)).growX().height(btnH() * 0.8f).padBottom(4).row();
+        }
         info.button(tr("Chi tiết thông tin", "Details"), Styles.flatBordert, () -> openPilotInfo(pi)).growX().height(btnH() * 0.8f).padTop(4);
         box.add(info).growX().minWidth(0).top();
         box.row();
@@ -5978,6 +6017,8 @@ public class NewModePvp {
         UnitType ut = u.type;
         int[] s = st.s;
         out.add(new String[]{tr("Unit đang điều khiển", "Controlled unit"), "[accent]" + ut.localizedName + "[]  " + tr("(cấp ", "(tier ") + activeTier(st) + ")"});
+        out.add(new String[]{tr("Pilot đang chiêu mộ", "Recruited pilot"), "[accent]" + ChaosMode.pilotName(st.pi) + "[]" + (ChaosMode.on() ? "  [lightgray]" + ChaosMode.equippedText(st, st.pi) + "[]" : "")});
+        if (ChaosMode.on()) out.add(new String[]{tr("Thẻ Hỗn loạn đang hoạt động", "Active Chaos cards"), ChaosMode.activeText()});
         out.add(new String[]{tr("Máu", "Health"), Math.round(u.health) + " / " + Math.round(u.maxHealth) + "  [lightgray]" + tr("(gốc ", "(base ") + Math.round(ut.health) + ")[]"});
         if (st.pi == PILOT_VANHAU) {
             Player vp = null;
@@ -5998,11 +6039,11 @@ public class NewModePvp {
         out.add(new String[]{tr("Tấn công", "Attack"), numStr((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + tr(" sát thương/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(baseAttack(ut)) + ")  x" + numStr(u.damageMultiplier) + "[]"});
         out.add(new String[]{tr("Tốc độ di chuyển", "Move speed"), numStr(ut.speed * u.speedMultiplier) + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.speed) + ")  x" + numStr(u.speedMultiplier) + "[]"});
         out.add(new String[]{tr("Tốc độ bắn", "Fire rate"), "x" + numStr(u.reloadMultiplier)});
-        out.add(new String[]{tr("Tỉ lệ bạo kích", "Crit chance"), (s[5] * 2) + "%"});
-        out.add(new String[]{tr("Sát thương bạo kích", "Crit damage"), (150 + s[6] * 12) + "%"});
+        out.add(new String[]{tr("Tỉ lệ bạo kích", "Crit chance"), numStr(ChaosMode.critChanceShown(s[5])) + "%"});
+        out.add(new String[]{tr("Sát thương bạo kích", "Crit damage"), numStr(ChaosMode.critDmgShown(s[5], s[6])) + "%"});
         out.add(new String[]{tr("Xuyên giáp", "Armor pierce"), (s[7] * 5) + "%"});
         out.add(new String[]{tr("Hồi máu", "Regeneration"), numStr(u.maxHealth * s[8] * REGEN_PCT / 100) + tr(" máu/giây (khi dưới 99%)", " HP/s (below 99%)")});
-        out.add(new String[]{tr("Sát thương % máu tối đa", "Max HP % damage"), "+" + numStr(s[9] * DMG_PCT_MAXHP) + tr("% máu tối đa mục tiêu/lần trúng", "% target max HP per hit")});
+        out.add(new String[]{tr("Sát thương % máu tối đa", "Max HP % damage"), "+" + numStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + tr("% máu tối đa mục tiêu/lần trúng", "% target max HP per hit")});
         out.add(new String[]{tr("Sát thương theo giáp", "Armor-based damage"), "+" + numStr(s[10] * DMG_PER_ARMOR * u.armor * 100) + "%"});
         out.add(new String[]{tr("Đẩy lùi", "Knockback"), "+" + numStr(s[11] * KNOCK_PER)});
         out.add(new String[]{tr("Pháo gắn", "Mounted turrets"), "unit " + equipCount(st) + "/" + equipSlots(st) + tr(", xây ", ", built ") + builtCount(st) + "/" + maxBuilt()});
@@ -7206,6 +7247,7 @@ public class NewModePvp {
         initUnitListUi();
         initExpUi();
         initClientUi();
+        ChaosMode.init();
     }
 
 }
