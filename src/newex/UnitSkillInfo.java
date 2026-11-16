@@ -7,6 +7,7 @@ import arc.graphics.g2d.TextureRegion;
 import arc.input.KeyCode;
 import arc.scene.Element;
 import arc.scene.Group;
+import arc.scene.style.TextureRegionDrawable;
 import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.ui.Image;
@@ -23,6 +24,7 @@ import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
 import newex.content.ArchuengPvp;
 import newex.content.Honivery;
+import newex.content.HoniveryPvp;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -109,15 +111,19 @@ public final class UnitSkillInfo {
         register(new SkillProfile(
             "Honivery",
             () -> Honivery.honivery,
-            "TINH QUANG TRẢM",
-            DamageKind.BASIC_ATTACK,
+            "TINH QUANG TRẢM & COMBO CHÉM 8 NHÁT",
+            DamageKind.SKILL_ATTACK,
             Color.valueOf("D0C2FF"),
-            "8.0 giây",
-            "90% Tấn Công + 10% Máu Hiện Tại (Nhân với % Nội Tại)",
-            "Tụ năng lượng vào Kiếm Sao 4 cánh và phóng ra sóng kiếm hình quạt 3 tầng xé rách không gian phía trước. Đòn chém được tính là Đòn Đánh Thường của unit.",
-            "Tinh Hồn Thôn Phệ: Khi dùng kỹ năng tiêu diệt mục tiêu, tăng vĩnh viễn +1% sát thương cho kỹ năng này (tối đa 999%), đồng thời cứ mỗi 10.000 HP tối đa của mục tiêu bị hạ gục sẽ cộng thêm +1%.",
+            "Tinh Quang Trảm: 8.0 giây | Combo 8 nhát: 2.75 giây (1.75 giây tung chiêu + 1 giây hồi)",
+            "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại)\n"
+                + "Combo 8 nhát: mỗi nhát tăng dần từ 50% đến 120% Tấn Công, nhát cuối chém vòng 360°\n"
+                + "Nhát chém đặc biệt (lốc xoáy phong kiếm ngọc lục bảo): 430% Tấn Công",
+            "[Kỹ năng 1 - Tinh Quang Trảm] Tụ năng lượng vào Kiếm Sao 4 cánh và phóng ra sóng kiếm hình quạt 3 tầng xé rách không gian phía trước. Được tính là Đòn Đánh Kỹ Năng.\n"
+                + "[Kỹ năng 2 - Combo] Tung liên tiếp 8 nhát chém song tinh vân, nhát cuối là vòng chém 360°. Trong lúc tung có cơ hội phóng nhát chém đặc biệt: 2% khi bấm, +10% mỗi nhát chém trúng (tổng 12%), và chắc chắn phóng 1 nhát về phía mục tiêu khi hạ gục nó.",
+            "Tinh Hồn Thôn Phệ: Khi dùng Tinh Quang Trảm tiêu diệt mục tiêu, tăng vĩnh viễn +1% sát thương cho kỹ năng này (tối đa 999%), đồng thời cứ mỗi 10.000 HP tối đa của mục tiêu bị hạ gục sẽ cộng thêm +1%.",
             () -> "Cộng dồn hiện tại: [accent]+" + Honivery.getPassiveBonusPct() + "%[] / 999%",
-            () -> "PC: Nhấn phím [accent][" + Honivery.getSkillKey().value + "][] hoặc bấm nút Skill | Mobile: Bấm nút CHÉM"
+            () -> "PC: Tinh Quang Trảm - phím [accent][" + Honivery.getSkillKey().value + "][] | Combo 8 nhát - phím [accent][" + HoniveryPvp.getSkillKey().value + "][] (đổi trong Cài đặt -> Phím kĩ năng)\n"
+                + "Mobile: nút CHÉM = Tinh Quang Trảm | nút COMBO = Combo 8 nhát"
         ));
     }
 
@@ -174,6 +180,8 @@ public final class UnitSkillInfo {
         while (cur != null) {
             String n = cur.name;
             if ("newex-honivery-skill-btn".equals(n)
+                || "newex-honivery-combo-btn".equals(n)
+                || "newex-skill-info-card".equals(n)
                 || "newex-archueng-skill".equals(n)
                 || "newex-archueng-cancel".equals(n)) {
                 return true;
@@ -199,19 +207,21 @@ public final class UnitSkillInfo {
         return null;
     }
 
+    private static boolean sameRegion(TextureRegion a, TextureRegion b) {
+        if (a == null || b == null) return false;
+        if (a == b) return true;
+        return a.texture == b.texture && a.u == b.u && a.v == b.v && a.u2 == b.u2 && a.v2 == b.v2;
+    }
+
+    /** So sanh VUNG ANH that cua drawable (toString cua TextureRegionDrawable chi tra ve ten lop, khong dung duoc). */
     private static SkillProfile matchDrawable(arc.scene.style.Drawable drawable) {
-        if (drawable == null) return null;
-        String dStr = String.valueOf(drawable);
+        if (!(drawable instanceof TextureRegionDrawable)) return null;
+        TextureRegion reg = ((TextureRegionDrawable) drawable).getRegion();
+        if (reg == null) return null;
         for (SkillProfile p : profiles.values()) {
             UnitType ut = p.unitSupplier != null ? p.unitSupplier.get() : null;
             if (ut == null) continue;
-            TextureRegion ui = ut.uiIcon;
-            TextureRegion full = ut.fullIcon;
-            if ((ui != null && dStr.contains(String.valueOf(ui)))
-                || (full != null && dStr.contains(String.valueOf(full)))
-                || dStr.contains(ut.name)) {
-                return p;
-            }
+            if (sameRegion(reg, ut.uiIcon) || sameRegion(reg, ut.fullIcon)) return p;
         }
         return null;
     }
@@ -224,6 +234,7 @@ public final class UnitSkillInfo {
         dialog.addCloseButton();
 
         Table card = new Table(Styles.black8);
+        card.name = "newex-skill-info-card";
         card.margin(14f);
 
         Table header = new Table();
