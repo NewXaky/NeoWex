@@ -51,6 +51,8 @@ import mindustry.type.Weapon;
 import mindustry.ui.Styles;
 import mindustry.world.meta.Env;
 import newex.NexNet;
+import newex.SfxCompat;
+import newex.UnitSkillInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -418,8 +420,8 @@ public final class Honivery {
         // Âm thanh tụ năng lượng & tuốt kiếm sao
         if (!Vars.headless) {
             try {
-                Sounds.spark.at(s.x, s.y, 1.35f, 0.95f);
-                Sounds.lasercharge2.at(s.x, s.y, 1.45f, 0.75f);
+                SfxCompat.at("spark", s.x, s.y, 1.35f, 0.95f);
+                SfxCompat.at("lasercharge2", s.x, s.y, 1.45f, 0.75f);
             } catch (Throwable ignored) {}
         }
     }
@@ -455,7 +457,7 @@ public final class Honivery {
 
             try {
                 Call.effect(starSlashHitFx, e.x, e.y, s.ang, HONIVERY_COLOR);
-                if (!Vars.headless) Sounds.laserblast.at(e.x, e.y, Mathf.random(1.1f, 1.35f), 0.75f);
+                if (!Vars.headless) SfxCompat.at("laserblast", e.x, e.y, Mathf.random(1.1f, 1.35f), 0.75f);
             } catch (Throwable ignored) {}
 
             // Kiểm tra hạ gục mục tiêu để kích hoạt nội tại
@@ -475,7 +477,7 @@ public final class Honivery {
                     Call.effect(soulAbsorbFx, e.x, e.y, 0f, STAR_GOLD);
                     if (!Vars.headless) {
                         Call.label("[#FFE07D]+ " + gain + "% ATK SKILL[] [lightgray](" + next + "%/999%)[]", 1.3f, e.x, e.y + 12f);
-                        Sounds.message.at(e.x, e.y, 1.4f, 0.9f);
+                        SfxCompat.at("message", e.x, e.y, 1.4f, 0.9f);
                     }
                 } catch (Throwable ignored) {}
             }
@@ -550,7 +552,7 @@ public final class Honivery {
             }
         }
 
-        for (Iterator> it = charges.entrySet().iterator(); it.hasNext();) {
+        for (Iterator<Map.Entry<Integer, StarCharge>> it = charges.entrySet().iterator(); it.hasNext();) {
             StarCharge c = it.next().getValue();
             c.t += Time.delta;
             if (c.t > CHARGE_T) it.remove();

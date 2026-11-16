@@ -42,6 +42,8 @@ import mindustry.type.StatusEffect;
 import mindustry.type.UnitType;
 import mindustry.ui.Styles;
 import newex.NexNet;
+import newex.SfxCompat;
+import newex.UnitSkillInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -164,7 +166,7 @@ public final class ArchuengPvp {
         UnitSkillInfo.registerArchueng();
     }
 
-    static UnitType findArch() {
+    public static UnitType findArch() {
         if (arch != null) return arch;
         try {
             for (UnitType u : Vars.content.units()) {
@@ -236,8 +238,8 @@ public final class ArchuengPvp {
 
         if (!Vars.headless) {
             try {
-                Sounds.lasercharge.at(f.x, f.y, 1.3f, 0.9f);
-                Sounds.spark.at(f.x, f.y, 1.15f, 0.85f);
+                SfxCompat.at("lasercharge", f.x, f.y, 1.3f, 0.9f);
+                SfxCompat.at("spark", f.x, f.y, 1.15f, 0.85f);
             } catch (Throwable ignored) {}
         }
     }
@@ -266,7 +268,7 @@ public final class ArchuengPvp {
             try {
                 Call.effect(Fx.hitLaserBlast, e.x, e.y, f.ang, COL2);
                 Call.effect(Fx.sparkShoot, e.x, e.y, f.ang, GOLD);
-                if (!Vars.headless) Sounds.hitLaser.at(e.x, e.y, 1.2f, 0.85f);
+                if (!Vars.headless) SfxCompat.at("hitLaser", e.x, e.y, 1.2f, 0.85f);
             } catch (Throwable err) {}
         });
         Units.nearbyBuildings(f.x, f.y, reach, b -> {
@@ -334,8 +336,8 @@ public final class ArchuengPvp {
             // Vừa kết thúc tụ lực -> phóng kiếm khí
             if (prevT < 0 && f.t >= 0 && !Vars.headless) {
                 try {
-                    Sounds.shootBig.at(f.x, f.y, 1.35f, 0.95f);
-                    Sounds.plasmaflame.at(f.x, f.y, 1.25f, 0.85f);
+                    SfxCompat.at("shootBig", f.x, f.y, 1.35f, 0.95f);
+                    SfxCompat.at("plasmaflame", f.x, f.y, 1.25f, 0.85f);
                 } catch (Throwable ignored) {}
             }
 
@@ -377,7 +379,7 @@ public final class ArchuengPvp {
                         cdEnd = Math.max(Time.time, cdEnd - refund);
                         try {
                             Call.label("[#bff4ff]CHÉM HỤT: -65% HỒI CHIÊU[]", 1.2f, ownerUnit.x, ownerUnit.y + 16f);
-                            Sounds.plasmadrop.at(ownerUnit.x, ownerUnit.y, 1.35f, 0.9f);
+                            SfxCompat.at("plasmadrop", ownerUnit.x, ownerUnit.y, 1.35f, 0.9f);
                         } catch (Throwable ignored) {}
                     }
                 }
@@ -385,7 +387,7 @@ public final class ArchuengPvp {
             }
         }
 
-        for (Iterator> it = spins.entrySet().iterator(); it.hasNext();) {
+        for (Iterator<Map.Entry<Integer, Spin>> it = spins.entrySet().iterator(); it.hasNext();) {
             Spin s = it.next().getValue();
             s.t += Time.delta;
             if (s.t > WINDUP) it.remove();

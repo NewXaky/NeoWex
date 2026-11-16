@@ -88,13 +88,34 @@ public final class MachineUi {
         return e instanceof Table && ((Table) e).getChildren().isEmpty();
     }
 
+
+    /** Label.getAlignment() không có ở v157 -> đọc field labelAlign bằng reflection (không đọc được thì coi như không phải center). */
+    private static int labelAlign(Label l) {
+        try {
+            java.lang.reflect.Field f = Label.class.getDeclaredField("labelAlign");
+            f.setAccessible(true);
+            return f.getInt(l);
+        } catch (Throwable ignored) { return -1; }
+    }
+
+    /** Cell.getMaxWidth() không có ở v157 -> đọc field maxWidth bằng reflection (đọc không được thì trả 0 = chưa đặt). */
+    private static float cellMaxWidth(Cell c) {
+        try {
+            java.lang.reflect.Field f = Cell.class.getDeclaredField("maxWidth");
+            f.setAccessible(true);
+            Object v = f.get(c);
+            if (v instanceof Number) { float w = ((Number) v).floatValue(); return (Float.isNaN(w) || Float.isInfinite(w)) ? 0f : w; }
+        } catch (Throwable ignored) {}
+        return 0f;
+    }
+
     /** Ép mọi Label bên trong tự động xuống dòng và giới hạn chiều rộng để không tràn khỏi khung. */
     private static void fitRecursive(Element el, float maxW) {
         if (el == null) return;
         if (el instanceof Label) {
             Label l = (Label) el;
             l.setWrap(true);
-            if (l.getAlignment() == Align.center) l.setAlignment(Align.left);
+            if (labelAlign(l) == Align.center) l.setAlignment(Align.left);
         } else if (el instanceof Table) {
             Table t = (Table) el;
             Seq<Cell> cells = t.getCells();
@@ -103,7 +124,7 @@ public final class MachineUi {
                 Element child = c.get();
                 if (child instanceof Label) {
                     ((Label) child).setWrap(true);
-                    if (c.getMaxWidth() <= 0f) c.maxWidth(maxW);
+                    if (cellMaxWidth(c) <= 0f) c.maxWidth(maxW);
                 }
                 fitRecursive(child, maxW);
             }
