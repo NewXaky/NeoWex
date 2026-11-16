@@ -62,7 +62,7 @@ import java.util.Map;
 
 /**
  * Unit Honivery - Cơ giáp 4 chân trang bị súng Gatling quá nhiệt & Kiếm Sao Tinh Quang.
- * Tích hợp kỹ năng Tinh Quang Trảm (đòn đánh thường), nội tại hấp thụ sức mạnh hạ gục tối đa 999%,
+ * Tích hợp kỹ năng Tinh Quang Trảm (đòn đánh kĩ năng), nội tại hấp thụ sức mạnh hạ gục tối đa 999%,
  * tùy chỉnh phím bấm PC trong Cài đặt NewEx -> NewMode PvP và hiệu ứng hình ảnh/âm thanh điện ảnh.
  */
 public final class Honivery {
@@ -144,7 +144,7 @@ public final class Honivery {
         final boolean[] listening = {false};
         Table row = new Table(Styles.black6);
         row.margin(8f);
-        row.add("[#D0C2FF]Honivery[] - Phím dùng Skill (PC):").left().growX().padRight(10f);
+        row.add("[#D0C2FF]Honivery[] - Phím Tinh Quang Trảm (chém 1 đòn, PC):").left().growX().padRight(10f);
 
         final TextButton keyBtn = new TextButton(getSkillKey().value, Styles.defaultt);
         keyBtn.update(() -> {
@@ -251,7 +251,7 @@ public final class Honivery {
 
             localizedName = "Honivery";
             description = "Cơ giáp 4 chân tinh nhuệ trang bị súng máy Gatling quá nhiệt và Kiếm Sao Tinh Quang.";
-            details = "Kỹ năng Tinh Quang Trảm (Đòn Đánh Thường): Gây 90% Tấn công + 10% HP hiện tại. "
+            details = "Kỹ năng Tinh Quang Trảm (Đòn Đánh Kĩ Năng): Gây 90% Tấn công + 10% HP hiện tại. "
                 + "Nội tại: Hạ gục mục tiêu tăng vĩnh viễn +1% sát thương skill, cộng thêm +1% mỗi 10.000 HP tối đa của mục tiêu (tối đa 999%).";
 
             outlineColor = Pal.darkOutline;
@@ -357,9 +357,10 @@ public final class Honivery {
 
     private static void registerSettings() {
         if (Vars.ui == null || Vars.ui.settings == null) return;
-        Vars.ui.settings.addCategory("NewEx - NewMode PvP", t -> {
-            t.add("[accent]=== CÀI ĐẶT PHÍM SKILL NEWMODE PVP (PC) ===[]").left().padBottom(10f).row();
+        Vars.ui.settings.addCategory("Phím kĩ năng", t -> {
+            t.add("[accent]=== PHÍM KĨ NĂNG (PC) ===[]").left().padBottom(10f).row();
             buildKeybindRow(t);
+            HoniveryPvp.buildKeybindRow(t);
             ArchuengPvp.buildKeybindRow(t);
         });
     }
@@ -371,7 +372,7 @@ public final class Honivery {
         NexNet.onBroadcast(CAST, Honivery::onSkillCast);
     }
 
-    /** Tính sát thương đòn đánh thường của Honivery: (90% ATK + 10% HP) * (1 + nội tại%). */
+    /** Tính sát thương đòn đánh kĩ năng (Tinh Quang Trảm) của Honivery: (90% ATK + 10% HP) * (1 + nội tại%). */
     static float calcBasicSlashDamage(Unit u, int passivePct) {
         if (u == null) return BASE_ATK * ATK_RATIO;
         float atk = BASE_ATK * Math.max(0.1f, u.damageMultiplier);
@@ -451,8 +452,8 @@ public final class Honivery {
             s.hit.add("u" + e.id);
             float targetMaxHp = e.maxHealth;
 
-            // Đánh dấu đây là ĐÒN ĐÁNH THƯỜNG và gây sát thương chịu giáp chuẩn của unit
-            UnitSkillInfo.markLastDamageBasic(e.id);
+            // Đánh dấu đây là ĐÒN ĐÁNH KĨ NĂNG (giống Archueng)
+            UnitSkillInfo.markLastDamageSkill(e.id);
             e.damage(s.dmg);
 
             try {

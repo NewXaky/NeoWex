@@ -7,6 +7,7 @@ import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
+import arc.input.KeyCode;
 import arc.math.Angles;
 import arc.math.Interp;
 import arc.math.Mathf;
@@ -14,6 +15,7 @@ import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
 import arc.scene.ui.Label;
+import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Table;
 import arc.util.Log;
 import arc.util.Strings;
@@ -56,7 +58,9 @@ import java.util.Iterator;
 public final class HoniveryPvp {
     private HoniveryPvp() {}
 
-    static final String REQ = "newex-honivery-skill", FX = "newex-honivery-fx", FX_SPEC = "newex-honivery-spec", KEY = "newex-honivery-btn";
+    /** REQ/KEY phai KHAC voi Honivery.REQ ("newex-honivery-skill") / Honivery.HUD_KEY, neu trung thi 2 nut dung chung 1 handler. */
+    static final String REQ = "newex-honivery-combo", FX = "newex-honivery-fx", FX_SPEC = "newex-honivery-spec", KEY = "newex-honivery-combo-btn";
+    public static final String KEYBIND_SETTING = "newex-pvp-honivery-combo-key";
     /** 1 giay hoi chieu (60 tick/s), tinh sau khi combo ket thuc. */
     static final float CD_T = 60f;
     /** So cu chem (cu cuoi la cu to), khoang cach giua 2 cu (tick). */
@@ -192,6 +196,58 @@ public final class HoniveryPvp {
     static final HashMap<Integer, Float> cdEndSrv = new HashMap<>();
     static Table btn = null;
 
+    public static KeyCode getSkillKey() {
+        String name = Core.settings.getString(KEYBIND_SETTING, KeyCode.g.name());
+        try {
+            return KeyCode.valueOf(name);
+        } catch (Throwable ignored) {
+            return KeyCode.g;
+        }
+    }
+
+    public static void setSkillKey(KeyCode key) {
+        if (key != null) Core.settings.put(KEYBIND_SETTING, key.name());
+    }
+
+    /** Dong tuy chinh phim Combo chem 8 nhat cua Honivery (PC) trong cai dat NewEx -> Phim ki nang. */
+    public static void buildKeybindRow(Table table) {
+        if (table == null) return;
+        final boolean[] listening = {false};
+        Table row = new Table(Styles.black6);
+        row.margin(8f);
+        row.add("[#E58CFF]Honivery[] - Phím Combo chém 8 nhát (PC):").left().growX().padRight(10f);
+
+        final TextButton keyBtn = new TextButton(getSkillKey().value, Styles.defaultt);
+        keyBtn.update(() -> {
+            if (listening[0]) {
+                keyBtn.setText("[accent]> Nhấn phím bất kỳ... <[]");
+                for (KeyCode k : KeyCode.all) {
+                    if (k == KeyCode.unknown || k == KeyCode.mouseLeft || k == KeyCode.mouseRight || k == KeyCode.mouseMiddle) continue;
+                    if (Core.input.keyTap(k)) {
+                        if (k != KeyCode.escape) setSkillKey(k);
+                        listening[0] = false;
+                        keyBtn.setText(getSkillKey().value);
+                        break;
+                    }
+                }
+            } else {
+                keyBtn.setText(getSkillKey().value);
+            }
+        });
+        keyBtn.clicked(() -> listening[0] = !listening[0]);
+        row.add(keyBtn).width(170f).height(38f).right();
+        table.add(row).growX().padBottom(6f).row();
+    }
+
+    /** Client: dung combo (nut HUD hoac phim PC), kiem tra hoi chieu local roi gui yeu cau len server. */
+    static void castFromClient() {
+        if (Vars.state == null || Vars.state.isPaused() || Vars.player == null || Time.time < cdEnd) return;
+        Unit u = Vars.player.unit();
+        if (!isHon(u) || u.dead) return;
+        cdEnd = Time.time + CD_TOTAL;
+        NexNet.send(REQ, "");
+    }
+
     static boolean isActive() {
         try {
             return NewModePvp.apiIsActive();
@@ -211,6 +267,10 @@ public final class HoniveryPvp {
             return;
         }
         if (Vars.state.isPaused()) return;
+        if (!Vars.headless && !Vars.mobile && isActive() && Vars.player != null && Core.scene != null
+            && !Core.scene.hasField() && Core.input.keyTap(getSkillKey())) {
+            castFromClient();
+        }
         if (!Vars.net.client()) {
             tickCombos();
             tickSpecialProjs();
@@ -911,7 +971,7 @@ public final class HoniveryPvp {
                 lbl.setText(Strings.fixed(Mathf.ceil(left / 6f) / 10f, 1) + "s");
                 lbl.setColor(Color.gray);
             } else {
-                lbl.setText("SKILL");
+                lbl.setText(Vars.mobile ? "COMBO" : "COMBO [" + getSkillKey().value + "]");
                 lbl.setColor(COL);
             }
         });
@@ -946,12 +1006,8 @@ public final class HoniveryPvp {
                 if (dragging) {
                     Core.settings.put(KEY + "-x", Math.round(t.x));
                     Core.settings.put(KEY + "-y", Math.round(t.y));
-                } else if (!Vars.state.isPaused() && Time.time >= cdEnd) {
-                    Unit u = Vars.player.unit();
-                    if (isHon(u) && !u.dead) {
-                        cdEnd = Time.time + CD_TOTAL;
-                        NexNet.send(REQ, "");
-                    }
+                } else {
+                    castFromClient();
                 }
                 dragging = false;
             }
