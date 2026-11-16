@@ -1971,6 +1971,7 @@ public class Thermion {
     // ---------- hố đen ở 4 góc (thay cho ngôi sao 2 cánh): hút nhẹ (lực cấp 1) + 1000 sát thương/giây lên kẻ địch trong lõi ----------
     static final float HOLE_IN = 28f, HOLE_OUT = 140f, HOLE_DMG_RAD = TS * 6, HOLE_PULL_RAD = TS * 12, HOLE_PULL = 0.35f, HOLE_DPS = 1000f, HOLE_TICK = 10f;
     static float holeTimer = 0;
+    static float holeX, holeY, holePower;
     static ThermionBuild holeOwner;
     static final arc.func.Cons<mindustry.gen.Unit> holePull = u -> {
         if (u == null || holeOwner == null || !u.targetable(holeOwner.team)) return;
@@ -1981,7 +1982,6 @@ public class Thermion {
     static final arc.func.Cons<mindustry.gen.Unit> holeHit = u -> {
         if (u != null && holeOwner != null && u.targetable(holeOwner.team)) u.damagePierce(HOLE_DPS * HOLE_TICK / 60f);
     };
-    static float holeX, holeY, holePower;
     /** hút + gây sát thương ở 4 góc; chỉ chạy ở máy chủ/đơn, và chỉ khi các hố đen đã hiện xong (sau cutscene hoặc từng góc đã bung) */
     static void holesUpdate() {
         if (Vars.net.client() || !Vars.state.isGame() || Vars.state.isPaused()) return;
