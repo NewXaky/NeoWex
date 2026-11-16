@@ -5443,8 +5443,10 @@ public class NewModePvp {
         col.add("[white]" + ut.localizedName + "[]").left().row();
         col.add("[lightgray]" + (isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t)) + "[]").left();
         row.add(col).growX().left().minWidth(0);
+        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : null;
         if (t == cur) row.add("[accent]" + tr("Đang dùng", "In use") + "[]").width(selW).center();
         else row.button(tr("Chọn", "Select"), () -> send(REQ_UNIT, String.valueOf(t))).size(selW, btnH());
+        if (newex.UnitSkillInfo.has(sk)) row.button("i", () -> newex.UnitSkillInfo.showDialog(sk)).size(btnH()).padLeft(4);
         p.add(row).width(w).pad(4).row();
     }
     static void resetBtn(Table p, St st, float w, String mode) {
