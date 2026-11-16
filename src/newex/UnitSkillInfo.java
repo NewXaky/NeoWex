@@ -28,11 +28,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-/**
- * Hệ thống trang mô tả kỹ năng của Unit:
- * Khi người chơi nhấn vào icon của unit có kỹ năng (trên HUD hoặc giao diện thông tin),
- * sẽ mở trang hồ sơ kỹ năng chi tiết của unit đó.
- */
 public final class UnitSkillInfo {
     private UnitSkillInfo() {}
 
