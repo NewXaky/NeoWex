@@ -2,13 +2,13 @@ package newex.content;
 
 import arc.Core;
 import arc.Events;
-import arc.func.Boolp;
 import arc.graphics.Blending;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
+import arc.input.KeyCode;
 import arc.math.Angles;
 import arc.math.Interp;
 import arc.math.Mathf;
@@ -16,6 +16,7 @@ import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
 import arc.scene.ui.Label;
+import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Table;
 import arc.util.Log;
 import arc.util.Strings;
@@ -33,6 +34,7 @@ import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
+import mindustry.gen.Sounds;
 import mindustry.gen.Unit;
 import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
@@ -48,9 +50,10 @@ import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 /**
- * Chuyển từ archueng-pvp.js. Trong NewMode PvP: thay unit disrupt (cấp 7) bằng archueng
- * + kỹ năng kiếm khí hình quạt (nút HUD kéo thả được, bấm 3 lần: mở chọn hướng -> chốt hướng -> tung).
- * Thay cho global.NexPvp.isActive() là {@link #pvpActive} (khi chuyển newmode-pvp sang Java thì gán vào đây).
+ * Archueng PvP - Kỹ năng kiếm khí hình quạt:
+ * - Gây sát thương kỹ năng: 500% Tấn công + 5% Máu tối đa.
+ * - Khi chém hụt mục tiêu, nhát chém kết thúc giảm 65% thời gian hồi chiêu.
+ * - Tùy chỉnh phím bấm PC trong Cài đặt NewEx -> NewMode PvP.
  */
 public final class ArchuengPvp {
     private ArchuengPvp() {}
@@ -58,9 +61,12 @@ public final class ArchuengPvp {
     public static BooleanSupplier pvpActive = () -> false;
 
     static final String REQ = "newex-archueng-skill", FAN = "newex-archueng-fan", KEY = "newex-archueng-btn";
+    public static final String KEYBIND_SETTING = "newex-pvp-archueng-skill-key";
+
     static final float CD_T = 600f, WINDUP = 42f, SLOW_T = 72f, FAST_T = 60f, FADE_T = 45f, MARK_T = 180f, MARK_SLOW = 0.5f;
     static final float SLOW_SPD = 0.6f, FAST_SPD = 9f;
-    static final float DMG = 500f, ATK_PCT = 1.6f, ARM_PCT = 0.5f, HALF = 40f, RAD = 70f;
+    static final float DMG = 500f, ATK_PCT = 5.0f, MAX_HP_PCT = 0.05f, MISS_CD_REFUND = 0.65f;
+    static final float HALF = 40f, RAD = 70f;
     static final Color COL = Color.valueOf("5ab4ff"), COL2 = Color.valueOf("bff4ff"), GOLD = Color.valueOf("ffc83c");
     static final Color FIRE = Color.valueOf("ff8a3c"), FIRE2 = Color.valueOf("ff3c1e");
 
@@ -71,51 +77,91 @@ public final class ArchuengPvp {
     static final HashMap<Integer, Spin> spins = new HashMap<>();
     static float cdEnd = 0;
     static final HashMap<Integer, Float> cdEndSrv = new HashMap<>();
-    /**
-     * PC (bấm 3 lần): 0 = rảnh, 1 = chờ bấm lần 2 chọn hướng, 2 = đã chọn hướng, chờ bấm lần 3 để tung.
-     * MOBILE (bấm 4 lần): 0 = rảnh, 1 = chờ chạm màn hình chọn hướng, 2 = đã đặt hướng (chạm tiếp để đổi, nút hiện "KHÓA"),
-     * 3 = đã khóa hướng (nút hiện "TUNG"), bấm nút lần nữa mới tung.
-     */
+
     static int phase = 0;
     static float aimAng = 0;
 
-    /** Phase "sẵn sàng tung": mobile = 3 (sau khi khóa), PC = 2. */
     static int firePhase() { return Vars.mobile ? 3 : 2; }
 
-    /** Điểm thế giới vừa chạm (mobile lấy từ vị trí chạm, PC lấy từ chuột). */
+    public static KeyCode getSkillKey() {
+        String name = Core.settings.getString(KEYBIND_SETTING, KeyCode.f.name());
+        try {
+            return KeyCode.valueOf(name);
+        } catch (Throwable ignored) {
+            return KeyCode.f;
+        }
+    }
+
+    public static void setSkillKey(KeyCode key) {
+        if (key != null) Core.settings.put(KEYBIND_SETTING, key.name());
+    }
+
+    /** Thêm dòng tùy chỉnh nút bấm skill Archueng cho PC vào bảng cài đặt NewEx -> NewMode PvP. */
+    public static void buildKeybindRow(Table table) {
+        if (table == null) return;
+        final boolean[] listening = {false};
+        Table row = new Table(Styles.black6);
+        row.margin(8f);
+        row.add("[#5ab4ff]Archueng[] - Phím dùng Skill (PC):").left().growX().padRight(10f);
+
+        final TextButton keyBtn = new TextButton(getSkillKey().value, Styles.defaultt);
+        keyBtn.update(() -> {
+            if (listening[0]) {
+                keyBtn.setText("[accent]> Nhấn phím bất kỳ... <[]");
+                for (KeyCode k : KeyCode.all) {
+                    if (k == KeyCode.unknown || k == KeyCode.mouseLeft || k == KeyCode.mouseRight || k == KeyCode.mouseMiddle) continue;
+                    if (Core.input.keyTap(k)) {
+                        if (k != KeyCode.escape) setSkillKey(k);
+                        listening[0] = false;
+                        keyBtn.setText(getSkillKey().value);
+                        break;
+                    }
+                }
+            } else {
+                keyBtn.setText(getSkillKey().value);
+            }
+        });
+        keyBtn.clicked(() -> listening[0] = !listening[0]);
+        row.add(keyBtn).width(170f).height(38f).right();
+        table.add(row).growX().padBottom(6f).row();
+    }
+
     static float[] touchWorld() {
         try {
             if (Vars.mobile) {
                 arc.math.geom.Vec2 w = Core.input.mouseWorld(Core.input.mouseX(), Core.input.mouseY());
-                return new float[] {w.x, w.y};
+                return new float[]{w.x, w.y};
             }
         } catch (Throwable err) {}
-        return new float[] {Vars.player.mouseX, Vars.player.mouseY};
+        return new float[]{Vars.player.mouseX, Vars.player.mouseY};
     }
 
-    /** Lần chạm rơi vào UI (joystick, nút, dialog...) thì không tính là chạm chọn hướng. */
     static boolean touchOnUi() {
         try { return Vars.mobile && Core.scene != null && Core.scene.hasMouse(Core.input.mouseX(), Core.input.mouseY()); }
         catch (Throwable err) { return false; }
     }
+
     static boolean uiTapConsumed = false, wasTouchedPrev = false;
     static Table btn = null, cancelBtn = null;
 
-    static class Spin { float t, a; Spin(float a) { this.a = a; } }
+    static class Spin {
+        float t, a;
+        Spin(float a) { this.a = a; }
+    }
 
     static class Fan {
-        int uid, team;
+        int uid, ownerPlayerId, team;
         float ang, x, y, t, dmg, lx, ly;
         boolean landed;
         final java.util.HashSet<String> hit = new java.util.HashSet<>();
     }
 
-    /** Gọi từ NexMod.loadContent(): tạo status effect "ấn làm chậm". */
     public static void create() {
         markStatus = new StatusEffect("archueng-mark");
         markStatus.speedMultiplier = MARK_SLOW;
         markStatus.show = false;
         markStatus.color = COL;
+        UnitSkillInfo.registerArchueng();
     }
 
     static UnitType findArch() {
@@ -123,7 +169,11 @@ public final class ArchuengPvp {
         try {
             for (UnitType u : Vars.content.units()) {
                 String n = u.name;
-                if (n.equals("archueng") || n.endsWith("-archueng")) { arch = u; break; }
+                if (n.equals("archueng") || n.endsWith("-archueng")) {
+                    arch = u;
+                    UnitSkillInfo.registerArchueng();
+                    break;
+                }
             }
         } catch (Throwable err) {}
         return arch;
@@ -133,7 +183,6 @@ public final class ArchuengPvp {
         try { return pvpActive != null && pvpActive.getAsBoolean(); } catch (Throwable err) { return false; }
     }
 
-    /** Thay disrupt -> archueng khi mode đang chạy. */
     static void syncType() {
         UnitType a = findArch();
         if (a == null) return;
@@ -144,7 +193,10 @@ public final class ArchuengPvp {
         } catch (Throwable err) { Log.err("[Archueng] swap failed: " + err); }
     }
 
-    static boolean isArch(Unit u) { return u != null && arch != null && u.type == arch; }
+    public static boolean isArch(Unit u) {
+        findArch();
+        return u != null && arch != null && u.type == arch;
+    }
 
     // ---- server: nhận yêu cầu dùng skill ----
     static void onReq(Player player, String payload) {
@@ -157,13 +209,14 @@ public final class ArchuengPvp {
         float ang;
         try { ang = Float.parseFloat(String.valueOf(payload)); } catch (Throwable e) { ang = u.rotation; }
         if (Float.isNaN(ang)) ang = u.rotation;
-        NexNet.broadcast(FAN, u.id + "," + u.team.id + "," + (Math.round(ang * 10) / 10f) + "," + u.x + "," + u.y);
+        NexNet.broadcast(FAN, u.id + "," + u.team.id + "," + (Math.round(ang * 10) / 10f) + "," + u.x + "," + u.y + "," + player.id);
     }
 
-    /** Sát thương = 160% tấn công + 50% giáp. */
+    /** Sát thương kỹ năng = 500% Tấn công + 5% Máu tối đa. */
     static float calcDmg(int id) {
         Unit o = Groups.unit.getByID(id);
-        return o != null ? DMG * ATK_PCT * Math.max(0.1f, o.damageMultiplier) + ARM_PCT * o.armor : DMG * ATK_PCT;
+        if (o == null) return DMG * ATK_PCT;
+        return DMG * ATK_PCT * Math.max(0.1f, o.damageMultiplier) + o.maxHealth * MAX_HP_PCT;
     }
 
     // ---- mọi máy: nhận lệnh tạo quạt ----
@@ -175,10 +228,18 @@ public final class ArchuengPvp {
         f.ang = Float.parseFloat(p[2]);
         f.x = Float.parseFloat(p[3]);
         f.y = Float.parseFloat(p[4]);
+        f.ownerPlayerId = p.length >= 6 ? Integer.parseInt(p[5]) : -1;
         f.t = -WINDUP;
         f.dmg = calcDmg(f.uid);
         spins.put(f.uid, new Spin(f.ang));
         fans.add(f);
+
+        if (!Vars.headless) {
+            try {
+                Sounds.lasercharge.at(f.x, f.y, 1.3f, 0.9f);
+                Sounds.spark.at(f.x, f.y, 1.15f, 0.85f);
+            } catch (Throwable ignored) {}
+        }
     }
 
     static void tryNet() {
@@ -199,9 +260,14 @@ public final class ArchuengPvp {
         Units.nearbyEnemies(team, f.x - reach, f.y - reach, reach * 2, reach * 2, e -> {
             if (e.dead || f.hit.contains("u" + e.id) || !inFan(f, e.x, e.y)) return;
             f.hit.add("u" + e.id);
+            UnitSkillInfo.markLastDamageSkill(e.id);
             e.damage(f.dmg);
             try { if (markStatus != null) e.apply(markStatus, MARK_T); } catch (Throwable err) {}
-            try { Call.effect(Fx.hitLaserBlast, e.x, e.y, f.ang, COL2); Call.effect(Fx.sparkShoot, e.x, e.y, f.ang, GOLD); } catch (Throwable err) {}
+            try {
+                Call.effect(Fx.hitLaserBlast, e.x, e.y, f.ang, COL2);
+                Call.effect(Fx.sparkShoot, e.x, e.y, f.ang, GOLD);
+                if (!Vars.headless) Sounds.hitLaser.at(e.x, e.y, 1.2f, 0.85f);
+            } catch (Throwable err) {}
         });
         Units.nearbyBuildings(f.x, f.y, reach, b -> {
             if (b.team == team || f.hit.contains("b" + b.pos()) || !inFan(f, b.x, b.y)) return;
@@ -213,6 +279,32 @@ public final class ArchuengPvp {
 
     static float rx(float s) { return Mathf.range(RAD * s); }
 
+    static void advanceSkillPhase(Unit u) {
+        if (!isArch(u) || u.dead) return;
+        if (phase == 0) {
+            if (Time.time >= cdEnd) phase = 1;
+        } else if (phase == 1) {
+            if (!Vars.mobile) {
+                aimAng = Angles.angle(u.x, u.y, Vars.player.mouseX, Vars.player.mouseY);
+                phase = 2;
+            } else {
+                phase = 0;
+            }
+        } else if (phase == 2 && Vars.mobile) {
+            phase = 3;
+        } else if (phase == firePhase()) {
+            cdEnd = Time.time + CD_T;
+            if (Vars.net.client()) {
+                NexNet.send(REQ, String.valueOf(aimAng));
+            } else {
+                int pid = Vars.player != null ? Vars.player.id : -1;
+                cdEndSrv.put(pid, Time.time + CD_T);
+                NexNet.broadcast(FAN, u.id + "," + u.team.id + "," + (Math.round(aimAng * 10) / 10f) + "," + u.x + "," + u.y + "," + pid);
+            }
+            phase = 0;
+        }
+    }
+
     static void update() {
         if (Vars.state == null || !Vars.state.isGame()) {
             if (!fans.isEmpty()) { fans.clear(); spins.clear(); }
@@ -222,48 +314,89 @@ public final class ArchuengPvp {
         syncType();
         if (Vars.state.isPaused()) return;
 
+        // Hỗ trợ nhấn phím tắt PC để điều khiển các bước dùng skill của Archueng
+        if (!Vars.headless && !Vars.mobile && Vars.player != null && isActive() && Core.scene != null && !Core.scene.hasField()) {
+            Unit pu = Vars.player.unit();
+            if (isArch(pu) && !pu.dead && Core.input.keyTap(getSkillKey())) {
+                advanceSkillPhase(pu);
+            }
+        }
+
         for (int i = fans.size() - 1; i >= 0; i--) {
             Fan f = fans.get(i);
+            float prevT = f.t;
             f.t += Time.delta;
             if (f.t < 0) {
                 Unit u = Groups.unit.getByID(f.uid);
                 if (u != null) { f.x = u.x; f.y = u.y; }
                 continue;
             }
+            // Vừa kết thúc tụ lực -> phóng kiếm khí
+            if (prevT < 0 && f.t >= 0 && !Vars.headless) {
+                try {
+                    Sounds.shootBig.at(f.x, f.y, 1.35f, 0.95f);
+                    Sounds.plasmaflame.at(f.x, f.y, 1.25f, 0.85f);
+                } catch (Throwable ignored) {}
+            }
+
             float fl = f.t - (SLOW_T + FAST_T), prog = fl > 0 ? Mathf.clamp(fl / FADE_T) : 0f;
             float spd = f.t < SLOW_T ? SLOW_SPD : FAST_SPD * (1 - prog) * (1 - prog);
             f.x += Angles.trnsx(f.ang, spd * Time.delta);
             f.y += Angles.trnsy(f.ang, spd * Time.delta);
             try {
-                if (f.t - Time.delta < 0) { Fx.shootBigColor.at(f.x, f.y, f.ang, COL); Effect.shake(2, 6, f.x, f.y); }
-                if (f.t > SLOW_T && !f.landed) { f.landed = true; f.lx = f.x; f.ly = f.y; }
+                if (prevT < 0) { Fx.shootBigColor.at(f.x, f.y, f.ang, COL); Effect.shake(3.5f, 8f, f.x, f.y); }
+                if (f.t > SLOW_T && !f.landed) {
+                    f.landed = true;
+                    f.lx = f.x;
+                    f.ly = f.y;
+                    if (!Vars.headless) {
+                        Sounds.explosion.at(f.x, f.y, 1.45f, 0.75f);
+                    }
+                }
                 if (f.t > SLOW_T && prog == 0) {
-                    if (Mathf.chance(0.7)) Fx.hitBulletColor.at(f.x + Angles.trnsx(f.ang + 90, rx(0.8f)), f.y + Angles.trnsy(f.ang + 90, rx(0.8f)), f.ang, Mathf.chance(0.3) ? GOLD : COL2);
-                } else if (Mathf.chance(0.25)) {
+                    if (Mathf.chance(0.75)) Fx.hitBulletColor.at(f.x + Angles.trnsx(f.ang + 90, rx(0.8f)), f.y + Angles.trnsy(f.ang + 90, rx(0.8f)), f.ang, Mathf.chance(0.35) ? GOLD : COL2);
+                } else if (Mathf.chance(0.28)) {
                     Fx.sparkShoot.at(f.x + Angles.trnsx(f.ang + 90, rx(0.7f)), f.y + Angles.trnsy(f.ang + 90, rx(0.7f)), f.ang, GOLD);
                 }
-                if (f.t - Time.delta <= SLOW_T && f.t > SLOW_T) { Fx.shootBigColor.at(f.x, f.y, f.ang, COL2); Effect.shake(4, 8, f.x, f.y); }
+                if (prevT <= SLOW_T && f.t > SLOW_T) { Fx.shootBigColor.at(f.x, f.y, f.ang, COL2); Effect.shake(5.5f, 10f, f.x, f.y); }
             } catch (Throwable err) {}
             if (prog > 0 && Mathf.chance(0.5)) {
                 try { Fx.hitBulletColor.at(f.x + Angles.trnsx(f.ang + 90, rx(0.8f)), f.y + Angles.trnsy(f.ang + 90, rx(0.8f)), f.ang, Mathf.chance(0.3) ? GOLD : COL2); } catch (Throwable err) {}
             }
             if (!Vars.net.client() && prog == 0) hitFan(f);
-            if (f.t >= SLOW_T + FAST_T + FADE_T) fans.remove(i);
+
+            // Nhát chém kết thúc: nếu chém hụt hoàn toàn -> giảm 65% thời gian hồi chiêu
+            if (f.t >= SLOW_T + FAST_T + FADE_T) {
+                if (f.hit.isEmpty()) {
+                    float refund = CD_T * MISS_CD_REFUND;
+                    if (f.ownerPlayerId >= 0 && cdEndSrv.containsKey(f.ownerPlayerId)) {
+                        cdEndSrv.put(f.ownerPlayerId, Math.max(Time.time, cdEndSrv.get(f.ownerPlayerId) - refund));
+                    }
+                    Unit ownerUnit = Groups.unit.getByID(f.uid);
+                    if (!Vars.headless && Vars.player != null && ownerUnit != null && Vars.player.unit() == ownerUnit) {
+                        cdEnd = Math.max(Time.time, cdEnd - refund);
+                        try {
+                            Call.label("[#bff4ff]CHÉM HỤT: -65% HỒI CHIÊU[]", 1.2f, ownerUnit.x, ownerUnit.y + 16f);
+                            Sounds.plasmadrop.at(ownerUnit.x, ownerUnit.y, 1.35f, 0.9f);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+                fans.remove(i);
+            }
         }
-        for (Iterator<Map.Entry<Integer, Spin>> it = spins.entrySet().iterator(); it.hasNext();) {
+
+        for (Iterator> it = spins.entrySet().iterator(); it.hasNext();) {
             Spin s = it.next().getValue();
             s.t += Time.delta;
             if (s.t > WINDUP) it.remove();
         }
 
-        // lần bấm thứ 2: chạm/bấm chuột ở vị trí muốn đánh để chốt hướng
         if (!Vars.headless && Vars.player != null) {
             Unit pu = Vars.player.unit();
             if (phase != 0 && (!isArch(pu) || pu.dead)) phase = 0;
             boolean touched = Core.input.isTouched();
             if (touched && !wasTouchedPrev && !uiTapConsumed && isArch(pu) && !pu.dead) {
                 if (Vars.mobile) {
-                    // mobile: lần chạm thứ 2 đặt hướng; chạm thêm (khi chưa khóa) để đổi hướng
                     if ((phase == 1 || phase == 2) && !touchOnUi()) {
                         float[] tp = touchWorld();
                         aimAng = Angles.angle(pu.x, pu.y, tp[0], tp[1]);
@@ -279,12 +412,11 @@ public final class ArchuengPvp {
         }
     }
 
-    // ---------------- vẽ ----------------
-    /** Lưỡi liềm kiếm khí: mép ngoài sáng rực, mỏng dần về hai đầu nhọn, mờ vào trong. */
+    // ---------------- Vẽ Đồ Họa ----------------
     static void crescent(float x, float y, float ang, float rad, float half, float thick, Color cO, float aO, Color cI, float aI) {
         Tmp.c1.set(cO); Tmp.c1.a = aO; Tmp.c2.set(cI); Tmp.c2.a = aI;
         float bo = Tmp.c1.toFloatBits(), bi = Tmp.c2.toFloatBits();
-        int N = 12;
+        int N = 14;
         for (int q = 0; q < N; q++) {
             float f1 = (float) q / N, f2 = (float) (q + 1) / N;
             float a1 = ang - half + half * 2 * f1, a2 = ang - half + half * 2 * f2;
@@ -299,15 +431,19 @@ public final class ArchuengPvp {
         TextureRegion wreg = Core.atlas.find("newex-archueng-weapon"), slash = Core.atlas.find("newex-archueng-slash");
         if (!wreg.found()) wreg = Core.atlas.find("archueng-weapon");
 
-        // đường ngắm. Mobile: phase 1 chưa có hướng nên không vẽ; phase 2 = đang chỉnh (xanh); phase 3 = đã khóa (cam)
         if (Vars.player != null && phase != 0 && !(Vars.mobile && phase == 1)) {
             Unit pu = Vars.player.unit();
             if (isArch(pu) && !pu.dead) {
                 boolean locked = phase == firePhase();
                 float ang = phase >= 2 ? aimAng : Angles.angle(pu.x, pu.y, Vars.player.mouseX, Vars.player.mouseY);
-                float ex = pu.x + Angles.trnsx(ang, 160), ey = pu.y + Angles.trnsy(ang, 160);
+                float ex = pu.x + Angles.trnsx(ang, 165), ey = pu.y + Angles.trnsy(ang, 165);
                 Draw.z(Layer.flyingUnit + 2);
                 Drawf.dashLine(locked ? FIRE : COL2, pu.x, pu.y, ex, ey);
+                Draw.blend(Blending.additive);
+                Draw.color(locked ? FIRE : COL2, 0.45f);
+                Lines.stroke(1.5f);
+                Lines.arc(pu.x, pu.y, RAD, HALF * 2f / 360f, ang - HALF);
+                Draw.blend();
                 Draw.reset();
             }
         }
@@ -318,42 +454,48 @@ public final class ArchuengPvp {
             if (u == null || u.dead) continue;
             float fr = Mathf.clamp(s.t / WINDUP);
             Draw.z(Layer.flyingUnit + 1);
-            float sw = Interp.pow2Out.apply(fr), a0 = s.a - HALF, cur = a0 + HALF * 2 * sw, L = 64f;
-            float rr = 26 + 16 * fr;
+            float sw = Interp.pow2Out.apply(fr), a0 = s.a - HALF, cur = a0 + HALF * 2 * sw, L = 66f;
+            float rr = 26 + 18 * fr;
+
             Draw.z(Layer.groundUnit - 1);
             Draw.blend(Blending.additive);
-            for (int q = 0; q < 14; q++) {
-                float ph = ((s.t * 0.05f) + q * 0.0714f) % 1f, qa = q * 25.7f + s.t * 2, r0 = rr * 1.9f * (1 - ph) + 6, r1 = r0 + 7 + 9 * ph;
-                Draw.color(q % 3 == 0 ? FIRE2 : (q % 3 == 1 ? FIRE : GOLD), ph * (0.45f + 0.55f * fr));
-                Lines.stroke(0.8f + ph * 1.4f);
+            Draw.color(COL, 0.5f * fr);
+            Lines.stroke(2.4f);
+            Lines.circle(u.x, u.y, rr * 1.15f);
+            for (int q = 0; q < 16; q++) {
+                float ph = ((s.t * 0.05f) + q * 0.0625f) % 1f, qa = q * 22.5f + s.t * 2.2f, r0 = rr * 1.95f * (1 - ph) + 6, r1 = r0 + 8 + 10 * ph;
+                Draw.color(q % 3 == 0 ? FIRE2 : (q % 3 == 1 ? FIRE : GOLD), ph * (0.5f + 0.5f * fr));
+                Lines.stroke(0.9f + ph * 1.5f);
                 Lines.line(u.x + Angles.trnsx(qa, r0), u.y + Angles.trnsy(qa, r0), u.x + Angles.trnsx(qa, r1), u.y + Angles.trnsy(qa, r1));
             }
             Draw.blend(); Draw.reset();
+
             Draw.z(Layer.flyingUnit + 1);
-            int segs = 14;
+            int segs = 16;
             float step = (cur - a0) / segs;
             for (int q = 0; q < segs; q++) {
-                float t1 = a0 + step * q, t2 = t1 + step, al = (float) Math.pow((q + 1f) / segs, 1.6) * 0.85f * (1 - fr * 0.5f);
-                float cIn = Tmp.c1.set(0.1f, 0.4f, 0.95f, 0f).toFloatBits(), cOut = Tmp.c2.set(0.55f, 0.95f, 1f, al).toFloatBits(), cMid = Tmp.c3.set(0.15f, 0.55f, 1f, al * 0.6f).toFloatBits();
-                float r0 = 10, r1 = L * 0.55f, r2 = L * 1.05f;
+                float t1 = a0 + step * q, t2 = t1 + step, al = (float) Math.pow((q + 1f) / segs, 1.5) * 0.9f * (1 - fr * 0.45f);
+                float cIn = Tmp.c1.set(0.1f, 0.4f, 0.95f, 0f).toFloatBits(), cOut = Tmp.c2.set(0.55f, 0.95f, 1f, al).toFloatBits(), cMid = Tmp.c3.set(0.15f, 0.55f, 1f, al * 0.65f).toFloatBits();
+                float r0 = 10, r1 = L * 0.55f, r2 = L * 1.08f;
                 Fill.quad(u.x + Angles.trnsx(t1, r0), u.y + Angles.trnsy(t1, r0), cIn, u.x + Angles.trnsx(t1, r1), u.y + Angles.trnsy(t1, r1), cMid,
                           u.x + Angles.trnsx(t2, r1), u.y + Angles.trnsy(t2, r1), cMid, u.x + Angles.trnsx(t2, r0), u.y + Angles.trnsy(t2, r0), cIn);
                 Fill.quad(u.x + Angles.trnsx(t1, r1), u.y + Angles.trnsy(t1, r1), cMid, u.x + Angles.trnsx(t1, r2), u.y + Angles.trnsy(t1, r2), cOut,
                           u.x + Angles.trnsx(t2, r2), u.y + Angles.trnsy(t2, r2), cOut, u.x + Angles.trnsx(t2, r1), u.y + Angles.trnsy(t2, r1), cMid);
             }
             Draw.color();
-            float bx = u.x + Angles.trnsx(cur, L), by = u.y + Angles.trnsy(cur, L), ba = 1 - fr * 0.4f;
+            float bx = u.x + Angles.trnsx(cur, L), by = u.y + Angles.trnsy(cur, L), ba = 1 - fr * 0.35f;
             Draw.blend(Blending.additive);
-            Draw.color(COL, 0.35f * ba); Lines.stroke(7); Lines.line(u.x + Angles.trnsx(cur, 12), u.y + Angles.trnsy(cur, 12), bx, by);
-            Draw.color(Color.white, 0.95f * ba); Lines.stroke(2.2f); Lines.line(u.x + Angles.trnsx(cur, 12), u.y + Angles.trnsy(cur, 12), bx, by);
-            for (int g = 0; g < 4; g++) { Draw.color(g % 2 == 1 ? GOLD : COL2, 0.9f * ba); Drawf.tri(bx, by, 5 - (g % 2) * 2, g % 2 == 1 ? 11 : 24, cur + g * 90); }
-            Draw.color(Color.white, ba); Fill.circle(bx, by, 3.2f);
+            Draw.color(COL, 0.4f * ba); Lines.stroke(7.5f); Lines.line(u.x + Angles.trnsx(cur, 12), u.y + Angles.trnsy(cur, 12), bx, by);
+            Draw.color(Color.white, 0.98f * ba); Lines.stroke(2.4f); Lines.line(u.x + Angles.trnsx(cur, 12), u.y + Angles.trnsy(cur, 12), bx, by);
+            for (int g = 0; g < 4; g++) { Draw.color(g % 2 == 1 ? GOLD : COL2, 0.92f * ba); Drawf.tri(bx, by, 5.5f - (g % 2) * 2, g % 2 == 1 ? 12 : 26, cur + g * 90); }
+            Draw.color(Color.white, ba); Fill.circle(bx, by, 3.5f);
             Draw.blend(); Draw.reset();
+
             if (wreg.found() && fr < 1) {
                 Draw.blend(Blending.additive);
-                for (int g = 3; g >= 1; g--) {
-                    float ca = cur - HALF * 0.16f * g * (1 - fr * 0.5f), gl = wreg.height / 4f, go = Math.max(10f, gl * 0.5f);
-                    Draw.color(COL2, 0.22f * (4 - g) / 3f);
+                for (int g = 4; g >= 1; g--) {
+                    float ca = cur - HALF * 0.15f * g * (1 - fr * 0.5f), gl = wreg.height / 4f, go = Math.max(10f, gl * 0.5f);
+                    Draw.color(COL2, 0.25f * (5 - g) / 4f);
                     Draw.rect(wreg, u.x + Angles.trnsx(ca, go), u.y + Angles.trnsy(ca, go), wreg.width / 4f, gl, ca - 90);
                 }
                 Draw.blend(); Draw.reset();
@@ -376,47 +518,47 @@ public final class ArchuengPvp {
             boolean fast = f.t > SLOW_T;
             float pg = Mathf.clamp((f.t - SLOW_T - FAST_T) / FADE_T), fade = 1 - pg * pg;
             Draw.z(Layer.bullet + 2);
-            float sc = RAD * 2 * (fast ? 1 + 0.3f * pg : 1 + Mathf.sin(f.t, 6, 0.04f)) * (fast ? 1.15f : 1f);
+            float sc = RAD * 2 * (fast ? 1 + 0.32f * pg : 1 + Mathf.sin(f.t, 6, 0.04f)) * (fast ? 1.18f : 1f);
             Draw.blend(Blending.additive);
             if (slash.found()) {
-                Draw.color(COL, 0.3f * fade); Draw.rect(slash, f.x, f.y, sc * 1.5f, sc * 1.5f, f.ang + Mathf.sin(f.t, 9, 1.5f));
-                Draw.color(GOLD, 0.22f * fade); Draw.rect(slash, f.x, f.y, sc * 1.2f, sc * 1.2f, f.ang - Mathf.sin(f.t, 11, 1.2f));
+                Draw.color(COL, 0.34f * fade); Draw.rect(slash, f.x, f.y, sc * 1.55f, sc * 1.55f, f.ang + Mathf.sin(f.t, 9, 1.5f));
+                Draw.color(GOLD, 0.25f * fade); Draw.rect(slash, f.x, f.y, sc * 1.25f, sc * 1.25f, f.ang - Mathf.sin(f.t, 11, 1.2f));
             }
-            if (fast) for (int g = 1; g <= 5; g++) {
+            if (fast) for (int g = 1; g <= 6; g++) {
                 float d = g * 13 * (1 - pg * 0.5f);
-                crescent(f.x - Angles.trnsx(f.ang, d), f.y - Angles.trnsy(f.ang, d), f.ang, RAD * (1 - 0.05f * g), HALF * (1 + 0.04f * g), 0.38f, COL2, 0.55f * fade / g, COL, 0f);
+                crescent(f.x - Angles.trnsx(f.ang, d), f.y - Angles.trnsy(f.ang, d), f.ang, RAD * (1 - 0.045f * g), HALF * (1 + 0.04f * g), 0.38f, COL2, 0.58f * fade / g, COL, 0f);
             }
-            crescent(f.x, f.y, f.ang, RAD, HALF, 0.5f, Color.white, fade, COL, 0.14f * fade);
-            crescent(f.x, f.y, f.ang, RAD * 0.9f, HALF * 0.85f, 0.2f, GOLD, 0.55f * fade, GOLD, 0f);
-            Draw.color(COL, 0.35f * fade); Lines.stroke(6); Lines.arc(f.x, f.y, RAD, HALF * 2 / 360f, f.ang - HALF);
-            Draw.color(Color.white, fade); Lines.stroke(2.4f); Lines.arc(f.x, f.y, RAD, HALF * 2 / 360f, f.ang - HALF);
+            crescent(f.x, f.y, f.ang, RAD, HALF, 0.5f, Color.white, fade, COL, 0.16f * fade);
+            crescent(f.x, f.y, f.ang, RAD * 0.9f, HALF * 0.85f, 0.2f, GOLD, 0.6f * fade, GOLD, 0f);
+            Draw.color(COL, 0.38f * fade); Lines.stroke(6.5f); Lines.arc(f.x, f.y, RAD, HALF * 2 / 360f, f.ang - HALF);
+            Draw.color(Color.white, fade); Lines.stroke(2.5f); Lines.arc(f.x, f.y, RAD, HALF * 2 / 360f, f.ang - HALF);
             for (int sd = -1; sd <= 1; sd += 2) {
                 float hx = f.x + Angles.trnsx(f.ang + HALF * sd, RAD), hy = f.y + Angles.trnsy(f.ang + HALF * sd, RAD);
-                Draw.color(COL2, 0.8f * fade); Fill.circle(hx, hy, 3.5f + Mathf.sin(f.t, 4, 1)); Draw.color(Color.white, fade); Fill.circle(hx, hy, 1.8f);
+                Draw.color(COL2, 0.85f * fade); Fill.circle(hx, hy, 3.8f + Mathf.sin(f.t, 4, 1)); Draw.color(Color.white, fade); Fill.circle(hx, hy, 2f);
             }
-            if (fast) for (int q = 0; q < 8; q++) {
-                float la = f.ang + (q / 7f - 0.5f) * HALF * 1.7f, st = RAD * (0.55f + 0.4f * ((q * 37) % 10) / 10f), len = (22 + (q % 3) * 14) * fade;
-                Draw.color(q % 2 == 1 ? COL2 : GOLD, 0.6f * fade); Lines.stroke(1.1f);
+            if (fast) for (int q = 0; q < 9; q++) {
+                float la = f.ang + (q / 8f - 0.5f) * HALF * 1.7f, st = RAD * (0.55f + 0.4f * ((q * 37) % 10) / 10f), len = (24 + (q % 3) * 14) * fade;
+                Draw.color(q % 2 == 1 ? COL2 : GOLD, 0.65f * fade); Lines.stroke(1.2f);
                 Lines.line(f.x + Angles.trnsx(la, st), f.y + Angles.trnsy(la, st), f.x + Angles.trnsx(la, st) - Angles.trnsx(f.ang, len), f.y + Angles.trnsy(la, st) - Angles.trnsy(f.ang, len));
             }
-            for (int q = 0; q < 9; q++) {
-                float off = (q / 8f - 0.5f) * HALF * 2.1f + Mathf.sin(f.t * 0.08f + q * 2, 1, 6);
+            for (int q = 0; q < 10; q++) {
+                float off = (q / 9f - 0.5f) * HALF * 2.1f + Mathf.sin(f.t * 0.08f + q * 2, 1, 6);
                 float rd = RAD * (0.95f + 0.25f * Mathf.sin(f.t * 0.12f + q, 1, 1)) + (q % 2) * 8;
-                Draw.color(q % 2 == 1 ? GOLD : COL2, (0.5f + 0.5f * Mathf.sin(f.t * 0.2f + q, 1, 1)) * fade);
-                Fill.square(f.x + Angles.trnsx(f.ang + off, rd), f.y + Angles.trnsy(f.ang + off, rd), 1.8f + (q % 3) * 0.6f, f.t * 4 + q * 40);
+                Draw.color(q % 2 == 1 ? GOLD : COL2, (0.55f + 0.45f * Mathf.sin(f.t * 0.2f + q, 1, 1)) * fade);
+                Fill.square(f.x + Angles.trnsx(f.ang + off, rd), f.y + Angles.trnsy(f.ang + off, rd), 1.9f + (q % 3) * 0.6f, f.t * 4 + q * 40);
             }
-            if (f.landed && f.t - SLOW_T < 26) {
-                float rp = (f.t - SLOW_T) / 26f, ip = Interp.pow3Out.apply(rp);
-                Draw.color(COL2, (1 - rp) * 0.9f); Lines.stroke(3 * (1 - rp) + 0.5f); Lines.circle(f.lx, f.ly, 12 + 95 * ip);
-                Draw.color(GOLD, (1 - rp) * 0.7f); Lines.stroke(1.5f * (1 - rp) + 0.3f); Lines.circle(f.lx, f.ly, 8 + 60 * Interp.pow2Out.apply(rp));
-                for (int q = 0; q < 12; q++) {
-                    float qa = q * 30 + 7, r0 = 16 + 85 * ip;
-                    Draw.color(q % 2 == 1 ? Color.white : COL2, (1 - rp) * 0.85f); Lines.stroke(1.8f * (1 - rp) + 0.3f);
-                    Lines.line(f.lx + Angles.trnsx(qa, r0), f.ly + Angles.trnsy(qa, r0), f.lx + Angles.trnsx(qa, r0 + 30 * (1 - rp)), f.ly + Angles.trnsy(qa, r0 + 30 * (1 - rp)));
+            if (f.landed && f.t - SLOW_T < 28) {
+                float rp = (f.t - SLOW_T) / 28f, ip = Interp.pow3Out.apply(rp);
+                Draw.color(COL2, (1 - rp) * 0.95f); Lines.stroke(3.2f * (1 - rp) + 0.5f); Lines.circle(f.lx, f.ly, 12 + 105 * ip);
+                Draw.color(GOLD, (1 - rp) * 0.75f); Lines.stroke(1.7f * (1 - rp) + 0.3f); Lines.circle(f.lx, f.ly, 8 + 68 * Interp.pow2Out.apply(rp));
+                for (int q = 0; q < 14; q++) {
+                    float qa = q * (360f / 14f) + 7, r0 = 16 + 90 * ip;
+                    Draw.color(q % 2 == 1 ? Color.white : COL2, (1 - rp) * 0.9f); Lines.stroke(2f * (1 - rp) + 0.3f);
+                    Lines.line(f.lx + Angles.trnsx(qa, r0), f.ly + Angles.trnsy(qa, r0), f.lx + Angles.trnsx(qa, r0 + 34 * (1 - rp)), f.ly + Angles.trnsy(qa, r0 + 34 * (1 - rp)));
                 }
             }
             Draw.blend(); Draw.reset();
-            try { Drawf.light(f.x, f.y, RAD * 1.8f, COL, 0.55f * fade); } catch (Throwable err) {}
+            try { Drawf.light(f.x, f.y, RAD * 1.9f, COL, 0.65f * fade); } catch (Throwable err) {}
         }
     }
 
@@ -436,14 +578,14 @@ public final class ArchuengPvp {
         float sz = Vars.mobile ? 56 : 48;
         if (a != null) t.image(a.uiIcon).size(sz).row();
         Label lbl = t.add("").get();
-        lbl.setFontScale(0.9f);
+        lbl.setFontScale(0.85f);
         t.update(() -> {
             float left = cdEnd - Time.time;
             if (left > 0) { lbl.setText(Strings.fixed(Mathf.ceil(left / 6f) / 10f, 1) + "s"); lbl.setColor(Color.gray); }
             else if (phase == 1) { lbl.setText("CHỌN HƯỚNG"); lbl.setColor(COL2); }
             else if (phase == 2 && Vars.mobile) { lbl.setText("KHÓA"); lbl.setColor(GOLD); }
             else if (phase == firePhase()) { lbl.setText("TUNG"); lbl.setColor(FIRE); }
-            else { lbl.setText("SKILL"); lbl.setColor(COL2); }
+            else { lbl.setText(Vars.mobile ? "SKILL" : "SKILL [" + getSkillKey().value + "]"); lbl.setColor(COL2); }
         });
         t.visible(() -> isActive() && Vars.ui.hudfrag.shown && Vars.player != null && isArch(Vars.player.unit()) && !Vars.player.unit().dead);
         t.pack();
@@ -453,31 +595,19 @@ public final class ArchuengPvp {
         t.addListener(new InputListener() {
             boolean dragging = false;
             float offX = 0, offY = 0;
-            @Override public boolean touchDown(InputEvent event, float x, float y, int pointer, arc.input.KeyCode button) {
+            @Override public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button) {
                 dragging = false; offX = x; offY = y; uiTapConsumed = true; return true;
             }
             @Override public void touchDragged(InputEvent event, float x, float y, int pointer) {
                 if (Math.abs(x - offX) > 5 || Math.abs(y - offY) > 5) dragging = true;
                 if (dragging) { t.setPosition(t.x + x - offX, t.y + y - offY); clamp(t); }
             }
-            @Override public void touchUp(InputEvent event, float x, float y, int pointer, arc.input.KeyCode button) {
+            @Override public void touchUp(InputEvent event, float x, float y, int pointer, KeyCode button) {
                 if (dragging) {
                     Core.settings.put(KEY + "-x", Math.round(t.x));
                     Core.settings.put(KEY + "-y", Math.round(t.y));
-                } else if (!Vars.state.isPaused()) {
-                    Unit u = Vars.player.unit();
-                    if (phase == 0) {
-                        if (Time.time >= cdEnd && isArch(u) && !u.dead) phase = 1;
-                    } else if (phase == 1) {
-                        phase = 0;
-                    } else if (phase == 2 && Vars.mobile) {
-                        phase = 3; // mobile, lần bấm 3: khóa hướng (nút đổi thành "TUNG"), chưa tung
-                    } else if (phase == firePhase()) {
-                        // PC lần 3 / mobile lần 4: tung theo hướng đã chốt, giờ mới tính hồi chiêu
-                        cdEnd = Time.time + CD_T;
-                        NexNet.send(REQ, String.valueOf(aimAng));
-                        phase = 0;
-                    }
+                } else if (!Vars.state.isPaused() && Vars.player != null) {
+                    advanceSkillPhase(Vars.player.unit());
                 }
                 dragging = false;
             }
@@ -506,14 +636,15 @@ public final class ArchuengPvp {
             return isActive() && Vars.ui.hudfrag.shown && phase != 0 && isArch(u) && !u.dead;
         });
         c.addListener(new InputListener() {
-            @Override public boolean touchDown(InputEvent event, float x, float y, int pointer, arc.input.KeyCode button) { uiTapConsumed = true; return true; }
-            @Override public void touchUp(InputEvent event, float x, float y, int pointer, arc.input.KeyCode button) { phase = 0; }
+            @Override public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button) { uiTapConsumed = true; return true; }
+            @Override public void touchUp(InputEvent event, float x, float y, int pointer, KeyCode button) { phase = 0; }
         });
         Vars.ui.hudGroup.addChild(c);
     }
 
     public static void init() {
         Events.run(Trigger.update, ArchuengPvp::update);
+        UnitSkillInfo.registerArchueng();
 
         if (!Vars.headless) {
             Events.run(Trigger.draw, ArchuengPvp::draw);

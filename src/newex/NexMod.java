@@ -141,6 +141,8 @@ public class NexMod extends Mod {
         NexNet.init();
         NexFree.init();
         MachineUi.init();
+                UnitSkillInfo.init();
+
         ShowHp.init();
         FixSave.init();
         DamageDisplay.init();
