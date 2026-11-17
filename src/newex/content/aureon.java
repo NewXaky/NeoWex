@@ -7,7 +7,6 @@ import arc.graphics.g2d.Lines;
 import arc.math.Angles;
 import arc.math.Mathf;
 import arc.math.Rand;
-import arc.math.geom.Vec2;
 import arc.scene.ui.layout.Table;
 import arc.util.Strings;
 import arc.util.Time;
@@ -20,6 +19,7 @@ import mindustry.entities.Units;
 import mindustry.entities.abilities.Ability;
 import mindustry.entities.bullet.ContinuousBulletType;
 import mindustry.entities.units.WeaponMount;
+import mindustry.gen.Building;
 import mindustry.gen.Bullet;
 import mindustry.gen.Hitboxc;
 import mindustry.gen.MechUnit;
@@ -47,7 +47,6 @@ public final class Aureon {
     /** Thời gian khóa mục tiêu: 1.5 giây (90 tick). */
     public static final float LOCK_DURATION = 90f;
 
-    // Bảng màu chủ đạo (trắng-xanh / đỏ / vàng / hồ quang điện)
     private static final Color OUTLINE_COL = Color.valueOf("232933");
     private static final Color ARC_OUTER = Color.valueOf("66d9ff");
     private static final Color ARC_CORE = Color.valueOf("eefbff");
@@ -60,7 +59,6 @@ public final class Aureon {
     /** Gọi từ NexMod.loadContent(). */
     public static void create() {
         final ElectricArcBulletType arcBullet = new ElectricArcBulletType() {{
-            // Sát thương mỗi 5 tick (12 lần/giây) -> ~72 DPS/nòng, 4 nòng = ~288 DPS hội tụ + sốc điện
             damage = 6f;
             damageInterval = 5f;
             length = RANGE;
@@ -90,7 +88,6 @@ public final class Aureon {
             description = "Robot xung kích 2 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
             details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa.";
 
-            // Thông số cân bằng cho Unit 2 chân T5
             health = 22000f;
             armor = 22f;
             hitSize = 38f;
@@ -103,7 +100,6 @@ public final class Aureon {
             faceTarget = true;
             envDisabled = Env.none;
 
-            // Hoạt ảnh bước đi 2 chân (MechUnit)
             mechFrontSway = 1.15f;
             mechSideSway = 0.75f;
             mechStepParticles = true;
@@ -112,18 +108,14 @@ public final class Aureon {
             outlineRadius = 3;
             outlineColor = OUTLINE_COL;
 
-            // Kỹ năng điều khiển khóa mục tiêu + vẽ phạm vi bắn cho riêng người chơi điều khiển
             abilities.add(new TargetLockAbility());
 
-            // Cặp vũ khí trong (2 nòng phía trên/trong gần sọc đỏ)
+            // Cặp vũ khí trong (2 nòng) + cặp vũ khí ngoài (2 nòng) = 4 vũ khí
             weapons.add(createArcWeapon(9.5f, 4.5f, arcBullet));
-
-            // Cặp vũ khí ngoài (2 nòng gắn trên 2 giá cánh hai bên)
             weapons.add(createArcWeapon(18.5f, -1.5f, arcBullet));
         }};
     }
 
-    /** Tạo vũ khí hồ quang điện đối xứng (mirror = true -> 2 vũ khí mỗi lần gọi -> tổng 4 vũ khí). */
     private static Weapon createArcWeapon(float wx, float wy, ElectricArcBulletType arcBullet) {
         return new LockRequiredWeapon("newex-aureon-weapon") {{
             x = wx;
@@ -140,9 +132,7 @@ public final class Aureon {
             reload = 10f;
             continuous = true;
             alwaysContinuous = true;
-            shootSound = Sounds.spark;
-            loopSound = Sounds.electricHum;
-            loopSoundVolume = 0.45f;
+            shootSound = Sounds.beam;
 
             bullet = arcBullet;
         }};
@@ -161,7 +151,6 @@ public final class Aureon {
             boolean locked = lock != null && lock.isLocked();
 
             if (!locked) {
-                // Mất khóa hoặc chưa khóa xong -> ngắt tia điện ngay lập tức
                 mount.shoot = false;
                 if (mount.bullet != null) {
                     mount.bullet.remove();
@@ -171,7 +160,6 @@ public final class Aureon {
                 return;
             }
 
-            // Ép nòng súng luôn hướng thẳng vào mục tiêu đã khóa
             Teamc target = lock.lockedTarget;
             if (target != null) {
                 mount.aimX = target.x();
@@ -179,11 +167,6 @@ public final class Aureon {
             }
 
             super.update(unit, mount);
-
-            // Chặn bắn nếu chưa đủ 100% khóa
-            if (!locked) {
-                mount.shoot = false;
-            }
         }
     }
 
@@ -194,7 +177,7 @@ public final class Aureon {
         return null;
     }
 
-    // ================================================================== Đạn tia điện giật hội tụ (giống video 1)
+    // ================================================================== Đạn tia điện giật hội tụ
 
     public static class ElectricArcBulletType extends ContinuousBulletType {
         @Override
@@ -206,7 +189,6 @@ public final class Aureon {
             Unit u = (Unit) b.owner;
             TargetLockAbility lock = getLockAbility(u);
 
-            // Nếu unit chết, mất khóa, hoặc mục tiêu ra khỏi tầm bắn -> hủy tia điện ngay
             if (!u.isValid() || lock == null || !lock.isLocked() || lock.lockedTarget == null) {
                 b.remove();
                 return;
@@ -219,19 +201,15 @@ public final class Aureon {
                 return;
             }
 
-            // Cập nhật góc tia điện từ miệng súng tới thẳng tâm mục tiêu
             b.rotation(b.angleTo(target));
             b.fdata = b.dst(target);
 
-            // Gây sát thương định kỳ trực tiếp lên mục tiêu đang khóa
             if (b.timer(1, damageInterval)) {
                 if (target instanceof Hitboxc) {
                     Hitboxc h = (Hitboxc) target;
                     h.collision(b, target.x(), target.y());
-                    Damage.collidePoint(b, b.team, hitEffect, target.x(), target.y());
-                } else {
-                    Damage.collidePoint(b, b.team, hitEffect, target.x(), target.y());
                 }
+                Damage.collidePoint(b, b.team, hitEffect, target.x(), target.y());
             }
         }
 
@@ -251,17 +229,14 @@ public final class Aureon {
             float perpX = -Mathf.sinDeg(ang);
             float perpY = Mathf.cosDeg(ang);
 
-            // Tạo hiệu ứng tia sét gãy khúc liên tục biến thiên theo thời gian
             int segments = Mathf.clamp((int) (dst / 16f), 5, 22);
             long seed = (long) (Time.time * 0.45f) + b.id * 97L;
-            rand.setSeed(seed);
 
-            // Vẽ 2 lớp: hào quang xanh điện bên ngoài + lõi sét trắng sáng bên trong
             for (int pass = 0; pass < 2; pass++) {
                 rand.setSeed(seed);
                 if (pass == 0) {
                     Draw.color(ARC_OUTER, 0.55f);
-                    Lines.stroke(4.2f + Mathf.absSin(Time.time, 2f, 1.2f));
+                    Lines.stroke(4.2f + Mathf.absin(Time.time, 2f, 1.2f));
                 } else {
                     Draw.color(ARC_CORE, 0.95f);
                     Lines.stroke(1.8f);
@@ -274,7 +249,6 @@ public final class Aureon {
                     float curY = Mathf.lerp(y1, y2, t);
 
                     if (i < segments) {
-                        // Độ lệch giật mạnh nhất ở đoạn giữa tia sét, hội tụ chính xác ở 2 đầu
                         float envelope = Mathf.sin(t * Mathf.pi);
                         float jitter = rand.range(11f) * envelope;
                         curX += perpX * jitter;
@@ -283,7 +257,6 @@ public final class Aureon {
 
                     Lines.line(prevX, prevY, curX, curY);
 
-                    // Vẽ nhánh tia lửa phụ nhỏ ở lớp lõi
                     if (pass == 1 && i < segments && rand.chance(0.28f)) {
                         float branchAng = ang + rand.range(55f);
                         float branchLen = rand.random(8f, 18f);
@@ -295,7 +268,6 @@ public final class Aureon {
                 }
             }
 
-            // Quầng sáng ở miệng nòng và điểm hội tụ trên mục tiêu
             Draw.color(ARC_OUTER, 0.6f);
             Fill.circle(x1, y1, 4.5f);
             Fill.circle(x2, y2, 6.5f);
@@ -306,11 +278,11 @@ public final class Aureon {
         }
     }
 
-    // ================================================================== Hệ thống khóa mục tiêu & Drawer (giống video 1 & 2)
+    // ================================================================== Hệ thống khóa mục tiêu & Drawer
 
     public static class TargetLockAbility extends Ability {
         public Teamc lockedTarget = null;
-        public float lockProgress = 0f; // 0.0 -> 1.0
+        public float lockProgress = 0f;
 
         public boolean isLocked() {
             return lockedTarget != null && isValidTarget(lockedTarget) && lockProgress >= 1f;
@@ -322,8 +294,8 @@ public final class Aureon {
                 Unit u = (Unit) t;
                 return u.isValid() && !u.dead && u.hittable();
             }
-            if (t instanceof mindustry.gen.Building) {
-                mindustry.gen.Building b = (mindustry.gen.Building) t;
+            if (t instanceof Building) {
+                Building b = (Building) t;
                 return b.isValid() && !b.dead;
             }
             return true;
@@ -331,16 +303,13 @@ public final class Aureon {
 
         @Override
         public void update(Unit unit) {
-            // 1. Kiểm tra mục tiêu hiện tại có còn sống và nằm trong tầm bắn không
             if (lockedTarget != null) {
                 if (!isValidTarget(lockedTarget) || unit.dst(lockedTarget) > RANGE) {
-                    // Ra khỏi tầm bắn hoặc mục tiêu bị tiêu diệt -> mất khóa ngay lập tức
                     lockedTarget = null;
                     lockProgress = 0f;
                 }
             }
 
-            // 2. Nếu người chơi đang điều khiển trực tiếp: ưu tiên mục tiêu gần con trỏ chuột trong tầm bắn
             if (unit.isPlayer()) {
                 Teamc hovered = Units.closestTarget(unit.team, unit.aimX, unit.aimY, 48f,
                     u -> u.checkTarget(true, true) && unit.within(u, RANGE),
@@ -352,7 +321,6 @@ public final class Aureon {
                 }
             }
 
-            // 3. Nếu chưa có mục tiêu, tự động tìm kẻ địch gần nhất trong tầm bắn
             if (lockedTarget == null) {
                 lockedTarget = Units.closestTarget(unit.team, unit.x, unit.y, RANGE,
                     u -> u.checkTarget(true, true),
@@ -361,7 +329,6 @@ public final class Aureon {
                 lockProgress = 0f;
             }
 
-            // 4. Nạp tiến trình khóa mục tiêu nếu đang giữ mục tiêu trong phạm vi bắn
             if (lockedTarget != null) {
                 if (lockProgress < 1f) {
                     lockProgress = Mathf.clamp(lockProgress + Time.delta / LOCK_DURATION);
@@ -373,32 +340,27 @@ public final class Aureon {
 
         @Override
         public void draw(Unit unit) {
-            // CHỈ vẽ phạm vi bắn và tâm khóa mục tiêu khi chính player đang nhập vào điều khiển unit này
             if (Vars.player == null || Vars.player.unit() != unit) return;
 
             Draw.draw(Layer.overlayUI, () -> {
                 drawFiringRange(unit);
                 if (lockedTarget != null && isValidTarget(lockedTarget)) {
-                    drawLockReticle(unit, lockedTarget, lockProgress);
+                    drawLockReticle(lockedTarget, lockProgress);
                 }
             });
         }
 
-        /** Vẽ vòng phạm vi bắn xung quanh unit (chỉ player điều khiển mới thấy). */
         private void drawFiringRange(Unit unit) {
             float x = unit.x, y = unit.y;
 
-            // Vòng viền mờ bên ngoài
             Draw.color(RANGE_GOLD, 0.16f);
             Lines.stroke(3f);
             Lines.circle(x, y, RANGE);
 
-            // Vòng nét đứt xoay nhẹ sắc nét
             Draw.color(ARC_OUTER, 0.55f);
             Lines.stroke(1.3f);
             Lines.dashCircle(x, y, RANGE);
 
-            // 4 vạch đánh dấu hướng trên vòng tầm bắn
             for (int i = 0; i < 4; i++) {
                 float a = i * 90f + Time.time * 0.15f;
                 float rx = x + Angles.trnsx(a, RANGE);
@@ -408,13 +370,7 @@ public final class Aureon {
             Draw.reset();
         }
 
-        /**
-         * Vẽ khung khóa mục tiêu phong cách War Robots (như video 1 & video 2):
-         * - Hình thoi đỏ bên ngoài + 2 ngoặc mũi tên trái/phải thu hẹp dần khi đang khóa.
-         * - Khung vuông đỏ bên trong với 4 tam giác chỉ vào tâm.
-         * - Thanh tiến trình khóa mục tiêu bên cạnh.
-         */
-        private void drawLockReticle(Unit unit, Teamc target, float progress) {
+        private void drawLockReticle(Teamc target, float progress) {
             float tx = target.x();
             float ty = target.y();
             boolean locked = progress >= 1f;
@@ -423,31 +379,27 @@ public final class Aureon {
                 ? Math.max(((Hitboxc) target).hitSize() * 0.65f, 14f)
                 : 16f;
 
-            // Khi chưa khóa xong (0 -> 1), khung ngoài phóng to và khép dần vào tâm
             float expand = (1f - progress) * 22f;
-            float pulse = locked ? Mathf.absSin(Time.time, 3f, 1.5f) : 0f;
+            float pulse = locked ? Mathf.absin(Time.time, 3f, 1.5f) : 0f;
             float sqSize = baseRadius + pulse;
             float diamondSize = (baseRadius + 5f) + expand;
 
             Color mainCol = locked ? LOCK_RED : LOCK_CHARGE;
 
-            // 1. Khung vuông bên trong + 4 mũi tên tam giác hướng vào tâm
             Draw.color(LOCK_RED, locked ? 0.95f : 0.75f);
             Lines.stroke(locked ? 2.0f : 1.5f);
             Lines.square(tx, ty, sqSize, 0f);
 
             float triSize = 4.2f;
-            Drawf.tri(tx, ty + sqSize + 2f, triSize, triSize, 270f); // Trên chỉ xuống
-            Drawf.tri(tx, ty - sqSize - 2f, triSize, triSize, 90f);  // Dưới chỉ lên
-            Drawf.tri(tx - sqSize - 2f, ty, triSize, triSize, 0f);   // Trái chỉ phải
-            Drawf.tri(tx + sqSize + 2f, ty, triSize, triSize, 180f); // Phải chỉ trái
+            Drawf.tri(tx, ty + sqSize + 2f, triSize, triSize, 270f);
+            Drawf.tri(tx, ty - sqSize - 2f, triSize, triSize, 90f);
+            Drawf.tri(tx - sqSize - 2f, ty, triSize, triSize, 0f);
+            Drawf.tri(tx + sqSize + 2f, ty, triSize, triSize, 180f);
 
-            // 2. Khung hình thoi xoay 45 độ bên ngoài thu hẹp theo tiến trình khóa
             Draw.color(mainCol, 0.85f);
             Lines.stroke(1.6f);
             Lines.square(tx, ty, diamondSize, 45f);
 
-            // 3. Hai ngoặc chữ V (< >) hai bên khép lại khi khóa
             float bracketOffset = sqSize + 9f + expand * 1.2f;
             float bracketH = 7f;
             Lines.line(tx - bracketOffset, ty + bracketH, tx - bracketOffset - 5f, ty);
@@ -456,7 +408,6 @@ public final class Aureon {
             Lines.line(tx + bracketOffset, ty + bracketH, tx + bracketOffset + 5f, ty);
             Lines.line(tx + bracketOffset + 5f, ty, tx + bracketOffset, ty - bracketH);
 
-            // 4. Thanh tiến trình khóa dọc bên phải mục tiêu (giống thanh xanh/đỏ trong video 2)
             float barX = tx + sqSize + 15f;
             float barH = sqSize * 1.8f;
             float barW = 3f;
