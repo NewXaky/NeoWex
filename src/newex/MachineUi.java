@@ -41,12 +41,16 @@ import java.util.WeakHashMap;
  * Giao diện "máy móc" cho các hộp thoại của khối newex trên mobile màn hình ngang.
  * Bố cục: thanh trên (tiêu đề kéo được + tab gạch chân + nút đóng) -> thanh tài nguyên lõi -> 2 cột thẻ viền góc.
  * Tab 1 "NÂNG CẤP": dải tài nguyên + cột Yêu cầu | cột Thao tác. Tab 2 "KHO LÕI": lưới tài nguyên đầy đủ.
+ * Có lớp tự co (installFit): đo kích thước thật trên màn hình, nếu vượt khung thì tự thu nhỏ cho vừa.
  */
 public final class MachineUi {
     private MachineUi() {}
 
     private static final Set<BaseDialog> done = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Color STEEL = Color.valueOf("8a97a8"), AMBER = Color.valueOf("ffb347"), PANEL = Color.valueOf("12161c");
+
+    /** Hộp thoại không được chiếm quá tỉ lệ này của màn hình (theo cả chiều ngang lẫn dọc). */
+    private static final float FIT_LIMIT = 0.97f;
 
     public static void init() {
         Events.run(Trigger.update, MachineUi::tick);
@@ -286,7 +290,7 @@ public final class MachineUi {
         top.button(Icon.cancel, Styles.cleari, () -> d.hide()).size(topH);
 
         // ---- khung ngoài
-        Table shell = new Table(Styles.black8);
+        final Table shell = new Table(Styles.black8);
         shell.setClip(true);
         shell.add(top).growX().height(topH).row();
         shell.image(Tex.whiteui, AMBER).growX().height(line).row();
@@ -298,6 +302,36 @@ public final class MachineUi {
         d.cont.add(shell).size(W, shellH);
         d.pack();
         d.setPosition(Math.round((sceneW - d.getWidth()) / 2f), Math.round((sceneH - d.getHeight()) / 2f));
+
+        installFit(d, shell);
+    }
+
+    /**
+     * Tự co vừa màn hình: mỗi frame đo kích thước THẬT của khung trên màn hình (đã tính mọi phép scale phía trên),
+     * nếu lớn hơn FIT_LIMIT của màn hình thì thu nhỏ cả hộp thoại quanh tâm cho vừa. Không bao giờ phóng to quá 1x.
+     */
+    private static void installFit(final BaseDialog d, final Element shell) {
+        d.update(() -> {
+            if (Core.scene == null) return;
+            float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
+            float sc = d.scaleX;
+            if (sc <= 0f || shell.getWidth() <= 0f || shell.getHeight() <= 0f) return;
+
+            Vec2 a = shell.localToStageCoordinates(Tmp.v1.set(0f, 0f));
+            float ax = a.x, ay = a.y;
+            Vec2 b = shell.localToStageCoordinates(Tmp.v2.set(shell.getWidth(), shell.getHeight()));
+            float mw = Math.abs(b.x - ax), mh = Math.abs(b.y - ay);
+            if (mw <= 0f || mh <= 0f) return;
+
+            // kích thước "tự nhiên" khi scale = 1
+            float nw = mw / sc, nh = mh / sc;
+            float target = Math.min(1f, Math.min(sw * FIT_LIMIT / nw, sh * FIT_LIMIT / nh));
+            if (Math.abs(target - sc) > 0.002f) {
+                d.setTransform(true);
+                d.setOrigin(Align.center);
+                d.setScale(target);
+            }
+        });
     }
 
     /** Kéo thả hộp thoại theo mọi hướng bằng cách giữ & kéo vùng tiêu đề (chừa lại 48px để không mất hộp thoại). */
@@ -486,6 +520,7 @@ public final class MachineUi {
                     Label a = chip.add(fmt(amount)).color(Color.white).padRight(5f).get();
                     a.setFontScale(0.78f);
                     root.add(chip).padRight(4f);
+                    n++;
                 } else {
                     Table cell = new Table(Styles.black8);
                     cell.image(Tex.whiteui, STEEL).width(2f).growY().padRight(3f);
@@ -497,9 +532,7 @@ public final class MachineUi {
                     amtLbl.setFontScale(0.78f);
                     root.add(cell).growX().pad(1.5f).uniformX();
                     if (++n % cols == 0) root.row();
-                    continue;
                 }
-                n++;
             }
             if (n == 0) root.add(T("Trống", "Empty")).color(Color.lightGray).left();
         });
