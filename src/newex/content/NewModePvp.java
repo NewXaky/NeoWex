@@ -151,6 +151,7 @@ public class NewModePvp {
     static final String REQ_BUY = "newex-pvp-buy";
     static final String REQ_SELL = "newex-pvp-sell";
     static final String REQ_UNIT = "newex-pvp-unit";
+    static final String REQ_TMODE = "newex-pvp-tmode";
     static final String REQ_PILOT = "newex-pvp-pilot";
     static final int PILOT_XIKI = 1;
     static final int PILOT_XAKY = 3;
@@ -213,6 +214,37 @@ public class NewModePvp {
     /** Cấp tối thiểu để chọn unit bậc t (0 = không yêu cầu). */
     static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : 0; }
     static boolean isWarTier(int t) { return t >= 9; }
+
+    // ===== Chế độ lắp nhiều pháo (St.tm: 0 = chế độ 1, 1 = chế độ 2, 2 = chế độ 3) =====
+    static final float TM_ATK1_PCT = 18f, TM_ATK3_PCT = 12f, TM_SPREAD = 6f;
+    static final int TM_MULTI_MAX = 4;
+    static String tmName(int m) {
+        return m == 0 ? tr("1. Dồn lực", "1. Focus") : m == 1 ? tr("2. Đa đạn", "2. Multi-shot") : tr("3. Hiệp đồng", "3. Synergy");
+    }
+    static String tmDesc(int m) {
+        return m == 0 ? tr("Lắp từ 2 pháo: mỗi pháo lắp thêm +" + (int) TM_ATK1_PCT + "% Tấn công cho CHÍNH pháo đó (không tăng cho unit).",
+                "With 2+ turrets: each extra turret mounted gives +" + (int) TM_ATK1_PCT + "% attack to that turret only (not the unit).")
+            : m == 1 ? tr("Lắp nhiều pháo thì mỗi pháo bắn nhiều đạn hơn (tối đa " + TM_MULTI_MAX + " đạn mỗi lần bắn).",
+                "More turrets mounted = each turret fires more bullets (up to " + TM_MULTI_MAX + " per shot).")
+            : tr("Lắp từ 2 pháo: mỗi pháo lắp thêm +" + (int) TM_ATK3_PCT + "% Tấn công cho CHÍNH pháo đó (không tăng cho unit).",
+                "With 2+ turrets: each extra turret mounted gives +" + (int) TM_ATK3_PCT + "% attack to that turret only (not the unit).");
+    }
+    static arc.scene.ui.layout.Cell<arc.scene.ui.TextButton> bigBtn(Table t, String text, arc.graphics.Color col, Runnable r, float h, float minW) {
+        arc.scene.ui.layout.Cell<arc.scene.ui.TextButton> c = t.button(text, r).height(h).minWidth(minW);
+        c.get().setColor(col);
+        c.get().getLabel().setFontScale(1.05f);
+        return c;
+    }
+    static Table tmodeBox(final St st, float w) {
+        Table t = new Table(Styles.black6);
+        t.margin(6);
+        t.add("[accent]" + tr("Chế độ lắp nhiều pháo", "Multi-turret mode") + "[]").left().padRight(8);
+        bigBtn(t, tmName(st.tm), arc.graphics.Color.valueOf("ffb347"), () -> send(REQ_TMODE, String.valueOf((st.tm + 1) % 3)), 36f, 150f);
+        t.row();
+        t.add("[lightgray]" + tmDesc(st.tm) + "[]").colspan(2).width(Math.max(120f, w - 24f)).wrap().left().padTop(3).row();
+        t.add("[lightgray]" + tr("Nhấn nút để đổi: 1 → 2 → 3 → 1.", "Tap to cycle: 1 → 2 → 3 → 1.") + "[]").colspan(2).left().row();
+        return t;
+    }
     static final int STAT_MAX = 20;
     static final int STAT_MAIN = 12;
     static final int STAT_ARMY = 12;
@@ -432,7 +464,7 @@ public class NewModePvp {
     // ===== trang thai nguoi choi =====
     /** JS newState(): {lv,exp,pts,u,s,d,p,b,pi,kc,w,wl}; cmd chi co khi da dat. eqC/hs/xns la cache KHONG luu (JS loai khoi JSON). */
     static final class St {
-        int lv = 1, pts = START_POINTS, u = 0, b = 0, pi = 0, w = WALL_NONE, wl = 0, cmd = 0;
+        int lv = 1, pts = START_POINTS, u = 0, b = 0, pi = 0, w = WALL_NONE, wl = 0, cmd = 0, tm = 0;
         float exp = 0;
         int[] s = new int[STATS.length];
         int[] kc = {0, 0, 0};
@@ -709,7 +741,7 @@ public class NewModePvp {
                 St s = e.getValue();
                 if (!first) sb.append(','); first = false;
                 sb.append('"').append(e.getKey().replace("\\", "\\\\").replace("\"", "\\\"")).append("\":{\"lv\":").append(s.lv)
-                    .append(",\"exp\":").append(Float.isNaN(s.exp) ? 0f : s.exp).append(",\"pts\":").append(s.pts).append(",\"u\":").append(s.u).append(",\"s\":");
+                    .append(",\"exp\":").append(Float.isNaN(s.exp) ? 0f : s.exp).append(",\"pts\":").append(s.pts).append(",\"u\":").append(s.u).append(",\"tm\":").append(s.tm).append(",\"s\":");
                 arr(sb, s.s); sb.append(",\"d\":"); strs(sb, s.d); sb.append(",\"p\":"); ints(sb, s.p);
                 sb.append(",\"b\":").append(s.b).append(",\"pi\":").append(s.pi).append(",\"kc\":"); arr(sb, s.kc);
                 sb.append(",\"w\":").append(s.w).append(",\"wl\":").append(s.wl).append(",\"cmd\":").append(s.cmd).append(",\"ch\":\"").append(ChaosMode.enc(s)).append("\"}");
@@ -727,7 +759,7 @@ public class NewModePvp {
     /** Doc 1 doi tuong nguoi choi dang JS (object co khoa) tu JsonValue. */
     static St readStObj(JsonValue o) {
         St s = new St();
-        s.lv = o.getInt("lv", 1); s.exp = o.getFloat("exp", 0f); s.pts = o.getInt("pts", START_POINTS); s.u = o.getInt("u", 0);
+        s.lv = o.getInt("lv", 1); s.exp = o.getFloat("exp", 0f); s.pts = o.getInt("pts", START_POINTS); s.u = o.getInt("u", 0); s.tm = o.getInt("tm", 0);
         s.s = readInts(o.get("s"), STATS.length, s.s);
         JsonValue d = o.get("d");
         if (d != null && d.isArray()) for (JsonValue c = d.child; c != null; c = c.next) s.d.add(c.asString());
@@ -763,7 +795,7 @@ public class NewModePvp {
             sb.append('"').append(e.getKey()).append("\":[").append(s.lv).append(',').append((int) Math.floor(s.exp)).append(',').append(s.pts).append(',');
             arr(sb, s.s); sb.append(','); strs(sb, s.d); sb.append(',').append(s.u).append(','); ints(sb, s.p);
             sb.append(',').append(s.b).append(',').append(s.pi).append(','); arr(sb, s.kc);
-            sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\"]");
+            sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\",").append(s.tm).append("]");
         }
         sb.append("},\"cr\":").append(ChaosMode.round).append(",\"th\":").append(ChaosMode.hideFlag ? 1 : 0).append("}");
         if (Vars.net.server()) { try { Call.clientPacketReliable(SYNC_KIND, sb.toString()); } catch (Throwable err) {} }
@@ -788,6 +820,7 @@ public class NewModePvp {
                 if (kc != null) s.kc = kc;
                 s.cmd = a.get(10).asInt(); s.w = a.get(11).asInt(); s.wl = a.get(12).asInt();
                 if (a.size > 13) ChaosMode.dec(s, a.get(13).asString());
+                if (a.size > 14) s.tm = a.get(14).asInt();
                 n.put(Integer.parseInt(a.name), s);
             }
             byId = n;
@@ -1375,6 +1408,7 @@ public class NewModePvp {
 
     static final class MState {
         float rel, ang, tt, life, charge, bLife; int q, barrel, k, n = 1;
+        float f = 1f, spread; int rep = 1; // chế độ nhiều pháo: hệ số Tấn công riêng của pháo, góc lệch đạn thêm, số đạn mỗi lần bắn
         Tgt tgt; Bullet ptgt; Bullet b;
     }
     static final HashMap<String, MState> mountSt = new HashMap<>();
@@ -1540,6 +1574,7 @@ public class NewModePvp {
         // handler.shoot(xo, yo, ao, delay, mover): sinh dan (JS spawn); mover khong can ten kieu.
         ShootPattern.BulletHandler handler = (xo, yo, ao, delay, mover) -> {
             stt.q++;
+            final float spr = stt.spread, fmul = stt.f;
             Runnable spawn = () -> {
                 stt.q = Math.max(0, stt.q - 1);
                 try {
@@ -1548,7 +1583,7 @@ public class NewModePvp {
                     float rot = stt.ang;
                     float[] mz = muzzle(u, blk, mp, rot);
                     float bx = mz[0] + Angles.trnsx(rot - 90, xo, yo), by = mz[1] + Angles.trnsy(rot - 90, xo, yo);
-                    float a = rot + ao + (float) (Math.random() * 2 - 1) * inacc;
+                    float a = rot + ao + (float) (Math.random() * 2 - 1) * inacc + spr;
                     float ls = 1;
                     try {
                         if (fldB(bt, "scaleLife", false)) {
@@ -1559,8 +1594,11 @@ public class NewModePvp {
                     } catch (Throwable err) {}
                     float vs = (1 - vrnd) + (float) Math.random() * vrnd;
                     Bullet blt = null;
+                    float dmS = u.damageMultiplier;
+                    if (fmul != 1f) u.damageMultiplier = dmS * fmul;
                     try { blt = bt.create(u, u.team, bx, by, a, -1f, vs, ls, null, mover, tx, ty); }
                     catch (Throwable err) { logOnce("create:" + def.id, "bullet create failed for " + def.id + ": " + err, false); }
+                    u.damageMultiplier = dmS;
                     if (blt != null && onBullet != null) onBullet.get(blt);
                     if (!Vars.headless) {
                         try {
@@ -1600,7 +1638,7 @@ public class NewModePvp {
         float rot = stt.ang;
         float[] mz = muzzle(u, def.block, mp, rot);
         float sx = mz[0] + Angles.trnsx(rot, 6f), sy = mz[1] + Angles.trnsy(rot, 6f);
-        float range = turretRange(def), dm = Math.max(0.1f, u.damageMultiplier);
+        float range = turretRange(def), dm = Math.max(0.1f, u.damageMultiplier) * stt.f;
         if (!Vars.headless) { try { therdumFx.at(sx, sy, rot); } catch (Throwable err) {} }
         for (int i = 0; i < 40; i++) {
             float sp = Mathf.random(3f, 9f);
@@ -1623,7 +1661,14 @@ public class NewModePvp {
         if (stt.q > 0 && fldF(fld(blk, "shoot", null), "firstShotDelay", 0f) > 0) return;
         if (Angles.angleDist(stt.ang, want) < fldF(blk, "shootCone", 8f) && stt.rel >= reload) {
             if (def.id.equals(THERDUM_ID) && therdumBullet != null) therdumFire(u, def, stt, ast);
-            else fireTurret(u, def, bt, stt, aim.tx, aim.ty, null);
+            else {
+                int reps = Math.max(1, stt.rep);
+                for (int r = 0; r < reps; r++) {
+                    stt.spread = (r - (reps - 1) / 2f) * TM_SPREAD;
+                    fireTurret(u, def, bt, stt, aim.tx, aim.ty, null);
+                }
+                stt.spread = 0f;
+            }
             stt.rel = stt.rel % reload;
         }
     }
@@ -1753,6 +1798,9 @@ public class NewModePvp {
     static void mountFire(Player pl, ArrayList<Def> list, Unit u, String pfx) {
         int n = list.size();
         if (n == 0) return;
+        if (Zeralion.isBound(u)) return; // bị Zeralion khóa: không bắn được
+        St own = byId.get(pl.id);
+        int tm = own != null ? own.tm : -1;
         Aim ast = null;
         for (int k = 0; k < n; k++) {
             Def def = list.get(k);
@@ -1761,6 +1809,15 @@ public class NewModePvp {
             MpOut mp = mountPos(u, k, n);
             MState stt = mstate(key, u);
             stt.k = k; stt.n = n;
+            stt.f = 1f; stt.rep = 1;
+            if (n > 1 && tm >= 0) {
+                if (tm == 0) stt.f = 1f + (n - 1) * TM_ATK1_PCT / 100f;
+                else if (tm == 2) stt.f = 1f + (n - 1) * TM_ATK3_PCT / 100f;
+                else stt.rep = Math.min(n, TM_MULTI_MAX);
+            }
+            float dmSave = u.damageMultiplier;
+            boolean beamKind = def.kind.equals("tractor") || def.kind.equals("point") || def.kind.equals("laser") || def.kind.equals("cont");
+            if (beamKind && stt.f != 1f) u.damageMultiplier = dmSave * stt.f;
             if (ast == null) ast = hostAim(u, pl);
             try {
                 if (def.kind.equals("tractor")) tractorTurret(u, def, mp, stt, key);
@@ -1769,6 +1826,7 @@ public class NewModePvp {
                 else if (def.kind.equals("cont")) contTurret(u, def, mp, ast, stt, key, false);
                 else shootTurret(u, def, mp, ast, stt, key);
             } catch (Throwable err) { logOnce("mf:" + def.id, "mount update failed for " + def.id + ": " + err, false); }
+            u.damageMultiplier = dmSave;
         }
     }
 
@@ -5048,6 +5106,16 @@ public class NewModePvp {
             toast(player, tr("[accent]Đã đổi sang unit: ", "[accent]Switched unit: ") + tierType(k).localizedName);
             changed();
         });
+        onReq(REQ_TMODE, 250, (player, payload) -> {
+            St st = reqState(player, true);
+            if (st == null) return;
+            Integer k = leadInt(payload);
+            int nm = (k != null && k >= 0 && k < 3) ? k : (st.tm + 1) % 3;
+            if (st.tm == nm) return;
+            st.tm = nm;
+            toast(player, tr("[accent]Chế độ pháo: ", "[accent]Turret mode: ") + tmName(nm));
+            changed();
+        });
         onReq(REQ_BUY, 60, (player, payload) -> {
             St st = reqState(player); if (st == null) return;
             Def d = droneDefs().map.get(payload.split("\\|")[0]);
@@ -5627,6 +5695,7 @@ public class NewModePvp {
     static void turretHeader(Table p, St st, float w, int cols) {
         p.add("[lightgray]" + tr("Pháo mua xong vào Túi đồ. Lắp: ", "Bought turrets go to Bag. Mounted: ") + "[white]" + equipCount(st) + "/" + equipSlots(st) + "[]  [lightgray]" + tr("Xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]  [lightgray]"
             + (multiTurretOn() ? tr("Mua được nhiều pháo cùng loại.", "Same turret can be bought many times.") : tr("Mỗi loại chỉ mua 1.", "1 per turret type.")) + "[]").colspan(cols).width(w).left().wrap().minWidth(0).pad(2).row();
+        p.add(tmodeBox(st, w)).colspan(cols).width(w).left().pad(2).row();
     }
     /** Mô tả pháo (role + turretDesc) dùng reflection nên khá nặng; trang bị dựng lại mỗi lần bấm nút -> cache theo id + ngôn ngữ. */
     static final HashMap<String, String[]> cardTxtCache = new HashMap<>();
@@ -5687,6 +5756,8 @@ public class NewModePvp {
         head.margin(8);
         head.add("[accent]" + tr("Túi đồ", "Bag") + "[]").left().expandX();
         head.add("[lightgray]" + tr("Đang lắp: ", "Mounted: ") + "[white]" + equipCount(st) + "/" + equipSlots(st) + "[]  [lightgray]" + tr("Xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]").right();
+        head.row();
+        head.add(tmodeBox(st, W - 24f)).colspan(2).growX().padTop(4);
         h.add(head).growX().pad(4).row();
 
         ArrayList<BagGroup> groups = new ArrayList<>();
@@ -6251,7 +6322,8 @@ public class NewModePvp {
         final Defs fdefs = defs;
         Table head = new Table(Styles.black6);
         head.margin(shortScreen() ? 4 : 8);
-        float bagBtnH = shortScreen() ? 32 : (Vars.mobile ? 40 : 32);
+        float bagBtnH = shortScreen() ? 38 : (Vars.mobile ? 48 : 40);
+        final arc.graphics.Color pilotCol = arc.graphics.Color.valueOf("5ad2ff"), bagCol = arc.graphics.Color.valueOf("ffb347");
         String bagLabel = tr("Túi đồ", "Bag") + " (" + st.d.size() + ")", pilotLabel = "Pilot";
         if (narrow) {
             head.add("[accent]" + tr("Cấp ", "Level ") + st.lv + "/" + maxLevel() + "[]").left().minWidth(0);
@@ -6259,8 +6331,8 @@ public class NewModePvp {
             head.row();
             head.add("[yellow]" + tr("Điểm: ", "Points: ") + st.pts + "[]").left().minWidth(0).padTop(2);
             Table nb = new Table();
-            nb.button(pilotLabel, () -> openPilot()).height(bagBtnH).minWidth(0);
-            nb.button(bagLabel, () -> openBag()).height(bagBtnH).minWidth(0).padLeft(4);
+            bigBtn(nb, pilotLabel, pilotCol, () -> openPilot(), bagBtnH, 80f);
+            bigBtn(nb, bagLabel, bagCol, () -> openBag(), bagBtnH, 100f).padLeft(4);
             head.add(nb).right().padTop(2);
             head.row();
         } else {
@@ -6268,13 +6340,18 @@ public class NewModePvp {
             head.add("[white]" + tierType(activeTier(st)).localizedName + "[]").expandX().center();
             Table ptsBox = new Table();
             ptsBox.add("[yellow]" + tr("Điểm: ", "Points: ") + st.pts + "[]").right();
-            ptsBox.button(pilotLabel, () -> openPilot()).height(bagBtnH).padLeft(8);
-            ptsBox.button(bagLabel, () -> openBag()).height(bagBtnH).padLeft(4);
+            bigBtn(ptsBox, pilotLabel, pilotCol, () -> openPilot(), bagBtnH, 100f).padLeft(8);
+            bigBtn(ptsBox, bagLabel, bagCol, () -> openBag(), bagBtnH, 130f).padLeft(4);
             head.add(ptsBox).right();
             head.row();
         }
         head.add(new Bar(() -> "EXP " + expText(), () -> Pal.accent, () -> expFrac())).growX().height(shortScreen() ? 16 : (Vars.mobile ? 26 : 20)).colspan(narrow ? 2 : 3).padTop(shortScreen() ? 2 : 6);
         hd.add(head).growX().pad(4).row();
+        String tip = st.pts > 0
+            ? tr("[yellow]Bạn có " + st.pts + " điểm chưa dùng → mở tab CHỈ SỐ để nâng cấp!", "[yellow]You have " + st.pts + " unspent points → open the STATS tab!")
+            : (st.lv < 10 ? tr("[lightgray]Mẹo: chạm các tab phía trên để chọn unit, nâng chỉ số, mua pháo, thuê lính. [#5ad2ff]Pilot[] = chiêu mộ phi công, [#ffb347]Túi đồ[] = pháo đã mua.",
+                "[lightgray]Tip: tap the tabs above to pick a unit, upgrade stats, buy turrets, hire army. [#5ad2ff]Pilot[] = recruit pilots, [#ffb347]Bag[] = bought turrets.") : null);
+        if (tip != null) hd.add(tip).growX().wrap().minWidth(0).pad(2, 8, 4, 8).row();
 
         if (upTab < 0 || upTab > 3) upTab = 0;
         final int tab = upTab;
@@ -6322,7 +6399,9 @@ public class NewModePvp {
         final MachineUi.Panel p = MachineUi.panel(tr("Nâng cấp PvP", "PvP Upgrades"));
         upTab = lastUpTab;
         viewUp = new ArrayList[]{new ArrayList<Object>(recentUp[0]), new ArrayList<Object>(recentUp[1]), new ArrayList<Object>(recentUp[2]), new ArrayList<Object>(recentUp[3])};
-        p.tabs(new String[]{tr("Unit", "Unit"), tr("Chỉ số", "Stats"), tr("Pháo", "Turrets"), tr("Lính", "Army")}, upTab, ix -> upTab = ix);
+        p.tabs(new String[]{tr("UNIT", "UNIT"), tr("CHỈ SỐ", "STATS"), tr("PHÁO", "TURRETS"), tr("LÍNH", "ARMY")}, upTab, ix -> upTab = ix);
+        p.bigTabs(new String[]{tr("Chọn unit điều khiển", "Pick your unit"), tr("Dùng điểm để mạnh hơn", "Spend points"), tr("Mua & lắp pháo", "Buy & mount turrets"), tr("Thuê lính giữ lõi", "Hire army")},
+            ix -> { St s = localState(); return (ix == 1 && s != null && s.pts > 0) ? "[scarlet]+" + s.pts + "[]" : ""; });
         p.onBuild(() -> buildDialog(p));
         final String[] lastVer = {curVer()};
         p.onTick(() -> {

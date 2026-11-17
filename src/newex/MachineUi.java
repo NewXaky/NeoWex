@@ -197,6 +197,9 @@ public final class MachineUi {
         private String[] tabNames = new String[0];
         private int tab;
         private Intc onTab;
+        private boolean bigTabs;
+        private String[] tabCaps;
+        private java.util.function.IntFunction<String> tabBadge;
         private Runnable refill, ticker;
         private boolean scrollable = true, scrollX = false;
         private float maxW = 900f;
@@ -249,6 +252,15 @@ public final class MachineUi {
             this.tabNames = names == null ? new String[0] : names;
             this.tab = Math.max(0, Math.min(Math.max(0, tabNames.length - 1), selected));
             this.onTab = onTab;
+            if (shell != null) layout();
+            return this;
+        }
+
+        /** Tab lớn dễ thấy: hàng riêng dưới thanh tiêu đề, mỗi tab có chú thích nhỏ và huy hiệu (badge) tùy chọn. */
+        public Panel bigTabs(String[] captions, java.util.function.IntFunction<String> badge) {
+            this.bigTabs = true;
+            this.tabCaps = captions;
+            this.tabBadge = badge;
             if (shell != null) layout();
             return this;
         }
@@ -497,8 +509,8 @@ public final class MachineUi {
             H = h;
 
             final float topH = Vars.mobile ? 44f : 38f, line = 2.5f, pad = 6f;
-            final boolean tabsInBar = tabNames.length > 0 && W >= 560f;
-            final float tabsH = (tabNames.length > 0 && !tabsInBar) ? Vars.mobile ? 40f : 34f : 0f;
+            final boolean tabsInBar = !bigTabs && tabNames.length > 0 && W >= 560f;
+            final float tabsH = (tabNames.length > 0 && !tabsInBar) ? (bigTabs ? (Vars.mobile ? 60f : 54f) : (Vars.mobile ? 40f : 34f)) : 0f;
             final float shellH = Math.max(160f, H - extraH);
             final float areaH = shellH - topH - line - tabsH;
             pageW = W - pad * 2f;
@@ -589,8 +601,9 @@ public final class MachineUi {
 
         private void tabsInto(Table t, boolean fill) {
             for (int i = 0; i < tabNames.length; i++) {
-                Cell<Table> c = t.add(tabButton(tabNames[i], i, this, fill)).growY();
+                Cell<Table> c = t.add(bigTabs ? bigTabButton(i, this) : tabButton(tabNames[i], i, this, fill)).growY();
                 if (fill) c.growX().uniformX();
+                if (bigTabs) c.pad(3f);
             }
         }
     }
@@ -1040,6 +1053,43 @@ public final class MachineUi {
             boolean on = p.tab == idx;
             l.setColor(on ? Color.white : Color.gray);
             bar.setColor(on ? AMBER : Color.clear);
+        });
+        t.clicked(() -> p.selectTab(idx));
+        return t;
+    }
+
+    /** Tab lớn: tên đậm + chú thích nhỏ; tab đang chọn tô vàng, tab chưa chọn có nền sáng viền rõ, tab có huy hiệu nhấp nháy. */
+    private static Table bigTabButton(final int idx, final Panel p) {
+        final Table t = new Table(Tex.whiteui);
+        t.touchable = Touchable.enabled;
+        final Label l = new Label(p.tabNames[idx]);
+        l.setFontScale(Vars.mobile ? 1.1f : 1f);
+        l.setAlignment(Align.center);
+        l.setEllipsis(true);
+        final Label badge = new Label("");
+        badge.setFontScale(0.85f);
+        Table top = new Table();
+        top.add(l).minWidth(0f);
+        top.add(badge).padLeft(4f);
+        t.add(top).growX().minWidth(0f).row();
+        final Label cl = new Label(p.tabCaps != null && idx < p.tabCaps.length ? p.tabCaps[idx] : "");
+        cl.setFontScale(0.62f);
+        cl.setAlignment(Align.center);
+        cl.setEllipsis(true);
+        t.add(cl).growX().minWidth(0f);
+        final Color tmp = new Color();
+        t.update(() -> {
+            boolean on = p.tab == idx;
+            String b = p.tabBadge != null ? p.tabBadge.apply(idx) : "";
+            boolean hasBadge = b != null && b.length() > 0;
+            badge.setText(hasBadge ? b : "");
+            float pulse = 0.5f + 0.5f * (float) Math.sin(Time.time * 0.12f);
+            if (on) tmp.set(AMBER);
+            else if (hasBadge) tmp.set(PANEL).lerp(AMBER, 0.2f + 0.25f * pulse);
+            else tmp.set(PANEL).lerp(STEEL, 0.28f);
+            t.setColor(tmp);
+            l.setColor(on ? Color.black : Color.white);
+            cl.setColor(on ? Color.darkGray : Color.lightGray);
         });
         t.clicked(() -> p.selectTab(idx));
         return t;

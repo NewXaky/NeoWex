@@ -424,6 +424,7 @@ public final class aureon {
 
         @Override
         public void update(Unit unit) {
+            if (Zeralion.isBound(unit)) return;
             phase += Time.delta;
             if (lockedTarget != null) {
                 if (!isValidTarget(lockedTarget) || unit.dst(lockedTarget) > RANGE) {
