@@ -23,7 +23,7 @@ import mindustry.entities.units.WeaponMount;
 import mindustry.gen.Building;
 import mindustry.gen.Bullet;
 import mindustry.gen.Hitboxc;
-import mindustry.gen.MechUnit;
+import mindustry.gen.LegsUnit;
 import mindustry.gen.Sounds;
 import mindustry.gen.Teamc;
 import mindustry.gen.Unit;
@@ -35,7 +35,7 @@ import mindustry.world.meta.Env;
 import mindustry.world.meta.StatUnit;
 
 /**
- * Unit Aureon - Robot xung kích 2 chân hạng nặng T5.
+ * Unit Aureon - Robot xung kích 4 chân hạng nặng T5.
  * Trang bị 4 pháo hồ quang điện hội tụ, yêu cầu khóa mục tiêu trước khi khai hỏa.
  */
 public final class aureon {
@@ -86,10 +86,10 @@ public final class aureon {
         }};
 
         aureon = new UnitType("aureon") {{
-            constructor = MechUnit::create;
+            constructor = LegsUnit::create;
 
             localizedName = "Aureon";
-            description = "Robot xung kích 2 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
+            description = "Robot xung kích 4 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
             details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa.";
 
             health = 22000f;
@@ -103,10 +103,17 @@ public final class aureon {
             targetGround = true;
             faceTarget = true;
             envDisabled = Env.none;
+            drawCell = false; // sprite đã có chi tiết riêng, không vẽ ô màu đội
 
-            mechFrontSway = 1.15f;
-            mechSideSway = 0.75f;
-            mechStepParticles = true;
+            // 4 chân kiểu nhện, chân mảnh
+            hovering = true;
+            allowLegStep = true;
+            legCount = 4;
+            legLength = 30f;
+            legForwardScl = 0.55f;
+            legMoveSpace = 1.2f;
+            legBaseOffset = 6f;
+            legExtension = -2f;
             stepShake = 0.6f;
 
             outlineRadius = 3;
