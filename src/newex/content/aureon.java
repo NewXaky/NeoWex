@@ -132,7 +132,7 @@ public final class Aureon {
             reload = 10f;
             continuous = true;
             alwaysContinuous = true;
-            shootSound = Sounds.beam;
+            shootSound = Sounds.laserbeam;
 
             bullet = arcBullet;
         }};
