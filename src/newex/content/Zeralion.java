@@ -11,6 +11,7 @@ import arc.graphics.g2d.TextureRegion;
 import arc.math.Angles;
 import arc.math.Interp;
 import arc.math.Mathf;
+import arc.struct.IntFloatMap;
 import arc.util.Time;
 import arc.util.Tmp;
 import mindustry.Vars;
@@ -368,6 +369,30 @@ public final class Zeralion {
             Draw.reset();
             Drawf.light(cx, cy, 30f + 90f * t2, GOLD, (0.3f + 0.6f * t) * fade);
         });
+    }
+
+    // ================================================================== Khóa (bind)
+
+    /** id unit -> thời điểm (Time.time) hết khóa. Unit bị khóa không bắn được. */
+    static final IntFloatMap BOUND_UNTIL = new IntFloatMap();
+
+    /** Khóa unit trong {@code ticks} tick (cộng dồn lấy mốc lớn hơn). */
+    public static void bind(Unit u, float ticks) {
+        if (u == null) return;
+        float until = Time.time + ticks;
+        if (until > BOUND_UNTIL.get(u.id, 0f)) BOUND_UNTIL.put(u.id, until);
+    }
+
+    /** true nếu unit đang bị Zeralion khóa. */
+    public static boolean isBound(Unit u) {
+        if (u == null) return false;
+        float until = BOUND_UNTIL.get(u.id, 0f);
+        if (until <= 0f) return false;
+        if (!u.isValid() || Time.time >= until) {
+            BOUND_UNTIL.remove(u.id, 0f);
+            return false;
+        }
+        return true;
     }
 
     // ================================================================== Vũ khí 3 nhịp
