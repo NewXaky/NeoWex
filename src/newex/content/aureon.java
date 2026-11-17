@@ -254,7 +254,7 @@ public final class aureon {
             }
 
             b.rotation(b.angleTo(target));
-            b.fdata = b.dst(target);
+            b.fdata += Time.delta; // đồng hồ hiệu ứng: dừng lại khi game tạm dừng
 
             if (b.timer(1, damageInterval)) {
                 if (target instanceof Hitboxc) {
@@ -292,8 +292,9 @@ public final class aureon {
             float pY = Mathf.cosDeg(ang);
 
             int seg = Mathf.clamp((int) (dst / 10f), 8, 36);
-            long fast = (long) (Time.time * 0.9f) + b.id * 131L;
-            float pulse = 0.5f + 0.5f * Mathf.sin(Time.time * 0.35f + b.id);
+            float ph = b.fdata; // thay cho Time.time để hiệu ứng đứng yên khi tạm dừng
+            long fast = (long) (ph * 0.9f) + b.id * 131L;
+            float pulse = 0.5f + 0.5f * Mathf.sin(ph * 0.35f + b.id);
 
             // nòng trong sáng/trắng hơn, nòng ngoài xanh đậm hơn -> dễ phân biệt từng tia
             float inner = Mathf.clamp(1f - Math.abs(lateral) / 60f, 0f, 1f);
@@ -338,7 +339,7 @@ public final class aureon {
 
             // hạt sáng chạy dọc tia
             for (int k = 0; k < 3; k++) {
-                float t = (Time.time * 0.016f + k * 0.333f + (b.id % 7) * 0.13f) % 1f;
+                float t = (ph * 0.016f + k * 0.333f + (b.id % 7) * 0.13f) % 1f;
                 float f = t * seg;
                 int idx = Mathf.clamp((int) f, 0, seg - 1);
                 float fr = f - idx;
@@ -362,7 +363,7 @@ public final class aureon {
             Fill.circle(x2, y2, 3.6f);
             Draw.color(ARC_CORE);
             Fill.circle(x2, y2, 1.6f);
-            float rf = (Time.time * 0.05f + (b.id % 5) * 0.2f) % 1f;
+            float rf = (ph * 0.05f + (b.id % 5) * 0.2f) % 1f;
             Draw.color(beam, 1f - rf);
             Lines.stroke(1.1f * (1f - rf));
             Lines.circle(x2, y2, 3f + rf * 11f);
@@ -388,6 +389,8 @@ public final class aureon {
     public static class TargetLockAbility extends Ability {
         public Teamc lockedTarget = null;
         public float lockProgress = 0f;
+        /** Đồng hồ hiệu ứng, chỉ tăng khi game đang chạy (đứng yên khi tạm dừng). */
+        public float phase = 0f;
 
         public boolean isLocked() {
             return lockedTarget != null && isValidTarget(lockedTarget) && lockProgress >= 1f;
@@ -408,6 +411,7 @@ public final class aureon {
 
         @Override
         public void update(Unit unit) {
+            phase += Time.delta;
             if (lockedTarget != null) {
                 if (!isValidTarget(lockedTarget) || unit.dst(lockedTarget) > RANGE) {
                     lockedTarget = null;
@@ -467,7 +471,7 @@ public final class aureon {
             Lines.dashCircle(x, y, RANGE);
 
             for (int i = 0; i < 4; i++) {
-                float a = i * 90f + Time.time * 0.15f;
+                float a = i * 90f + phase * 0.15f;
                 float rx = x + Angles.trnsx(a, RANGE);
                 float ry = y + Angles.trnsy(a, RANGE);
                 Drawf.tri(rx, ry, 5f, 7f, a + 180f);
@@ -485,7 +489,7 @@ public final class aureon {
                 : 16f;
 
             float expand = (1f - progress) * 22f;
-            float pulse = locked ? Mathf.absin(Time.time, 3f, 1.5f) : 0f;
+            float pulse = locked ? Mathf.absin(phase, 3f, 1.5f) : 0f;
             float sqSize = baseRadius + pulse;
             float diamondSize = (baseRadius + 5f) + expand;
 
