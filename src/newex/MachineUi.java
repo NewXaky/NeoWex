@@ -12,6 +12,7 @@ import arc.scene.Group;
 import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
+import arc.scene.style.Drawable;
 import arc.scene.ui.Button;
 import arc.scene.ui.Image;
 import arc.scene.ui.Label;
@@ -41,7 +42,10 @@ import java.util.WeakHashMap;
  * Giao diện "máy móc" cho các hộp thoại của khối newex trên mobile màn hình ngang.
  * Bố cục: thanh trên (tiêu đề kéo được + tab gạch chân + nút đóng) -> thanh tài nguyên lõi -> 2 cột thẻ viền góc.
  * Tab 1 "NÂNG CẤP": dải tài nguyên + cột Yêu cầu | cột Thao tác. Tab 2 "KHO LÕI": lưới tài nguyên đầy đủ.
- * Có lớp tự co (installFit): đo kích thước thật trên màn hình, nếu vượt khung thì tự thu nhỏ cho vừa.
+ *
+ * Cách cân đối với màn hình: bố cục được dựng theo chiều cao chuẩn REF_H (đơn vị ảo) với tỉ lệ khung hình của
+ * màn hình, rồi cả hộp thoại được phóng/thu (scale) cho vừa FIT_LIMIT của màn hình. Chữ vì vậy luôn to vừa phải
+ * trên mọi điện thoại; nội dung dài thì lướt tự do (cả dọc lẫn ngang) trong từng cột.
  */
 public final class MachineUi {
     private MachineUi() {}
@@ -49,8 +53,12 @@ public final class MachineUi {
     private static final Set<BaseDialog> done = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Color STEEL = Color.valueOf("8a97a8"), AMBER = Color.valueOf("ffb347"), PANEL = Color.valueOf("12161c");
 
-    /** Hộp thoại không được chiếm quá tỉ lệ này của màn hình (theo cả chiều ngang lẫn dọc). */
+    /** Chiều cao chuẩn của bố cục (đơn vị ảo). Nhỏ hơn -> chữ to hơn, nội dung phải lướt nhiều hơn; lớn hơn -> chữ nhỏ hơn. */
+    private static final float REF_H = 520f;
+    /** Hộp thoại chiếm tối đa tỉ lệ này của màn hình (cả chiều ngang lẫn dọc). */
     private static final float FIT_LIMIT = 0.97f;
+    /** Giới hạn phóng/thu để không méo giao diện trên màn hình quá lạ. */
+    private static final float MIN_SCALE = 0.4f, MAX_SCALE = 4f;
 
     public static void init() {
         Events.run(Trigger.update, MachineUi::tick);
@@ -198,11 +206,11 @@ public final class MachineUi {
             else d.buttons.remove();
         }
 
-        // ---- kích thước tổng
+        // ---- kích thước ảo của bố cục: cao REF_H, rộng theo tỉ lệ khung hình màn hình
         final float sceneW = Core.scene.getWidth();
         final float sceneH = Core.scene.getHeight();
-        final float W = Math.min(sceneW * 0.94f, 980f);
-        final float H = Math.min(sceneH - 6f, Math.max(200f, sceneH * 0.94f));
+        final float H = REF_H;
+        final float W = Math.max(REF_H * 1.4f, Math.min(REF_H * 3f, REF_H * sceneW / sceneH));
         final float btnH = keepButtons ? Math.max(46f, d.buttons.getPrefHeight()) : 0f;
         final float topH = 38f, line = 2.5f, pad = 6f, gap = 6f, stripH = 30f;
         final float shellH = H - btnH;
@@ -289,8 +297,8 @@ public final class MachineUi {
 
         top.button(Icon.cancel, Styles.cleari, () -> d.hide()).size(topH);
 
-        // ---- khung ngoài
-        final Table shell = new Table(Styles.black8);
+        // ---- khung ngoài (kích thước cố định, không phụ thuộc nội dung bên trong)
+        final Fixed shell = new Fixed(Styles.black8, W, shellH);
         shell.setClip(true);
         shell.add(top).growX().height(topH).row();
         shell.image(Tex.whiteui, AMBER).growX().height(line).row();
@@ -303,33 +311,27 @@ public final class MachineUi {
         d.pack();
         d.setPosition(Math.round((sceneW - d.getWidth()) / 2f), Math.round((sceneH - d.getHeight()) / 2f));
 
-        installFit(d, shell);
+        installFit(d, shell, btnH);
     }
 
     /**
-     * Tự co vừa màn hình: mỗi frame đo kích thước THẬT của khung trên màn hình (đã tính mọi phép scale phía trên),
-     * nếu lớn hơn FIT_LIMIT của màn hình thì thu nhỏ cả hộp thoại quanh tâm cho vừa. Không bao giờ phóng to quá 1x.
+     * Phóng/thu cả hộp thoại quanh tâm sao cho khung (cộng thêm chân trang nếu có) chiếm đúng FIT_LIMIT màn hình.
+     * Dùng kích thước cục bộ (chưa scale) của khung nên không bị ảnh hưởng bởi scale hiện tại hay hiệu ứng mở hộp thoại.
      */
-    private static void installFit(final BaseDialog d, final Element shell) {
+    private static void installFit(final BaseDialog d, final Element shell, final float extraH) {
         d.update(() -> {
             if (Core.scene == null) return;
+            float nw = shell.getWidth(), nh = shell.getHeight() + extraH;
+            if (nw <= 0f || nh <= 0f) return;
+
             float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
-            float sc = d.scaleX;
-            if (sc <= 0f || shell.getWidth() <= 0f || shell.getHeight() <= 0f) return;
+            float k = Math.min(FIT_LIMIT * sw / nw, FIT_LIMIT * sh / nh);
+            k = Math.max(MIN_SCALE, Math.min(MAX_SCALE, k));
 
-            Vec2 a = shell.localToStageCoordinates(Tmp.v1.set(0f, 0f));
-            float ax = a.x, ay = a.y;
-            Vec2 b = shell.localToStageCoordinates(Tmp.v2.set(shell.getWidth(), shell.getHeight()));
-            float mw = Math.abs(b.x - ax), mh = Math.abs(b.y - ay);
-            if (mw <= 0f || mh <= 0f) return;
-
-            // kích thước "tự nhiên" khi scale = 1
-            float nw = mw / sc, nh = mh / sc;
-            float target = Math.min(1f, Math.min(sw * FIT_LIMIT / nw, sh * FIT_LIMIT / nh));
-            if (Math.abs(target - sc) > 0.002f) {
+            if (Math.abs(d.scaleX - k) > 0.002f || Math.abs(d.scaleY - k) > 0.002f) {
                 d.setTransform(true);
                 d.setOrigin(Align.center);
-                d.setScale(target);
+                d.setScale(k);
             }
         });
     }
@@ -348,16 +350,36 @@ public final class MachineUi {
             public void touchDragged(InputEvent e, float x, float y, int pointer) {
                 Vec2 v = e.listenerActor.localToStageCoordinates(Tmp.v1.set(x, y));
                 float m = 48f;
+                // hộp thoại scale quanh tâm: tính theo khung nhìn thực tế (đã scale)
+                float s = d.scaleX;
+                float ox = d.getWidth() * (1f - s) / 2f, oy = d.getHeight() * (1f - s) / 2f;
+                float vw = d.getWidth() * s, vh = d.getHeight() * s;
                 float nx = d.x + v.x - lx, ny = d.y + v.y - ly;
-                nx = Math.max(m - d.getWidth(), Math.min(Core.scene.getWidth() - m, nx));
-                ny = Math.max(m - d.getHeight(), Math.min(Core.scene.getHeight() - m, ny));
-                d.setPosition(nx, ny);
+                float vx = Math.max(m - vw, Math.min(Core.scene.getWidth() - m, nx + ox));
+                float vy = Math.max(m - vh, Math.min(Core.scene.getHeight() - m, ny + oy));
+                d.setPosition(vx - ox, vy - oy);
                 lx = v.x; ly = v.y;
             }
         });
     }
 
     // ------------------------------------------------------------------ thành phần giao diện
+
+    /** Khung có kích thước cố định: cha luôn thấy đúng w x h, bất kể nội dung bên trong dài/rộng cỡ nào. */
+    private static class Fixed extends Table {
+        private final float fw, fh;
+
+        Fixed(Drawable bg, float fw, float fh) {
+            super(bg);
+            this.fw = fw;
+            this.fh = fh;
+        }
+
+        @Override public float getPrefWidth() { return fw; }
+        @Override public float getPrefHeight() { return fh; }
+        @Override public float getMinWidth() { return fw; }
+        @Override public float getMinHeight() { return fh; }
+    }
 
     /** Thẻ nền tối, viền mảnh mờ + 4 góc đậm kiểu khung máy. */
     private static class Card extends Table {
@@ -402,7 +424,7 @@ public final class MachineUi {
         return t;
     }
 
-    /** Cột nền tối: tiêu đề mục + vùng cuộn dọc. */
+    /** Cột nền tối: tiêu đề mục + vùng cuộn tự do cả dọc lẫn ngang (kéo theo mọi hướng, có nảy ở mép). */
     private static Table column(String title, Color accent, Table content) {
         Table col = new Table(Styles.black8);
         col.margin(6f);
@@ -411,9 +433,9 @@ public final class MachineUi {
         col.add(sectionHeader(title, accent)).growX().padBottom(5f).row();
 
         ScrollPane sp = new ScrollPane(content, Styles.noBarPane);
-        sp.setScrollingDisabled(true, false);
+        sp.setScrollingDisabled(false, false);
         sp.setFlickScroll(true);
-        sp.setOverscroll(false, true);
+        sp.setOverscroll(true, true);
         sp.setFadeScrollBars(true);
         sp.setClip(true);
         col.add(sp).grow();
@@ -464,7 +486,7 @@ public final class MachineUi {
         ScrollPane sp = new ScrollPane(coreView(true, 0f), Styles.noBarPane);
         sp.setScrollingDisabled(false, true);
         sp.setFlickScroll(true);
-        sp.setOverscroll(false, false);
+        sp.setOverscroll(true, false);
         strip.add(sp).growX().height(h - 4f).padLeft(6f);
         return strip;
     }
