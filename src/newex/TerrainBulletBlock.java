@@ -30,6 +30,11 @@ import static mindustry.Vars.world;
  *
  * Giới hạn: các loại đạn "tức thời" (tia laser, rail, shrapnel, sét, sap, point...) gây sát thương
  * ngay lúc được tạo bằng Damage.collideLine nên mod không chặn được chúng nếu không sửa mã gốc của game.
+ *
+ * Bản vá:
+ *  - Ngoại lệ "người bắn đứng trong tường" chỉ bỏ qua ĐÚNG ô xuất phát của đạn, không còn bỏ qua
+ *    toàn bộ quãng bay (trước đây đạn sinh ra trong ô tường sẽ xuyên mọi tường phía sau).
+ *  - Khi đường đi cắt chéo qua góc giữa hai ô, kiểm tra cả hai ô kề góc để đạn nhanh không lọt khe.
  */
 public class TerrainBulletBlock {
     /** Bật / tắt toàn bộ tính năng. */
@@ -67,6 +72,12 @@ public class TerrainBulletBlock {
         return blockCliffs && b == Blocks.cliff;
     }
 
+    /** Ô (x, y) có phải tường chặn đạn không (bỏ qua ô xuất phát ox, oy của đạn). */
+    private static boolean blocks(int x, int y, int ox, int oy) {
+        if (x == ox && y == oy) return false;
+        return isTerrain(world.tile(x, y));
+    }
+
     private static void check(Bullet b) {
         if (b == null || b.type == null || !b.isAdded()) return;
 
@@ -79,8 +90,9 @@ public class TerrainBulletBlock {
         int x1 = World.toTile(b.lastX), y1 = World.toTile(b.lastY);
         int x2 = World.toTile(b.x), y2 = World.toTile(b.y);
 
-        // Người bắn đang đứng trong tường (đơn vị chân bước đi trên địa hình): cho đạn thoát ra, không chặn.
-        if (isTerrain(world.tile(World.toTile(b.originX), World.toTile(b.originY)))) return;
+        // Ô xuất phát của đạn: nếu nòng súng nằm trong tường thì chỉ miễn trừ đúng ô này
+        // để đạn thoát ra, các ô tường khác phía trước vẫn chặn bình thường.
+        int ox = World.toTile(b.originX), oy = World.toTile(b.originY);
 
         int dx = Math.abs(x2 - x1), sx = x1 < x2 ? 1 : -1;
         int dy = Math.abs(y2 - y1), sy = y1 < y2 ? 1 : -1;
@@ -88,14 +100,30 @@ public class TerrainBulletBlock {
         int ww = world.width(), wh = world.height();
 
         while (x >= 0 && y >= 0 && x < ww && y < wh) {
-            if (isTerrain(world.tile(x, y))) {
+            if (blocks(x, y, ox, oy)) {
                 hitWall(b, x, y);
                 return;
             }
             if (x == x2 && y == y2) break;
+
             int e2 = 2 * err;
-            if (e2 > -dy) { err -= dy; x += sx; }
-            if (e2 < dx) { err += dx; y += sy; }
+            boolean stepX = e2 > -dy;
+            boolean stepY = e2 < dx;
+
+            // Bước chéo: kiểm tra thêm hai ô kề góc để không lọt qua khe giữa hai ô tường.
+            if (stepX && stepY) {
+                if (blocks(x + sx, y, ox, oy)) {
+                    hitWall(b, x + sx, y);
+                    return;
+                }
+                if (blocks(x, y + sy, ox, oy)) {
+                    hitWall(b, x, y + sy);
+                    return;
+                }
+            }
+
+            if (stepX) { err -= dy; x += sx; }
+            if (stepY) { err += dx; y += sy; }
         }
     }
 
