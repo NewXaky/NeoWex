@@ -78,6 +78,7 @@ import newex.content.Suv27;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
 import newex.content.Tank15;
+import newex.content.aureon;
 import newex.content.Cos;
 import newex.content.Swordoder;
 import newex.content.Rangtaturs;
@@ -266,7 +267,8 @@ public class NexMod extends Mod {
         Cos.create();
         Swordoder.create();
         Thermion.create(); // status/đạn/drone của Thermion (bài 109–111)
-        Tank15.create(); // unit Tank-15
+        Tank15.create(); 
+        aureon.create();
         Honivery.create(); // unit Honivery (chuyển từ mod Multi Dimensional)
         Emperical.create(); // paralyzed/oppressive (không tạo trong constructor)
         Flarmed.create(); // bong/viem-hoa
