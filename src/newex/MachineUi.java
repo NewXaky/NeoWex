@@ -300,11 +300,37 @@ public final class MachineUi {
          */
         private void restoreScroll(float y) {
             if (scroll == null || y <= 0.5f) return;
-            try { scroll.validate(); } catch (Throwable ignored) {}
+            // Hủy đà vuốt (fling) còn sót từ lần chạm trước: nếu không, sau khi trả scroll về chỗ cũ đà này kéo trang trôi đi -> giật lên xuống.
+            stopFling();
+            // Label wrap cần 2-3 lượt bố cục mới ra chiều cao thật; validate 1 lần thì scrollY bị kẹp theo chiều cao thấp hơn.
+            for (int i = 0; i < 3; i++) {
+                try { content.invalidateHierarchy(); scroll.validate(); } catch (Throwable ignored) {}
+            }
             scroll.setScrollY(y);
             snapScroll();
             restoreY = y;
-            restoreN = 4;
+            restoreN = 8;
+        }
+
+        private static java.lang.reflect.Field[] flingFields;
+
+        /** Đặt đà vuốt của ScrollPane về 0 (đọc field bằng reflection; không có field thì bỏ qua). */
+        private void stopFling() {
+            if (scroll == null) return;
+            try {
+                if (flingFields == null) {
+                    String[] names = {"flingTimer", "velocityX", "velocityY"};
+                    java.lang.reflect.Field[] fs = new java.lang.reflect.Field[names.length];
+                    for (int i = 0; i < names.length; i++) {
+                        try {
+                            fs[i] = ScrollPane.class.getDeclaredField(names[i]);
+                            fs[i].setAccessible(true);
+                        } catch (Throwable ignored) { fs[i] = null; }
+                    }
+                    flingFields = fs;
+                }
+                for (java.lang.reflect.Field f : flingFields) if (f != null) f.setFloat(scroll, 0f);
+            } catch (Throwable ignored) {}
         }
 
         /** Dựng lại cả khung lẫn nội dung (khi kích thước màn hình đổi). */
@@ -387,8 +413,12 @@ public final class MachineUi {
             fit();
             place();
             if (restoreN > 0 && scroll != null) {
-                restoreN--;
-                if (Math.abs(scroll.getScrollY() - restoreY) > 0.5f) { scroll.setScrollY(restoreY); snapScroll(); }
+                // Người dùng đang chạm/kéo: không giành quyền cuộn với họ
+                if (Core.input.isTouched()) restoreN = 0;
+                else {
+                    restoreN--;
+                    if (Math.abs(scroll.getScrollY() - restoreY) > 0.5f) { stopFling(); scroll.setScrollY(restoreY); snapScroll(); }
+                }
             }
             if (ticker != null) ticker.run();
         }

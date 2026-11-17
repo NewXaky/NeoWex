@@ -5276,6 +5276,7 @@ public class NewModePvp {
     }
     public static void apiPersistStore() { persistStore(); }
     public static void onBegin() {
+        cardTxtCache.clear();
         winning = false; seenBoth = false; byId = new HashMap<>(); teamsCache = null;
         mindustry.game.Rules r = Vars.state.rules;
         r.tags.put(TAG_ACTIVE, "1");
@@ -5570,6 +5571,18 @@ public class NewModePvp {
         p.add("[lightgray]" + tr("Pháo mua xong vào Túi đồ. Lắp: ", "Bought turrets go to Bag. Mounted: ") + "[white]" + equipCount(st) + "/" + equipSlots(st) + "[]  [lightgray]" + tr("Xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]  [lightgray]"
             + (multiTurretOn() ? tr("Mua được nhiều pháo cùng loại.", "Same turret can be bought many times.") : tr("Mỗi loại chỉ mua 1.", "1 per turret type.")) + "[]").colspan(cols).width(w).left().wrap().minWidth(0).pad(2).row();
     }
+    /** Mô tả pháo (role + turretDesc) dùng reflection nên khá nặng; trang bị dựng lại mỗi lần bấm nút -> cache theo id + ngôn ngữ. */
+    static final HashMap<String, String[]> cardTxtCache = new HashMap<>();
+    static String[] cardTxt(Def def) {
+        String key = def.id + "|" + tr("v", "e");
+        String[] c = cardTxtCache.get(key);
+        if (c == null) {
+            String rd = roleDesc(def.id);
+            c = new String[]{roleText(def.id) + (rd.length() > 0 ? "  [green]" + rd + "[]" : ""), "[lightgray]" + turretDesc(def) + "[]"};
+            cardTxtCache.put(key, c);
+        }
+        return c;
+    }
     static Table turretCard(St st, Def def, float cw) {
         final boolean nr = cw < 330f;
         float inner = Math.max(nr ? 130 : 150, cw - 20);
@@ -5587,9 +5600,9 @@ public class NewModePvp {
         TextButton buyBtn = top.button(tr("Mua", "Buy") + " " + price, () -> send(REQ_BUY, def.id)).size(nr ? 72 : 86, btnH()).padLeft(6).get();
         buyBtn.setDisabled(st.pts < price || !def.equip || single);
         card.add(top).width(inner).left().row();
-        String rd = roleDesc(def.id);
-        card.add(roleText(def.id) + (rd.length() > 0 ? "  [green]" + rd + "[]" : "")).width(inner).left().wrap().minWidth(0).padTop(4).row();
-        card.add("[lightgray]" + turretDesc(def) + "[]").width(inner).left().wrap().minWidth(0).padTop(2).row();
+        String[] txt = cardTxt(def);
+        card.add(txt[0]).width(inner).left().wrap().minWidth(0).padTop(4).row();
+        card.add(txt[1]).width(inner).left().wrap().minWidth(0).padTop(2).row();
         int dmg = turretDmg(def);
         if (dmg > 0) card.add("[scarlet]" + tr("Sát thương: ", "Damage: ") + dmg + "[]").width(inner).left().wrap().minWidth(0).padTop(2).row();
         return card;
@@ -5685,7 +5698,8 @@ public class NewModePvp {
         p.onTick(() -> {
             if (!nearOwnCore()) { p.hide(); return; }
             String cv = curVer();
-            if (!cv.equals(lastVer[0])) { lastVer[0] = cv; p.rebuild(); }
+            // Đang chạm/kéo thì hoãn dựng lại đến khi thả tay (dựng lại giữa lúc kéo làm trang giật và mất cú vuốt)
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; p.rebuild(); }
         });
         bagDialog = p.dialog;
         p.show();
@@ -5875,7 +5889,8 @@ public class NewModePvp {
         p.onTick(() -> {
             if (!nearOwnCore()) { p.hide(); return; }
             String cv = curVer();
-            if (!cv.equals(lastVer[0])) { lastVer[0] = cv; p.rebuild(); }
+            // Đang chạm/kéo thì hoãn dựng lại đến khi thả tay (dựng lại giữa lúc kéo làm trang giật và mất cú vuốt)
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; p.rebuild(); }
         });
         p.show();
     }
@@ -6256,7 +6271,8 @@ public class NewModePvp {
         p.onTick(() -> {
             if (!nearOwnCore()) { p.hide(); return; }
             String cv = curVer();
-            if (!cv.equals(lastVer[0])) { lastVer[0] = cv; p.rebuild(); }
+            // Đang chạm/kéo thì hoãn dựng lại đến khi thả tay (dựng lại giữa lúc kéo làm trang giật và mất cú vuốt)
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; p.rebuild(); }
         });
         upDialog = p.dialog;
         upPanel = p;
