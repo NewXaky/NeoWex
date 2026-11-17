@@ -132,7 +132,7 @@ public final class aureon {
             description = "Robot xung kích 4 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
             details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa. Mỗi tia điện gây 60% Tấn công + 60% Giáp mỗi giây.";
 
-            health = 22000f;
+            health = 66000f; // 22000 + 200% = x3
             armor = 22f;
             hitSize = 38f;
             speed = 0.78f;

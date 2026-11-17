@@ -45,7 +45,7 @@ public final class Zeralion {
     public static UnitType zeralion;
 
     // ---- Hằng số chỉnh cân bằng ----
-    public static final float RANGE = 260f;
+    public static final float RANGE = 390f; // 260 x 1.5; thời gian sống đạn = RANGE / tốc độ nên cũng tăng 50%
     static final float BASE_ATK = 300f;
 
     static final int STAGES = 3;
