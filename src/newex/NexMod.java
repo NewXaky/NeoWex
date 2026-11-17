@@ -144,8 +144,7 @@ public class NexMod extends Mod {
         NexFree.init();
         MachineUi.init();
                 UnitSkillInfo.init();
-TerrainBulletBlock.init();
-        ShowHp.init();
+         ShowHp.init();
         FixSave.init();
         DamageDisplay.init();
         BuffEnemies.init();

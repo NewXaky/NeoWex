@@ -137,6 +137,7 @@ public class NewModePvp {
     static final String SHIELD_KIND = "newex-pvp-shield";
     static final String EXP_KIND = "newex-pvp-exp";
     static final String PFX_KIND = "newex-pvp-pfx";
+    static final String NEOFX_KIND = "newex-pvp-neofx";
     static final String CORE_KIND = "newex-pvp-coredie";
     static final Color SHIELD_COLOR = Color.valueOf("#d000ff");
     static final Color SHIELD_GLOW = Color.valueOf("#00f0ff");
@@ -857,6 +858,7 @@ public class NewModePvp {
                     else if (content.indexOf("n") < 0) empixCdAt.put(id, Time.time);
                 } catch (Throwable err) {}
             });
+            Vars.netClient.addPacketHandler(NEOFX_KIND, content -> onNeoFx(content));
             Vars.netClient.addPacketHandler(VHS_KIND, content -> {
                 try {
                     String[] a = content.split("\\|");
@@ -2642,17 +2644,46 @@ public class NewModePvp {
         neoLocalFx(NEO_EXEC, 90, ex, ey, 0);
         neoLocalFx(NEO_STARS, 55, ex, ey, 0);
         neoLocalFx(NEO_LASER, 48, ex, ey, 0);
+        // Muzzle: null = không có. Gửi kèm cho client để bạn bè cũng thấy đủ hiệu ứng.
+        float[] neoMz = null;
         if (isUnitOwner && b != null && o != null) {
             try {
                 float mx = b.originX, my = b.originY, br = b.rotation();
                 if (mx == 0 && my == 0) { mx = o.x + Angles.trnsx(br, o.hitSize * 0.8f); my = o.y + Angles.trnsy(br, o.hitSize * 0.8f); }
                 neoLocalFx(NEO_MUZZLE, 12, mx, my, br + 90);
+                neoMz = new float[]{mx, my, br + 90};
             } catch (Throwable err) {}
         }
+        // Đồng bộ: các hiệu ứng NEO_* tự vẽ chỉ tồn tại trong RAM của máy gọi hàm này (host/server),
+        // nên phải báo cho các client tự dựng lại tại cùng vị trí.
+        try {
+            if (Vars.net.server()) {
+                String pk = ex + "|" + ey + "|" + (neoMz != null ? "1|" + neoMz[0] + "|" + neoMz[1] + "|" + neoMz[2] : "0|0|0|0");
+                Call.clientPacketReliable(NEOFX_KIND, pk);
+            }
+        } catch (Throwable err) { logOnce("neofxsync", "neo fx sync failed: " + err, false); }
         neoDiag(ex, ey);
         pilotFxAt.put(apid, Time.time);
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, apid + "n"); } catch (Throwable err) {}
         return true;
+    }
+    /** Client nhận gói NEOFX_KIND từ host/server: dựng lại hiệu ứng kết liễu của Neo tại chỗ. */
+    static void onNeoFx(String content) {
+        try {
+            // Host vừa là server vừa là client: đã tự dựng hiệu ứng trong neoExecuteShow rồi, bỏ qua để khỏi nhân đôi.
+            if (Vars.headless || Vars.net.server()) return;
+            String[] a = content.split("\\|", -1);
+            if (a.length < 6) return;
+            float ex = pf(a[0]), ey = pf(a[1]);
+            if (Float.isNaN(ex) || Float.isNaN(ey)) return;
+            neoLocalFx(NEO_EXEC, 90, ex, ey, 0);
+            neoLocalFx(NEO_STARS, 55, ex, ey, 0);
+            neoLocalFx(NEO_LASER, 48, ex, ey, 0);
+            if ("1".equals(a[2].trim())) {
+                float mx = pf(a[3]), my = pf(a[4]), mr = pf(a[5]);
+                if (!Float.isNaN(mx) && !Float.isNaN(my) && !Float.isNaN(mr)) neoLocalFx(NEO_MUZZLE, 12, mx, my, mr);
+            }
+        } catch (Throwable err) { logOnce("neofxrecv", "neo fx recv failed: " + err, false); }
     }
     static void neoFinisher(Bullet b, Unit tgt) {
         Entityc o = b.owner;
