@@ -54,6 +54,8 @@ import java.util.Iterator;
  *   + Khi nhan skill: 2% ti le phong nhat chem dac biet (430% tan cong).
  *   + Khi chem trung muc tieu: +10% ti le phong nhat chem dac biet (tong 12%).
  *   + Khi tieu diet muc tieu: 100% phong nhat chem dac biet ve phia muc tieu.
+ * - Huong chi so tu trang nang cap NewMode PvP: Tan cong (% va flat), Bao kich, Sat thuong theo giap (qua damageMultiplier),
+ *   Xuyen giap, Sat thuong % mau toi da, Sat thuong quai spawn ngau nhien, Day lui (qua NewModePvp.skillDamage).
  */
 public final class HoniveryPvp {
     private HoniveryPvp() {}
@@ -320,7 +322,7 @@ public final class HoniveryPvp {
     /** Server: kich hoat nhat chem dac biet (loc xoay phong kiem 430% tan cong). */
     static void spawnSpecial(Unit u, float ang, int chainDepth) {
         if (u == null || u.dead || chainDepth > SPEC_MAX_CHAIN) return;
-        float dmg = DMG * SPEC_DMG_MUL * Math.max(0.1f, u.damageMultiplier);
+        float dmg = (DMG + NewModePvp.skillFlatAtk(u)) * SPEC_DMG_MUL * Math.max(0.1f, u.damageMultiplier);
         specProjs.add(new SpecialProj(u, u.x, u.y, ang, dmg, chainDepth));
         NexNet.broadcast(FX_SPEC, u.x + "," + u.y + "," + ang + "," + u.id);
     }
@@ -388,7 +390,7 @@ public final class HoniveryPvp {
                 if (dstToSegment(e.x, e.y, segX1, segY1, segX2, segY2) > r) return;
                 sp.hitIds.add(e.id);
                 boolean wasAlive = !e.dead && e.health > 0f;
-                e.damage(sp.dmg);
+                NewModePvp.skillDamage(sp.owner, e, sp.dmg, segX2, segY2);
                 try {
                     Call.effect(Fx.hitLaserBlast, e.x, e.y, sp.ang, SPEC_MAIN);
                     Call.effect(Fx.sparkShoot, e.x, e.y, sp.ang, SPEC_CORE);
@@ -404,7 +406,7 @@ public final class HoniveryPvp {
                 if (dstToSegment(b.x, b.y, segX1, segY1, segX2, segY2) > r) return;
                 sp.hitIds.add(-b.id);
                 boolean wasAlive = !b.dead && b.health > 0f;
-                b.damage(sp.dmg);
+                NewModePvp.skillDamage(sp.owner, b, sp.dmg);
                 try {
                     Call.effect(Fx.hitLaserBlast, b.x, b.y, sp.ang, SPEC_MAIN);
                 } catch (Throwable err) {}
@@ -455,7 +457,7 @@ public final class HoniveryPvp {
         // Sat thuong tang dan tu 50% len 120% cho tung nhat chem
         float progress = COUNT > 1 ? (idx / (float) (COUNT - 1)) : 1f;
         float slashScale = Mathf.lerp(SLASH_DMG_MIN, SLASH_DMG_MAX, progress);
-        final float dmg = DMG * slashScale * Math.max(0.1f, u.damageMultiplier);
+        final float dmg = (DMG + NewModePvp.skillFlatAtk(u)) * slashScale * Math.max(0.1f, u.damageMultiplier);
 
         final Team team = u.team;
         final float reachAll = rad + 16f;
@@ -466,7 +468,7 @@ public final class HoniveryPvp {
         Units.nearbyEnemies(team, cx - reachAll, cy - reachAll, reachAll * 2, reachAll * 2, e -> {
             if (e.dead || !inSector(cx, cy, face, half, rad + e.hitSize / 2f, e.x, e.y)) return;
             boolean wasAlive = !e.dead && e.health > 0f;
-            e.damage(dmg);
+            NewModePvp.skillDamage(u, e, dmg, cx, cy);
             hitAny[0] = true;
             hitPos[0] = e.x;
             hitPos[1] = e.y;
@@ -484,7 +486,7 @@ public final class HoniveryPvp {
         Units.nearbyBuildings(cx, cy, reachAll, b -> {
             if (b.team == team || !inSector(cx, cy, face, half, rad + b.hitSize() / 2f, b.x, b.y)) return;
             boolean wasAlive = !b.dead && b.health > 0f;
-            b.damage(dmg);
+            NewModePvp.skillDamage(u, b, dmg);
             hitAny[0] = true;
             hitPos[0] = b.x;
             hitPos[1] = b.y;

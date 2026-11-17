@@ -4965,12 +4965,17 @@ public class NewModePvp {
     static final String BAD_SPOT = "[scarlet]Vị trí không hợp lệ: phải là nền đặt lõi còn trống ở nửa map phe ta!";
     static void defineRequests() {
         ChaosMode.define();
+        // payload "i" = +1 điểm; "i|10" = +10 điểm (không đủ 10 thì nâng đúng số điểm đang có, cũng không vượt mức tối đa của chỉ số)
         onReq(REQ_UP, 60, (player, payload) -> {
             St st = reqState(player); if (st == null) return;
-            Integer k = leadInt(payload);
+            String[] parts = payload.split("\\|");
+            Integer k = leadInt(parts[0]);
             if (k == null || !(k >= 0 && k < STATS.length)) return;
-            if (st.pts < 1 || st.s[k] >= statMax(k)) return;
-            st.pts--; st.s[k]++; changed();
+            int want = 1;
+            if (parts.length > 1) { Integer w = leadInt(parts[1]); if (w != null) want = Math.max(1, Math.min(w, 10)); }
+            int n = Math.min(want, Math.min(st.pts, statMax(k) - st.s[k]));
+            if (n < 1) return;
+            st.pts -= n; st.s[k] += n; changed();
         });
         onReq(REQ_PILOT, 60, (player, payload) -> {
             St st = reqState(player); if (st == null) return;
@@ -5219,6 +5224,56 @@ public class NewModePvp {
     // --- API cong khai (JS global.NexPvp): file khac goi NewModePvp.xxx ---
     public static final String API_MAP_ID = MAP_ID;
     public static boolean apiIsActive() { return isActive(); }
+
+    // ===== Skill (Archueng, Honivery...) hưởng chỉ số từ trang nâng cấp =====
+    /**
+     * Sát thương gốc cộng thêm từ chỉ số Tấn công (+sát thương/phát). Skill dùng: (ATK gốc + flat) x hệ số skill x damageMultiplier.
+     * % Tấn công, Bạo kích (kỳ vọng), Sát thương theo giáp đã nằm sẵn trong unit.damageMultiplier.
+     */
+    public static float skillFlatAtk(Unit owner) {
+        try {
+            int[] s = owner != null ? statsOf(owner) : null;
+            return s != null ? s[2] * ATK_FLAT : 0f;
+        } catch (Throwable err) { return 0f; }
+    }
+
+    /** Skill gây sát thương lên unit địch: đã tính Xuyên giáp, % máu tối đa, bonus quái spawn ngẫu nhiên, Đẩy lùi. Gọi ở server/host. */
+    public static void skillDamage(Unit owner, Unit tgt, float dmg, float fromX, float fromY) {
+        if (tgt == null) return;
+        skillDamageCore(owner, tgt, tgt.team, dmg);
+        try {
+            int[] s = owner != null ? statsOf(owner) : null;
+            if (s != null && s[11] > 0 && !tgt.dead) {
+                float dx = tgt.x - fromX, dy = tgt.y - fromY, d = (float) Math.sqrt(dx * dx + dy * dy);
+                if (d > 0.01f) { float f = s[11] * KNOCK_PER * 80; tgt.impulse(dx / d * f, dy / d * f); }
+            }
+        } catch (Throwable err) {}
+    }
+
+    /** Skill gây sát thương lên công trình địch (không đẩy lùi). */
+    public static void skillDamage(Unit owner, Building tgt, float dmg) {
+        if (tgt == null) return;
+        skillDamageCore(owner, tgt, tgt.team, dmg);
+    }
+
+    static void skillDamageCore(Unit owner, mindustry.gen.Healthc tgt, Team tgtTeam, float dmg) {
+        int[] s = null;
+        try { s = owner != null ? statsOf(owner) : null; } catch (Throwable err) {}
+        if (s == null) { tgt.damage(dmg); return; }
+        // Xuyên giáp: mỗi cấp 5% tỉ lệ bỏ qua giáp (giống đạn thường)
+        if (s[7] > 0 && Math.random() < Math.min(1.0, s[7] * 0.05)) { try { tgt.damagePierce(dmg); } catch (Throwable err) { tgt.damage(dmg); } }
+        else tgt.damage(dmg);
+        try {
+            if (s[9] > 0 && tgt.maxHealth() > 0) {
+                float ex = tgt.maxHealth() * ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP) / 100f;
+                try { tgt.damagePierce(ex); } catch (Throwable err) { tgt.damage(ex); }
+            }
+            if (s[13] > 0 && tgtTeam == Vars.state.rules.waveTeam) {
+                float exw = dmg * s[13] * WRAND_DMG_PCT / 100f;
+                try { tgt.damagePierce(exw); } catch (Throwable err) { tgt.damage(exw); }
+            }
+        } catch (Throwable err) {}
+    }
     public static void apiPersistStore() { persistStore(); }
     public static void onBegin() {
         winning = false; seenBoth = false; byId = new HashMap<>(); teamsCache = null;
@@ -5468,8 +5523,12 @@ public class NewModePvp {
         col.add("[white]" + tr(STATS[i].vi, STATS[i].en) + "[]   [lightgray]" + lv + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
         col.add("[lightgray]" + STATS[i].f.get(lv) + (lv < statMax(i) ? "  >  " + STATS[i].f.get(lv + 1) : "  MAX") + "[]").left().wrap().growX();
         row.add(col).growX().left();
+        final boolean off = st.pts < 1 || lv >= statMax(i);
         TextButton btn = row.button("+", () -> send(REQ_UP, String.valueOf(i))).size(narrowAt(w) ? 52 : 64, btnH()).padLeft(narrowAt(w) ? 4 : 8).get();
-        btn.setDisabled(st.pts < 1 || lv >= statMax(i));
+        btn.setDisabled(off);
+        // +10: đủ 10 điểm thì nâng 10, không đủ thì nâng hết số điểm đang có (server tự giới hạn theo điểm & mức tối đa)
+        TextButton btn10 = row.button("+10", () -> send(REQ_UP, i + "|10")).size(narrowAt(w) ? 56 : 68, btnH()).padLeft(narrowAt(w) ? 3 : 6).get();
+        btn10.setDisabled(off);
         p.add(row).width(w).pad(4).row();
     }
     static String turretDesc(Def def) {

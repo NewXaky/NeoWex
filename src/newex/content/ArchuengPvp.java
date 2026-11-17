@@ -54,6 +54,8 @@ import java.util.function.BooleanSupplier;
 /**
  * Archueng PvP - Kỹ năng kiếm khí hình quạt:
  * - Gây sát thương kỹ năng: 500% Tấn công + 5% Máu tối đa.
+ * - Hưởng chỉ số từ trang nâng cấp NewMode PvP: Tấn công (% và flat), Bạo kích, Sát thương theo giáp (qua damageMultiplier),
+ *   Xuyên giáp, Sát thương % máu tối đa, Sát thương quái spawn ngẫu nhiên, Đẩy lùi (qua NewModePvp.skillDamage).
  * - Khi chém hụt mục tiêu, nhát chém kết thúc giảm 65% thời gian hồi chiêu.
  * - Tùy chỉnh phím bấm PC trong Cài đặt NewEx -> NewMode PvP.
  */
@@ -214,11 +216,11 @@ public final class ArchuengPvp {
         NexNet.broadcast(FAN, u.id + "," + u.team.id + "," + (Math.round(ang * 10) / 10f) + "," + u.x + "," + u.y + "," + player.id);
     }
 
-    /** Sát thương kỹ năng = 500% Tấn công + 5% Máu tối đa. */
+    /** Sát thương kỹ năng = 500% Tấn công (đã gồm chỉ số Tấn công từ trang nâng cấp) + 5% Máu tối đa. */
     static float calcDmg(int id) {
         Unit o = Groups.unit.getByID(id);
         if (o == null) return DMG * ATK_PCT;
-        return DMG * ATK_PCT * Math.max(0.1f, o.damageMultiplier) + o.maxHealth * MAX_HP_PCT;
+        return (DMG + NewModePvp.skillFlatAtk(o)) * ATK_PCT * Math.max(0.1f, o.damageMultiplier) + o.maxHealth * MAX_HP_PCT;
     }
 
     // ---- mọi máy: nhận lệnh tạo quạt ----
@@ -259,11 +261,12 @@ public final class ArchuengPvp {
     static void hitFan(Fan f) {
         Team team = Team.get(f.team);
         float reach = RAD + 6;
+        final Unit owner = Groups.unit.getByID(f.uid);
         Units.nearbyEnemies(team, f.x - reach, f.y - reach, reach * 2, reach * 2, e -> {
             if (e.dead || f.hit.contains("u" + e.id) || !inFan(f, e.x, e.y)) return;
             f.hit.add("u" + e.id);
             UnitSkillInfo.markLastDamageSkill(e.id);
-            e.damage(f.dmg);
+            NewModePvp.skillDamage(owner, e, f.dmg, f.x, f.y);
             try { if (markStatus != null) e.apply(markStatus, MARK_T); } catch (Throwable err) {}
             try {
                 Call.effect(Fx.hitLaserBlast, e.x, e.y, f.ang, COL2);
@@ -274,7 +277,7 @@ public final class ArchuengPvp {
         Units.nearbyBuildings(f.x, f.y, reach, b -> {
             if (b.team == team || f.hit.contains("b" + b.pos()) || !inFan(f, b.x, b.y)) return;
             f.hit.add("b" + b.pos());
-            b.damage(f.dmg);
+            NewModePvp.skillDamage(owner, b, f.dmg);
             try { Call.effect(Fx.hitLaserBlast, b.x, b.y, f.ang, COL2); } catch (Throwable err) {}
         });
     }
