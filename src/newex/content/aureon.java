@@ -12,6 +12,7 @@ import arc.math.Rand;
 import arc.scene.ui.layout.Table;
 import arc.util.Strings;
 import arc.util.Time;
+import arc.util.Tmp;
 import mindustry.Vars;
 import mindustry.content.Fx;
 import mindustry.content.StatusEffects;
@@ -272,133 +273,110 @@ public final class aureon {
             if (lock == null || !lock.isLocked() || lock.lockedTarget == null) return;
 
             float x1 = b.x, y1 = b.y;
-            float x2 = lock.lockedTarget.x(), y2 = lock.lockedTarget.y();
+            float tx = lock.lockedTarget.x(), ty = lock.lockedTarget.y();
+            float dst0 = Mathf.dst(x1, y1, tx, ty);
+            if (dst0 < 1f) return;
+
+            float ang0 = Angles.angle(x1, y1, tx, ty);
+            float perpX = -Mathf.sinDeg(ang0);
+            float perpY = Mathf.cosDeg(ang0);
+
+            // Độ lệch ngang của nòng so với thân -> mỗi tia chạm mục tiêu ở một điểm riêng, nhìn rõ đủ 4 tia
+            float lateral = (x1 - u.x) * perpX + (y1 - u.y) * perpY;
+            float x2 = tx + perpX * lateral * 0.32f;
+            float y2 = ty + perpY * lateral * 0.32f;
+
             float dst = Mathf.dst(x1, y1, x2, y2);
-            if (dst < 1f) return;
-
             float ang = Angles.angle(x1, y1, x2, y2);
-            float perpX = -Mathf.sinDeg(ang);
-            float perpY = Mathf.cosDeg(ang);
+            float pX = -Mathf.sinDeg(ang);
+            float pY = Mathf.cosDeg(ang);
 
-            int seg = Mathf.clamp((int) (dst / 12f), 8, 30);
+            int seg = Mathf.clamp((int) (dst / 10f), 8, 36);
             long fast = (long) (Time.time * 0.9f) + b.id * 131L;
             float pulse = 0.5f + 0.5f * Mathf.sin(Time.time * 0.35f + b.id);
+
+            // nòng trong sáng/trắng hơn, nòng ngoài xanh đậm hơn -> dễ phân biệt từng tia
+            float inner = Mathf.clamp(1f - Math.abs(lateral) / 60f, 0f, 1f);
+            Color beam = Tmp.c1.set(ARC_OUTER).lerp(Color.white, inner * 0.35f);
 
             float zPrev = Draw.z();
             Draw.z(Layer.bullet + 1f);
 
-            // ---- 1) Tia chính: dựng một lần, vẽ nhiều lớp
-            buildBolt(seg, x1, y1, x2, y2, perpX, perpY, 15f, fast);
+            buildBolt(seg, x1, y1, x2, y2, pX, pY, 6.5f, fast);
 
+            // vầng sáng mảnh
             Draw.blend(Blending.additive);
-            Draw.color(ARC_OUTER, 0.10f);
-            Lines.stroke(17f + pulse * 4f);
-            strokeBolt(seg);
-            Draw.color(ARC_OUTER, 0.20f);
-            Lines.stroke(9f + pulse * 2f);
+            Draw.color(beam, 0.16f);
+            Lines.stroke(4.2f + pulse * 0.8f);
             strokeBolt(seg);
             Draw.blend();
 
-            Draw.color(ARC_OUTER, 0.85f);
-            Lines.stroke(3.6f + pulse * 1.2f);
+            // thân tia + lõi
+            Draw.color(beam, 0.95f);
+            Lines.stroke(1.7f + pulse * 0.4f);
             strokeBolt(seg);
             Draw.color(ARC_CORE, 1f);
-            Lines.stroke(1.6f);
+            Lines.stroke(0.75f);
             strokeBolt(seg);
 
-            // ---- 2) Nhánh sét tách ra từ tia chính
+            // nhánh sét nhỏ, thưa
             rand.setSeed(fast + 777L);
             for (int i = 2; i < seg - 1; i++) {
-                if (!rand.chance(0.30f)) continue;
+                if (!rand.chance(0.16f)) continue;
                 float side = rand.chance(0.5f) ? 1f : -1f;
-                float a = ang + side * rand.random(25f, 65f);
-                float len = rand.random(14f, 34f);
-                float mx = bx[i] + Angles.trnsx(a, len * 0.5f) + perpX * rand.range(4f);
-                float my = by[i] + Angles.trnsy(a, len * 0.5f) + perpY * rand.range(4f);
-                float a2 = a + rand.range(45f);
-                float ex = mx + Angles.trnsx(a2, len * 0.5f);
-                float ey = my + Angles.trnsy(a2, len * 0.5f);
-                Draw.color(ARC_OUTER, 0.8f);
-                Lines.stroke(1.7f);
+                float a = ang + side * rand.random(30f, 70f);
+                float len = rand.random(8f, 18f);
+                float mx = bx[i] + Angles.trnsx(a, len * 0.55f);
+                float my = by[i] + Angles.trnsy(a, len * 0.55f);
+                float ex = mx + Angles.trnsx(a + rand.range(40f), len * 0.45f);
+                float ey = my + Angles.trnsy(a + rand.range(40f), len * 0.45f);
+                Draw.color(beam, 0.85f);
+                Lines.stroke(0.9f);
                 Lines.line(bx[i], by[i], mx, my);
                 Lines.line(mx, my, ex, ey);
-                Draw.color(ARC_CORE, 0.95f);
-                Lines.stroke(0.8f);
-                Lines.line(bx[i], by[i], mx, my);
-                Lines.line(mx, my, ex, ey);
-                Fill.circle(ex, ey, 1.4f);
             }
 
-            // ---- 3) Hạt năng lượng chạy dọc tia (từ nòng tới mục tiêu)
-            Draw.blend(Blending.additive);
-            for (int k = 0; k < 4; k++) {
-                float t = (Time.time * 0.014f + k * 0.25f + (b.id % 7) * 0.13f) % 1f;
+            // hạt sáng chạy dọc tia
+            for (int k = 0; k < 3; k++) {
+                float t = (Time.time * 0.016f + k * 0.333f + (b.id % 7) * 0.13f) % 1f;
                 float f = t * seg;
                 int idx = Mathf.clamp((int) f, 0, seg - 1);
                 float fr = f - idx;
                 float px = Mathf.lerp(bx[idx], bx[idx + 1], fr);
                 float py = Mathf.lerp(by[idx], by[idx + 1], fr);
-                Draw.color(ARC_OUTER, 0.35f);
-                Fill.circle(px, py, 6f + pulse * 2f);
-                Draw.color(ARC_CORE, 0.9f);
-                Fill.circle(px, py, 2.4f);
-            }
-            Draw.blend();
-
-            // ---- 4) Hai tia điện mảnh xoắn quanh tia chính (hào quang)
-            for (int k = 0; k < 2; k++) {
-                buildBolt(seg, x1, y1, x2, y2, perpX, perpY, 28f, fast * 7L + k * 13L + 5L);
-                Draw.color(ARC_OUTER, 0.5f);
-                Lines.stroke(1.1f);
-                strokeBolt(seg);
+                Draw.color(ARC_CORE, 0.95f);
+                Fill.circle(px, py, 1.5f);
             }
 
-            // ---- 5) Đầu nòng: vòng sạc + gai điện xoay
-            Draw.blend(Blending.additive);
-            Draw.color(ARC_OUTER, 0.28f);
-            Fill.circle(x1, y1, 9f + pulse * 3f);
-            Draw.color(ARC_OUTER, 0.65f);
-            Fill.circle(x1, y1, 4.6f);
-            Draw.blend();
+            // đầu nòng: chấm sáng nhỏ + vòng mảnh
+            Draw.color(beam, 0.55f);
+            Fill.circle(x1, y1, 3.2f + pulse);
             Draw.color(ARC_CORE);
-            Fill.circle(x1, y1, 2.4f);
-            Draw.color(ARC_OUTER, 0.9f);
-            Lines.stroke(1.2f);
-            Lines.circle(x1, y1, 7f + pulse * 3f);
-            for (int i = 0; i < 6; i++) {
-                Lines.lineAngle(x1, y1, Time.time * 4f + i * 60f, 5f + pulse * 7f);
-            }
+            Fill.circle(x1, y1, 1.5f);
+            Draw.color(beam, 0.8f);
+            Lines.stroke(0.8f);
+            Lines.circle(x1, y1, 4.5f + pulse * 1.5f);
 
-            // ---- 6) Điểm trúng: vầng sáng, sóng xung kích, tia bắn tỏa
-            Draw.blend(Blending.additive);
-            Draw.color(ARC_OUTER, 0.22f);
-            Fill.circle(x2, y2, 18f + pulse * 6f);
-            Draw.color(ARC_OUTER, 0.6f);
-            Fill.circle(x2, y2, 8.5f);
-            Draw.blend();
+            // điểm trúng: nhỏ gọn, mỗi tia một điểm
+            Draw.color(beam, 0.5f);
+            Fill.circle(x2, y2, 3.6f);
             Draw.color(ARC_CORE);
-            Fill.circle(x2, y2, 4f);
-
-            for (int r = 0; r < 2; r++) {
-                float f = (Time.time * 0.045f + r * 0.5f + (b.id % 5) * 0.2f) % 1f;
-                Draw.color(ARC_OUTER, 1f - f);
-                Lines.stroke(2.2f * (1f - f));
-                Lines.circle(x2, y2, 6f + f * 28f);
-            }
+            Fill.circle(x2, y2, 1.6f);
+            float rf = (Time.time * 0.05f + (b.id % 5) * 0.2f) % 1f;
+            Draw.color(beam, 1f - rf);
+            Lines.stroke(1.1f * (1f - rf));
+            Lines.circle(x2, y2, 3f + rf * 11f);
 
             rand.setSeed(fast + 4242L);
             Draw.color(ARC_CORE, 0.9f);
-            Lines.stroke(1.5f);
-            for (int i = 0; i < 7; i++) {
+            Lines.stroke(0.9f);
+            for (int i = 0; i < 4; i++) {
                 float a = rand.random(360f);
-                float r0 = rand.random(5f, 9f);
-                float len = rand.random(9f, 24f);
-                Lines.lineAngle(x2 + Angles.trnsx(a, r0), y2 + Angles.trnsy(a, r0), a, len);
+                Lines.lineAngle(x2 + Angles.trnsx(a, 3f), y2 + Angles.trnsy(a, 3f), a, rand.random(4f, 10f));
             }
 
-            // ---- 7) Ánh sáng môi trường
-            Drawf.light(x1, y1, 34f, ARC_OUTER, 0.45f);
-            Drawf.light(x2, y2, 52f + pulse * 10f, ARC_OUTER, 0.55f);
+            Drawf.light(x1, y1, 16f, beam, 0.3f);
+            Drawf.light(x2, y2, 24f + pulse * 4f, beam, 0.35f);
 
             Draw.z(zPrev);
             Draw.reset();
