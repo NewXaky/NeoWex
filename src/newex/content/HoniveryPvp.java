@@ -396,6 +396,7 @@ public final class HoniveryPvp {
                     Call.effect(Fx.sparkShoot, e.x, e.y, sp.ang, SPEC_CORE);
                 } catch (Throwable err) {}
                 if (wasAlive && (e.dead || e.health <= 0f) && sp.owner != null && !sp.owner.dead) {
+                    Honivery.grantKillPassive(sp.owner, e); // nội tại Tinh Quang Trảm: hạ gục bằng combo vẫn tích %
                     spawnSpecial(sp.owner, Angles.angle(sp.owner.x, sp.owner.y, e.x, e.y), sp.chainDepth + 1);
                 }
             });
@@ -479,6 +480,7 @@ public final class HoniveryPvp {
             // Khi tieu diet muc tieu: phong nhat chem dac biet
             if (wasAlive && (e.dead || e.health <= 0f)) {
                 killedAny[0] = true;
+                Honivery.grantKillPassive(u, e); // nội tại Tinh Quang Trảm: hạ gục bằng combo vẫn tích %
                 spawnSpecial(u, Angles.angle(u.x, u.y, e.x, e.y), 0);
             }
         });

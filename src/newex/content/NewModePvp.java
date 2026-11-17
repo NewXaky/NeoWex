@@ -166,7 +166,7 @@ public class NewModePvp {
     static final int XAKY_MIN_LEVEL = 11;
     static final float XAKY_HP_MUL = 0.8f;
     static final float XAKY_SPD_MUL = 1.2f;
-    static final int XAKY_CD = 10 * 60;
+    static final int XAKY_CD = 5 * 60;
     static final int XAKY_DASH = 96;
     static final int PILOT_EMPIX = 2;
     static final int EMPIX_MIN_LEVEL = 11;
@@ -270,7 +270,7 @@ public class NewModePvp {
     static final float REGEN_PCT = 0.25f;
     static final float REGEN_THRESHOLD = 0.99f;
     static final float DMG_PCT_MAXHP = 0.05f;
-    static final float DMG_PER_ARMOR = 0.03f;
+    static final float DMG_PER_ARMOR = 0.005f; // 0.05 / 10 giáp / cấp (giảm từ 0.03 = 0.3)
     static final int WRAND_DMG_PCT = 5;
     static final float KNOCK_PER = 1.0f;
     static final String ROLE_BRAWLER = "brawler";
@@ -656,7 +656,7 @@ public class NewModePvp {
     static void addExp(Player pl, float amount, boolean quiet) {
         St st = bind(pl);
         if (st.lv >= maxLevel()) return;
-        if (st.pi == PILOT_XIKI) amount = amount * (1 + XIKI_EXP_PCT);
+        if (st.pi == PILOT_XIKI) amount = amount * (1 + XIKI_EXP_PCT * ChaosMode.pilotK());
         if (st.pi == PILOT_HIST) amount = amount * (1 + HIST_STAT_PCT);
         amount = amount * expBonusMul(pl) * ChaosMode.expMul();
         st.exp += amount;
@@ -665,7 +665,7 @@ public class NewModePvp {
         while (st.lv < maxLevel() && st.exp >= expNeed(st.lv)) {
             st.exp -= expNeed(st.lv);
             st.lv++; st.pts++; up++;
-            if (st.pi == PILOT_XIKI && st.lv < maxLevel()) st.exp += XIKI_LVUP_FLAT + expNeed(st.lv) * XIKI_LVUP_PCT;
+            if (st.pi == PILOT_XIKI && st.lv < maxLevel()) st.exp += (XIKI_LVUP_FLAT + expNeed(st.lv) * XIKI_LVUP_PCT) * ChaosMode.pilotK();
         }
         if (st.lv >= maxLevel()) st.exp = 0;
         if (up > 0) {
@@ -2346,16 +2346,18 @@ public class NewModePvp {
         if (st.pi == PILOT_HIST) {
             int[] h = (int[]) st.hs;
             if (h == null) { h = st.s.clone(); st.hs = h; }
-            for (int i = 0; i < h.length; i++) h[i] = i != STAT_ARMY ? Math.min(st.s[i] + 1, statMax(i)) : st.s[i];
+            final int hb = Math.max(1, Math.round(ChaosMode.pilotK()));
+            for (int i = 0; i < h.length; i++) h[i] = i != STAT_ARMY ? Math.min(st.s[i] + hb, statMax(i)) : st.s[i];
             return h;
         }
         if (st.pi == PILOT_XAKYNEO) {
             int[] xn = (int[]) st.xns;
             if (xn == null) { xn = st.s.clone(); st.xns = xn; }
             for (int i = 0; i < xn.length; i++) xn[i] = st.s[i];
-            xn[5] = Math.min(st.s[5] + XAKYNEO_CRIT_BONUS_LV, statMax(5));
-            xn[6] = Math.min(st.s[6] + XAKYNEO_CRIT_BONUS_LV, statMax(6));
-            xn[8] = Math.min(st.s[8] + XAKYNEO_CRIT_BONUS_LV, statMax(8));
+            final int xb = Math.max(1, Math.round(XAKYNEO_CRIT_BONUS_LV * ChaosMode.pilotK()));
+            xn[5] = Math.min(st.s[5] + xb, statMax(5));
+            xn[6] = Math.min(st.s[6] + xb, statMax(6));
+            xn[8] = Math.min(st.s[8] + xb, statMax(8));
             return xn;
         }
         return st.s;
@@ -2410,7 +2412,7 @@ public class NewModePvp {
         Float t0 = xakyNeoStart.get(id);
         if (t0 == null) { xakyNeoStart.put(id, Time.time); return 0f; }
         float minutes = (Time.time - t0) / 3600f;
-        return Math.min((float) XAKYNEO_RAMP_MAX, minutes * XAKYNEO_RAMP_PCT_MIN) / 100f;
+        return Math.min((float) XAKYNEO_RAMP_MAX * ChaosMode.pilotK(), minutes * XAKYNEO_RAMP_PCT_MIN * ChaosMode.pilotK()) / 100f;
     }
 
     // ===== hieu ung ket lieu cua Neo: JS tu dung "container" gia -> Java dung NeoCtx + ham ve rieng (khong can Effect that) =====
@@ -2721,7 +2723,7 @@ public class NewModePvp {
         Float at = vanhauCdAt.get(id);
         if (at != null && Time.time >= at && Time.time - at < ChaosMode.cd(VANHAU_CD)) return;
         VanhauField f = new VanhauField();
-        f.uid = unit.id; f.hp = unit.maxHealth * VANHAU_SHIELD_PCT; f.max = f.hp; f.r = vanhauR(unit); f.fl = 0; f.st = 0;
+        f.uid = unit.id; f.hp = unit.maxHealth * VANHAU_SHIELD_PCT * ChaosMode.pilotK(); f.max = f.hp; f.r = vanhauR(unit); f.fl = 0; f.st = 0;
         vanhauField.put(id, f);
         vanhauShieldOn.put(id, true);
         vanhauCdAt.put(id, Time.time);
@@ -2843,9 +2845,9 @@ public class NewModePvp {
         float hpT = (tHp * (1 + s[0] * HP_PCT / 100f) + s[0] * HP_FLAT) * (1 + ChaosMode.capRole(ROLE_HP_MAX, rc.brl * ROLE_HP_PCT) / 100f);
         int pi = isPl ? stOwn.pi : 0;
         boolean empixOn = pi == PILOT_EMPIX;
-        if (empixOn) hpT *= 1 + EMPIX_HP_PCT;
+        if (empixOn) hpT *= 1 + EMPIX_HP_PCT * ChaosMode.pilotK();
         boolean xakyOn = pi == PILOT_XAKY;
-        if (xakyOn) hpT *= XAKY_HP_MUL;
+        if (xakyOn) hpT *= Math.max(0.1f, 1 - (1 - XAKY_HP_MUL) * ChaosMode.pilotK());
         boolean histOn = pi == PILOT_HIST;
         if (histOn) hpT *= 1 + HIST_STAT_PCT;
         hpT *= ChaosMode.hpMul();
@@ -2864,16 +2866,16 @@ public class NewModePvp {
 
         float dm = (1 + s[2] * ATK_PCT / 100f) * (1 + ChaosMode.capRole(ROLE_ATK_MAX, rc.atk * ROLE_ATK_PCT) / 100f);
         dm *= ChaosMode.critMul(s[5], s[6]);
-        if (empixOn) dm *= 1 + EMPIX_ATK_PCT;
+        if (empixOn) dm *= 1 + EMPIX_ATK_PCT * ChaosMode.pilotK();
         if (histOn) dm *= 1 + HIST_STAT_PCT;
-        if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT + xakyNeoRampPct(unit, pl);
+        if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT * ChaosMode.pilotK() + xakyNeoRampPct(unit, pl);
         unit.damageMultiplier *= dm;
         boolean isServer = !Vars.net.client();
         if (empixOn && isServer) empixHeal(unit);
         float base = Math.max(0.1f, unit.type.speed);
         unit.speedMultiplier *= (1 + s[3] * SPD_PCT / 100f) * (1 + s[3] * SPD_FLAT / base);
         if (isPl && unit.type == UnitTypes.disrupt) unit.speedMultiplier *= DISRUPT_SPEED_MUL;
-        if (xakyOn) unit.speedMultiplier *= XAKY_SPD_MUL;
+        if (xakyOn) unit.speedMultiplier *= 1 + (XAKY_SPD_MUL - 1) * ChaosMode.pilotK();
         if (histOn) unit.speedMultiplier *= 1 + HIST_STAT_PCT;
         if (inOwnTerritory(unit)) {
             unit.speedMultiplier *= TERRITORY_SPEED_MUL;
@@ -2969,7 +2971,7 @@ public class NewModePvp {
             Unit ou = (Unit) o;
             boolean isSoldier = soldierOwner.containsKey(ou.id);
             boolean isPl = !isSoldier && (ou.isPlayer() || (bots.size() > 0 && botUnitOf(ou) != null));
-            if (s[STAT_ARMY] > 0 && isSoldier) {
+            if (s[STAT_ARMY] > 0 && isSoldier && !ChaosMode.soldierRangeOff()) {
                 float rangeMul = 1 + s[STAT_ARMY] * RANGE_PCT / 100f, lifeMul = 1 + s[STAT_ARMY] * LIFE_PCT / 100f;
                 try { b.lifetime *= lifeMul; } catch (Throwable err) {}
                 try { b.vel.scl(rangeMul); } catch (Throwable err) {}
@@ -3127,6 +3129,34 @@ public class NewModePvp {
         if (added) tl.add(target);
         normalizeRules(Vars.state.rules, new Team[]{target});
     }
+    /** Đội mới có hợp lệ để chấp nhận khi người chơi bị đổi đội thủ công không (không áp dụng ở chế độ PvB / BvB). */
+    static boolean canAdoptTeam(Team t) {
+        if (t == null || t == Team.derelict || t == Team.crux) return false;
+        if (pvbOn() || bvbOn()) return false;
+        return isPvpTeam(t) && t.cores().size > 0;
+    }
+    /** Ghi nhận việc đổi đội: cập nhật đội đã gán, bỏ pháo đã đặt (đánh dấu chưa đặt), dọn lính cũ và cho hồi sinh ở lõi đội mới. */
+    static void adoptTeamChange(Player pl, Team prev, Team cur) {
+        seenPl.put(pl.id, cur);
+        try { getAssign().put(getUid(pl), cur.id); } catch (Throwable err) {}
+        try {
+            St st = byId.get(pl.id);
+            if (st != null) {
+                wipeBuilt(st);
+                for (int i = 0; i < st.p.size(); i++) st.p.set(i, -1);
+                changed();
+            }
+        } catch (Throwable err) {}
+        try {
+            final int pid = pl.id;
+            Groups.unit.each(u -> { Integer o = soldierOwner.get(u.id); if (o != null && o.intValue() == pid && u.team != cur) { try { u.kill(); } catch (Throwable err) {} } });
+        } catch (Throwable err) {}
+        try {
+            Unit u0 = pl.unit();
+            if (u0 != null && !u0.dead && u0.team != cur) { try { Call.unitDespawn(u0); } catch (Throwable err) { u0.remove(); } }
+        } catch (Throwable err) {}
+        try { toastAll("[#" + cur.color + "]■[] [accent]" + pl.name + tr(" đã chuyển sang đội mới!", " switched teams!"), 3f); } catch (Throwable err) {}
+    }
     static Team balanceTeam(Player pl) {
         Seq<Team> tl = pvpTeams();
         Team best = null; int bn = Integer.MAX_VALUE;
@@ -3140,7 +3170,16 @@ public class NewModePvp {
     }
     static void assignTeam(Player pl) {
         Team prev = seenPl.get(pl.id);
-        if (prev != null) { if (pl.team() != prev) pl.team(prev); return; }
+        if (prev != null) {
+            Team cur = pl.team();
+            if (cur != prev) {
+                // Host/admin đổi đội thủ công (danh sách người chơi -> đổi đội): chấp nhận nếu là đội PvP hợp lệ.
+                // Trước đây luôn bị ép về đội cũ mỗi tick nên không đổi được.
+                if (canAdoptTeam(cur)) adoptTeamChange(pl, prev, cur);
+                else pl.team(prev);
+            }
+            return;
+        }
         HashMap<String, Integer> asg = getAssign();
         String uid = getUid(pl);
         Team team = null;
@@ -3549,7 +3588,7 @@ public class NewModePvp {
                 float rng = s.r0;
                 Integer oid = soldierOwner.get(u.id);
                 St sst = oid != null ? byId.get(oid) : null;
-                if (sst != null && sst.s[STAT_ARMY] > 0) rng *= 1 + sst.s[STAT_ARMY] * RANGE_PCT / 100f;
+                if (sst != null && sst.s[STAT_ARMY] > 0 && !ChaosMode.soldierRangeOff()) rng *= 1 + sst.s[STAT_ARMY] * RANGE_PCT / 100f;
                 if (!Float.isNaN(s.hp) && u.health < s.hp - 0.01f) s.hurt = 300;
                 s.hp = u.health;
                 if (s.hurt > 0) {
@@ -4708,7 +4747,7 @@ public class NewModePvp {
             boolean notSoldier = !isUnitOwner || !soldierOwner.containsKey(o.id());
             if (xnst != null && xnst.pi == PILOT_XAKYNEO && notSoldier) { NeoMk mk = new NeoMk(); mk.pid = apid; mk.t = Time.time; mk.d = b.damage; neoMarks.put(tgt.id, mk); }
             if (xnst != null && xnst.pi == PILOT_XAKYNEO && !tgt.dead && tgt.isValid() && tgt.maxHealth > 0 && tgt.health / tgt.maxHealth > XAKYNEO_HIGHHP_RATIO) {
-                float exn = b.damage * XAKYNEO_HIGHHP_DMG;
+                float exn = b.damage * XAKYNEO_HIGHHP_DMG * ChaosMode.pilotK();
                 try { tgt.damagePierce(exn); } catch (Throwable err) { tgt.damage(exn); }
             }
             // JS: dung mau thap nhat giua "ngay sau don" va "hien tai", khong doi !dead (sat thuong cong them co the da ha muc tieu)
@@ -5241,6 +5280,7 @@ public class NewModePvp {
     public static void skillDamage(Unit owner, Unit tgt, float dmg, float fromX, float fromY) {
         if (tgt == null) return;
         skillDamageCore(owner, tgt, tgt.team, dmg);
+        try { Honivery.reflectOnHit(tgt, owner, dmg); } catch (Throwable err) {} // khiên Tinh Quang của Honivery phản sát thương skill
         try {
             int[] s = owner != null ? statsOf(owner) : null;
             if (s != null && s[11] > 0 && !tgt.dead) {
@@ -5362,10 +5402,19 @@ public class NewModePvp {
         chBtn[0].setText(chaosLabel(chaos[0]));
         content.row();
         content.button(tr("Xem tất cả thẻ Hỗn loạn", "View all Chaos cards"), Styles.flatBordert, () -> ChaosMode.openAll()).width(300).height(48).pad(6).row();
-        content.add("[lightgray]" + tr("Mỗi 10 phút chọn 1 trong 3 thẻ buff/debuff (tối đa 3 lần). Chỉ số và buff pháo không còn giới hạn. Áp dụng cho cả hai phe; cần mở lại map để có hiệu lực.",
-            "Every 10 minutes pick 1 of 3 buff/debuff cards (max 3 times). Stats and turret buffs become unlimited. Affects both teams; reopen the map to apply.") + "[]").width(320).wrap().left().row();
+        final TextField chPickField = numField(content, tr("Số thẻ tối đa mỗi người được chọn để kích hoạt:", "Max cards each player can pick to activate:"),
+            Core.settings.getInt(ChaosMode.KEY_PICKS, ChaosMode.DEF_PICKS), 2, tr("thẻ (1 - " + ChaosMode.LIM_PICKS + ", mặc định " + ChaosMode.DEF_PICKS + ")", "cards (1 - " + ChaosMode.LIM_PICKS + ", default " + ChaosMode.DEF_PICKS + ")"), false);
+        final TextField chRoundField = numField(content, tr("Số lần hiện bảng chọn thẻ tối đa:", "Max number of times the card board appears:"),
+            Core.settings.getInt(ChaosMode.KEY_ROUNDS, ChaosMode.DEF_ROUNDS), 2, tr("lần (1 - " + ChaosMode.LIM_ROUNDS + ", mặc định " + ChaosMode.DEF_ROUNDS + ")", "times (1 - " + ChaosMode.LIM_ROUNDS + ", default " + ChaosMode.DEF_ROUNDS + ")"), false);
+        final TextField chMinField = numField(content, tr("Thời gian giữa các lần hiện bảng chọn thẻ:", "Time between card board appearances:"),
+            Core.settings.getInt(ChaosMode.KEY_MINUTES, ChaosMode.DEF_MINUTES), 3, tr("phút (1 - " + ChaosMode.LIM_MINUTES + ", mặc định " + ChaosMode.DEF_MINUTES + "; lần đầu hiện sau chừng đó phút)", "min (1 - " + ChaosMode.LIM_MINUTES + ", default " + ChaosMode.DEF_MINUTES + "; first one appears after that long)"), true);
+        content.add("[lightgray]" + tr("Mỗi mốc thời gian chọn 1 trong 3 thẻ buff/debuff. Chọn lại thẻ đã có sẽ cộng dồn (hiệu lực tăng giảm dần). Chỉ số và buff pháo không còn giới hạn. Áp dụng cho cả hai phe; cần mở lại map để có hiệu lực.",
+            "At each interval pick 1 of 3 buff/debuff cards. Picking a card you already have stacks it (with diminishing returns). Stats and turret buffs become unlimited. Affects both teams; reopen the map to apply.") + "[]").width(320).wrap().left().row();
         return () -> {
             Core.settings.put(ChaosMode.KEY, chaos[0]);
+            Core.settings.put(ChaosMode.KEY_PICKS, clampParse(chPickField, ChaosMode.DEF_PICKS, 1, ChaosMode.LIM_PICKS));
+            Core.settings.put(ChaosMode.KEY_ROUNDS, clampParse(chRoundField, ChaosMode.DEF_ROUNDS, 1, ChaosMode.LIM_ROUNDS));
+            Core.settings.put(ChaosMode.KEY_MINUTES, clampParse(chMinField, ChaosMode.DEF_MINUTES, 1, ChaosMode.LIM_MINUTES));
             Core.settings.put(KEY_SHIELD, clampParse(shField, DEFAULT_SHIELD_MIN, 0, LIMIT_SHIELD_MIN));
             Core.settings.put(KEY_MAXLV, clampParse(mlField, MAX_LEVEL, 1, LIMIT_MAXLV));
             Core.settings.put(KEY_EXP, clampParse(expField, DEFAULT_EXP, 0, LIMIT_EXP));
@@ -5782,8 +5831,8 @@ public class NewModePvp {
             "+5% EXP on every EXP gain. On level up: +5% of new level EXP and +500 EXP, with an icon animation.", 1));
         l.add(new PilotDef(PILOT_EMPIX, "Empixeand Pilot", "+5% tấn công và +5% máu. Tụt 50% máu: hồi đầy máu 1 lần; chạm 0 máu: hồi đầy máu thêm 1 lần (hồi chiêu 5 phút sau khi dùng cả 2).",
             "+5% attack and +5% HP. At 50% HP: instantly fully heal once; at 0 HP: fully heal again once (5 min cooldown after both).", EMPIX_MIN_LEVEL));
-        l.add(new PilotDef(PILOT_XAKY, "Xaky Pilot", "-20% máu, +20% tốc độ di chuyển. Từ cấp " + XAKY_MIN_LEVEL + ": khi nhận sát thương sẽ Dash theo hướng di chuyển (hồi chiêu 10s). Bộ binh dừng cách tường/công trình 1 ô, không quân bay xuyên.",
-            "-20% HP, +20% move speed. From level " + XAKY_MIN_LEVEL + ": taking damage makes you Dash in your move direction (10s cooldown). Ground units stop 1 tile short of walls/buildings; air units fly through.", 1));
+        l.add(new PilotDef(PILOT_XAKY, "Xaky Pilot", "-20% máu, +20% tốc độ di chuyển. Từ cấp " + XAKY_MIN_LEVEL + ": khi nhận sát thương sẽ Dash theo hướng di chuyển (hồi chiêu 5s). Bộ binh dừng cách tường/công trình 1 ô, không quân bay xuyên.",
+            "-20% HP, +20% move speed. From level " + XAKY_MIN_LEVEL + ": taking damage makes you Dash in your move direction (5s cooldown). Ground units stop 1 tile short of walls/buildings; air units fly through.", 1));
         l.add(new PilotDef(PILOT_HIST, "HistekaIMsp Pilot", "Mạnh toàn diện, không điểm yếu! +1 cấp cho mọi thẻ ở trang chỉ số.", "All-rounder, no weakness! +1 level on every stat card in the stats page.", 1));
         l.add(new PilotDef(PILOT_XAKYNEO, "Xaky(Neo) Pilot",
             "+5% tấn công (mỗi phút +0,1%, tối đa +100%). +1 điểm tỉ lệ bạo kích, sát thương bạo kích & hồi máu. +35% sát thương lên mục tiêu trên 50% máu. Kết liễu mục tiêu dưới 16% máu (bản thân mất 9% máu tối đa; áp dụng cả đạn pháo trang bị và pháo xây). Khi lắp pháo therdum, hiệu ứng bất lợi từ kết liễu (tụt máu) đảo ngược thành hồi máu tức thì. Kết liễu còn tạo vụ nổ bán kính, sát thương 200% tấn công + 50% giáp + 50% máu.",

@@ -5,6 +5,11 @@
 
 
 
+-------------------------------------------
+> Cập nhật mới:
++ Thêm unit Honivery (cơ giáp 4 chân, 3500 máu, 10 giáp): 2 súng Gatling xoay nòng bắn đạn xuyên 2 mục tiêu kèm nổ lan và tia sét, bỏ qua 50% giáp; bắn liên tục quá lâu sẽ quá nhiệt tới khi nguội. Có 2 bệ phòng thủ điểm bắn hạ đạn địch trong 12 ô.
++ NewMode PvP: thêm pháo Therdum vào trang update pháo (giá 10 điểm, vai trò Cận chiến). Nội tại: sát thương tối đa nhận vào mỗi hit là 100.
++ Thanh máu: bỏ số nhảy khi hồi máu; thay bằng làn sóng sáng nhẹ chạy mượt từ đầu tới cuối thanh máu.
 
 
 -------------------------------------------

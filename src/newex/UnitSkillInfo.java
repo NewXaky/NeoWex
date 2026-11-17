@@ -104,12 +104,12 @@ public final class UnitSkillInfo {
             DamageKind.SKILL_ATTACK,
             Color.valueOf("D0C2FF"),
             "Tinh Quang Trảm: 8.0 giây | Combo 8 nhát: 2.75 giây (1.75 giây tung chiêu + 1 giây hồi)",
-            "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại)\n"
+            "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại); khi tung nhận Khiên Tinh Quang 5 giây: giảm 72% sát thương nhận vào, phản 28% sát thương về kẻ tấn công\n"
                 + "Combo 8 nhát: mỗi nhát tăng dần từ 50% đến 120% Tấn Công, nhát cuối chém vòng 360°\n"
                 + "Nhát chém đặc biệt (lốc xoáy phong kiếm ngọc lục bảo): 430% Tấn Công",
             "[Kỹ năng 1 - Tinh Quang Trảm] Tụ năng lượng vào Kiếm Sao 4 cánh và phóng ra sóng kiếm hình quạt 3 tầng xé rách không gian phía trước. Được tính là Đòn Đánh Kỹ Năng.\n"
                 + "[Kỹ năng 2 - Combo] Tung liên tiếp 8 nhát chém song tinh vân, nhát cuối là vòng chém 360°. Trong lúc tung có cơ hội phóng nhát chém đặc biệt: 2% khi bấm, +10% mỗi nhát chém trúng (tổng 12%), và chắc chắn phóng 1 nhát về phía mục tiêu khi hạ gục nó.",
-            "Tinh Hồn Thôn Phệ: Khi dùng Tinh Quang Trảm tiêu diệt mục tiêu, tăng vĩnh viễn +1% sát thương cho kỹ năng này (tối đa 999%), đồng thời cứ mỗi 10.000 HP tối đa của mục tiêu bị hạ gục sẽ cộng thêm +1%.",
+            "Tinh Hồn Thôn Phệ: Khi dùng Tinh Quang Trảm tiêu diệt mục tiêu, tăng vĩnh viễn +1% sát thương cho kỹ năng này (tối đa 999%), đồng thời cứ mỗi 10.000 HP tối đa của mục tiêu bị hạ gục sẽ cộng thêm +1%. Hạ gục bằng Combo 8 nhát cũng được tích.",
             () -> "Cộng dồn hiện tại: [accent]+" + Honivery.getPassiveBonusPct() + "%[] / 999%",
             () -> "PC: Tinh Quang Trảm - phím [accent][" + Honivery.getSkillKey().value + "][] | Combo 8 nhát - phím [accent][" + HoniveryPvp.getSkillKey().value + "][] (đổi trong Cài đặt -> Phím kĩ năng)\n"
                 + "Mobile: nút CHÉM = Tinh Quang Trảm | nút COMBO = Combo 8 nhát"

@@ -35,9 +35,13 @@ import mindustry.entities.bullet.BasicBulletType;
 import mindustry.entities.units.WeaponMount;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.Trigger;
+import mindustry.game.EventType.UnitDamageEvent;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
 import mindustry.gen.Call;
+import mindustry.gen.Entityc;
+import mindustry.gen.Healthc;
+import mindustry.gen.Teamc;
 import mindustry.gen.Groups;
 import mindustry.gen.LegsUnit;
 import mindustry.gen.Player;
@@ -46,6 +50,7 @@ import mindustry.gen.Unit;
 import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
 import mindustry.graphics.Pal;
+import mindustry.type.StatusEffect;
 import mindustry.type.UnitType;
 import mindustry.type.Weapon;
 import mindustry.ui.Styles;
@@ -90,6 +95,13 @@ public final class Honivery {
     static final float ATK_RATIO = 0.90f;    // 90% tấn công
     static final float HP_RATIO = 0.10f;     // 10% HP hiện tại
     static final int MAX_PASSIVE_PCT = 999;  // giới hạn nội tại 999%
+
+    // ---- Khiên Tinh Quang (dùng Tinh Quang Trảm): giảm 72% sát thương nhận, phản 28%, 5 giây ----
+    static final float AEGIS_T = 300f;
+    static final float AEGIS_REDUCE = 0.72f;
+    static final float AEGIS_REFLECT = 0.28f;
+    public static StatusEffect aegis;
+    static final HashMap<Integer, Float> aegisStart = new HashMap<>(); // uid -> thời điểm tung (mọi máy đều nhận CAST) để vẽ nhịp khiên mỗi giây
 
     static boolean netOk = false, initialized = false;
     static float cdEnd = 0f;
@@ -242,6 +254,21 @@ public final class Honivery {
     // ================================================================== Khởi Tạo Unit & Logic Skill
 
     public static void create() {
+        // healthMultiplier chia sát thương nhận vào: 1/(1-0.72) -> giảm đúng 72%
+        aegis = new StatusEffect("honivery-aegis") {
+            {
+                healthMultiplier = 1f / (1f - AEGIS_REDUCE);
+                color = Color.valueOf("D0C2FF");
+                show = false;
+            }
+
+            @Override
+            public void draw(Unit unit) {
+                super.draw(unit);
+                drawAegis(unit, this);
+            }
+        };
+
         final Effect hitFx = hitBulletFx(5f, 8, 10f);
         final Effect despawnFx = hitBulletFx(12f, 10, 18f);
         final Effect honiveryShootFx = shootFx();
@@ -261,7 +288,7 @@ public final class Honivery {
             hitSize = 18f;
             health = 3500f;
             armor = 10f;
-            speed = 3.4f / 7.5f;
+            speed = 3.4f / 7.5f * 1.5f; // +50% tốc độ di chuyển
 
             legCount = 4;
             legLength = 10f;
@@ -330,6 +357,12 @@ public final class Honivery {
         initialized = true;
 
         Events.run(Trigger.update, Honivery::updateSkill);
+        // Khiên Tinh Quang: phản 28% sát thương gốc của đạn về kẻ tấn công
+        Events.on(UnitDamageEvent.class, e -> {
+            try {
+                if (e.bullet != null && e.unit != null) reflectOnHit(e.unit, e.bullet.owner, e.bullet.damage);
+            } catch (Throwable ignored) {}
+        });
         if (!Vars.headless) {
             Events.run(Trigger.draw, Honivery::drawSkill);
             Events.on(ClientLoadEvent.class, e -> {
@@ -350,6 +383,7 @@ public final class Honivery {
         cdEnd = 0f;
         cdEndSrv.clear();
         passiveStacksSrv.clear();
+        aegisStart.clear();
         localPassivePct = 0;
         slashes.clear();
         charges.clear();
@@ -417,6 +451,12 @@ public final class Honivery {
 
         charges.put(s.uid, new StarCharge(s.ang));
         slashes.add(s);
+        aegisStart.put(s.uid, Time.time);
+
+        // Khiên Tinh Quang 5 giây (chỉ server/host áp trạng thái; trạng thái tự đồng bộ tới client)
+        if (!Vars.net.client() && caster != null && !caster.dead && aegis != null) {
+            try { caster.apply(aegis, AEGIS_T); } catch (Throwable ignored) {}
+        }
 
         // Âm thanh tụ năng lượng & tuốt kiếm sao
         if (!Vars.headless) {
@@ -453,6 +493,87 @@ public final class Honivery {
         }
     }
 
+    /** Nội tại Tinh Hồn Thôn Phệ: +1% (+1% mỗi 10.000 HP tối đa mục tiêu) sát thương Tinh Quang Trảm. */
+    static void addKillPassive(int uid, Unit caster, float targetMaxHp, float x, float y) {
+        int extraFromHp = targetMaxHp > 10000f ? (int) (targetMaxHp / 10000f) : 0;
+        int gain = 1 + extraFromHp;
+
+        int cur = passiveStacksSrv.getOrDefault(uid, 0);
+        int next = Math.min(MAX_PASSIVE_PCT, cur + gain);
+        passiveStacksSrv.put(uid, next);
+
+        if (caster != null && Vars.player != null && Vars.player.unit() == caster) {
+            localPassivePct = next;
+        }
+
+        try {
+            Call.effect(soulAbsorbFx, x, y, 0f, STAR_GOLD);
+            if (!Vars.headless) {
+                Call.label("[#FFE07D]+ " + gain + "% ATK SKILL[] [lightgray](" + next + "%/999%)[]", 1.3f, x, y + 12f);
+                SfxCompat.at("message", x, y, 1.4f, 0.9f);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** API cho Combo 8 nhát (HoniveryPvp): hạ gục mục tiêu bằng combo vẫn tích nội tại Tinh Quang Trảm. Gọi ở server/host. */
+    public static void grantKillPassive(Unit caster, Unit target) {
+        if (caster == null || target == null || Vars.net.client()) return;
+        if (!isHonivery(caster)) return;
+        addKillPassive(caster.id, caster, target.maxHealth, target.x, target.y);
+    }
+
+    /** Khiên Tinh Quang: nếu nạn nhân đang có khiên, phản 28% sát thương gốc về kẻ tấn công (đạn hoặc skill). Gọi ở server/host. */
+    public static void reflectOnHit(Unit victim, Entityc attacker, float rawDmg) {
+        if (aegis == null || victim == null || attacker == null || rawDmg <= 0f || Vars.net.client()) return;
+        if (!victim.hasEffect(aegis)) return;
+        if (attacker == victim || !(attacker instanceof Healthc)) return;
+        if (attacker instanceof Teamc && ((Teamc) attacker).team() == victim.team) return;
+        Healthc h = (Healthc) attacker;
+        if (h.dead()) return;
+        try { h.damage(rawDmg * AEGIS_REFLECT); } catch (Throwable ignored) {}
+    }
+
+    /** Vẽ khiên sao 4 cánh: mỗi giây một đợt phóng to ra rồi mờ dần; thêm lõi sao mờ giữ nguyên trong suốt 5 giây. */
+    static void drawAegis(Unit unit, StatusEffect eff) {
+        if (unit == null || unit.dead) return;
+        Float t0 = aegisStart.get(unit.id);
+        float elapsed = t0 == null ? 0f : Math.max(0f, Time.time - t0);
+        float f = (elapsed / 60f) % 1f;                  // 0..1 trong mỗi giây
+        float base = Math.max(14f, unit.hitSize * 0.9f);
+        float grow = Interp.pow3Out.apply(f);
+        float fade = 1f - Interp.pow2.apply(f);          // mờ dần từ từ
+        float spin = Time.time * 0.6f;
+
+        Draw.z(Layer.flyingUnit + 1.2f);
+        Draw.blend(Blending.additive);
+        // lõi khiên cố định (mờ)
+        drawStar4(unit.x, unit.y, base * 0.9f, 45f + spin * 0.3f, STAR_CYAN, 0.16f);
+        // đợt sóng khiên: zoom to + mờ dần
+        drawStar4(unit.x, unit.y, base * (0.9f + 1.5f * grow), 45f, HONIVERY_COLOR, 0.85f * fade);
+        drawStar4(unit.x, unit.y, base * (0.7f + 1.2f * grow), 45f, Color.white, 0.5f * fade);
+        Draw.blend();
+        Draw.reset();
+    }
+
+    /** Sao 4 cánh: 4 tam giác nhọn + viền. */
+    static void drawStar4(float x, float y, float r, float rot, Color col, float alpha) {
+        if (alpha <= 0.01f) return;
+        float in = r * 0.3f;
+        for (int k = 0; k < 4; k++) {
+            float a = rot + k * 90f;
+            float ox = x + Angles.trnsx(a, r), oy = y + Angles.trnsy(a, r);
+            float lx = x + Angles.trnsx(a - 45f, in), ly = y + Angles.trnsy(a - 45f, in);
+            float rx = x + Angles.trnsx(a + 45f, in), ry = y + Angles.trnsy(a + 45f, in);
+            Draw.color(col, alpha * 0.35f);
+            Fill.tri(x, y, lx, ly, ox, oy);
+            Fill.tri(x, y, ox, oy, rx, ry);
+            Draw.color(col, alpha);
+            Lines.stroke(1.6f);
+            Lines.line(lx, ly, ox, oy);
+            Lines.line(ox, oy, rx, ry);
+        }
+    }
+
     static void applySlashHits(StarSlash s, float reach) {
         Team team = Team.get(s.team);
         Unit caster = Groups.unit.getByID(s.uid);
@@ -478,24 +599,7 @@ public final class Honivery {
 
             // Kiểm tra hạ gục mục tiêu để kích hoạt nội tại
             if (e.dead || e.health <= 0f) {
-                int extraFromHp = targetMaxHp > 10000f ? (int) (targetMaxHp / 10000f) : 0;
-                int gain = 1 + extraFromHp;
-
-                int cur = passiveStacksSrv.getOrDefault(s.uid, 0);
-                int next = Math.min(MAX_PASSIVE_PCT, cur + gain);
-                passiveStacksSrv.put(s.uid, next);
-
-                if (caster != null && Vars.player != null && Vars.player.unit() == caster) {
-                    localPassivePct = next;
-                }
-
-                try {
-                    Call.effect(soulAbsorbFx, e.x, e.y, 0f, STAR_GOLD);
-                    if (!Vars.headless) {
-                        Call.label("[#FFE07D]+ " + gain + "% ATK SKILL[] [lightgray](" + next + "%/999%)[]", 1.3f, e.x, e.y + 12f);
-                        SfxCompat.at("message", e.x, e.y, 1.4f, 0.9f);
-                    }
-                } catch (Throwable ignored) {}
+                addKillPassive(s.uid, caster, targetMaxHp, e.x, e.y);
             }
         });
 

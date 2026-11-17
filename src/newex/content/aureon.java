@@ -38,7 +38,7 @@ import mindustry.world.meta.StatUnit;
  * Unit Aureon - Robot xung kích 4 chân hạng nặng T5.
  * Trang bị 4 pháo hồ quang điện hội tụ, yêu cầu khóa mục tiêu trước khi khai hỏa.
  */
-public final class aureon {
+public final class Aureon {
     private static final Rand rand = new Rand();
 
     public static UnitType aureon;
@@ -57,7 +57,7 @@ public final class aureon {
     private static final Color LOCK_CHARGE = Color.valueOf("38e57d");
     private static final Color RANGE_GOLD = Color.valueOf("ffd166");
 
-    private aureon() {}
+    private Aureon() {}
 
     /** Gọi từ NexMod.loadContent(). */
     public static void create() {
@@ -70,8 +70,9 @@ public final class aureon {
             hitColor = ARC_OUTER;
             status = StatusEffects.shocked;
             statusDuration = 20f;
-            pierce = false;
-            pierceBuilding = false;
+            pierce = true;           // tia liên tục không tự hủy khi chạm mục tiêu
+            pierceBuilding = true;
+            pierceCap = -1;
             drawSize = RANGE * 2.2f;
             hitEffect = new Effect(12f, e -> {
                 Draw.color(ARC_OUTER, ARC_CORE, e.fout());
@@ -133,6 +134,7 @@ public final class aureon {
             y = wy;
             mirror = true;
             alternate = false; // bắn đồng thời, không luân phiên trái/phải
+            shootCone = 360f;  // không bắt nòng phải xoay đúng góc mới được bắn (tia tự bám mục tiêu)
             top = true;
             rotate = true;
             rotateSpeed = 6f;
