@@ -77,6 +77,7 @@ import arc.scene.ui.TextField;
 import arc.scene.ui.layout.Table;
 import mindustry.gen.Icon;
 import mindustry.ui.dialogs.BaseDialog;
+import newex.MachineUi;
 import arc.scene.ui.Image;
 import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Scl;
@@ -207,9 +208,6 @@ public class NewModePvp {
     static final String KEY_MAXLV = "newex-pvp-max-level";
     static final int LIMIT_MAXLV = 999;
     static final int FREE_SWITCH_LEVEL = 5;
-    static final int STAT_PER_PAGE = 4;
-    static final int TURRET_PER_PAGE = 5;
-    static final int UNIT_PER_PAGE = 5;
     static final int TIER_MAX = 8; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery
     static final int STAT_MAX = 20;
     static final int STAT_MAIN = 12;
@@ -259,7 +257,6 @@ public class NewModePvp {
     static final int[] WALL_COST = new int[] {2, 3, 5, 8, 12, 16};
     static final String WALL_BUILD_ID = "__wall";
     static final String REQ_CMD = "newex-pvp-cmd";
-    static final int ARMY_PER_PAGE = 5;
     static final float BARRACKS_DISCOUNT = 0.8f;
     static final int HP_PCT = 12;
     static final int HP_FLAT = 20;
@@ -5260,14 +5257,12 @@ public class NewModePvp {
     /** JS api.addSettings(outer): them nut vao bang cai dat; tra ve ham don dep (rong). */
     public static Runnable addSettings(Table outer) {
         outer.button(tr("NewMode PvP - Tùy chỉnh", "NewMode PvP - Settings"), Icon.settings, () -> {
-            BaseDialog d = new BaseDialog("NewMode PvP");
-            Table c = new Table();
+            final MachineUi.Panel p = MachineUi.panel("NewMode PvP");
+            Table c = p.content();
             c.top().margin(10);
             final Runnable save = buildSettings(c);
-            d.cont.add(new ScrollPane(c)).grow().row();
-            d.hidden(() -> { try { save.run(); } catch (Throwable err) {} });
-            d.addCloseButton();
-            d.show();
+            p.dialog.hidden(() -> { try { save.run(); } catch (Throwable err) {} });
+            p.show();
         }).size(280, 54).pad(6).row();
         return () -> {};
     }
@@ -5398,28 +5393,25 @@ public class NewModePvp {
     static boolean shortScreen() { return screenH() < 500; }
     static boolean narrowScreen() { return screenW() < 520 || screenH() > screenW(); }
     static boolean portraitScreen() { return screenH() > screenW(); }
-    static float panelW() {
+    static float btnH() { if (!Vars.mobile) return 38f; return shortScreen() ? 44f : 52f; }
+    // --- Tương thích: các file khác trong gói (ví dụ ChaosMode) có thể còn gọi helper bố cục cũ. NewModePvp không dùng nữa; xóa nếu không file nào gọi.
+    @Deprecated static float panelW() {
         float margin = narrowScreen() ? 90 : (shortScreen() ? 24 : 40);
         float w = Math.max(200f, Math.min(screenW() - margin, narrowScreen() ? 480f : 640f));
         return Math.min(w, Math.max(160f, screenW() - (narrowScreen() ? 90 : 40)));
     }
-    static float btnH() { if (!Vars.mobile) return 38f; return shortScreen() ? 44f : 52f; }
-    static float headH() { return (shortScreen() ? 58 : 80) + btnH() + 16; }
-    static float listH(Float extra) {
+    @Deprecated static float listH(Float extra) {
         float sh = screenH();
-        float reserve = (shortScreen() ? 40 : 56) + (shortScreen() ? 52 : 72) + 24 + (extra == null ? headH() : extra) + (Vars.mobile ? 32 : 0);
+        float head = (shortScreen() ? 58 : 80) + btnH() + 16;
+        float reserve = (shortScreen() ? 40 : 56) + (shortScreen() ? 52 : 72) + 24 + (extra == null ? head : extra) + (Vars.mobile ? 32 : 0);
         return Math.max(100f, Math.min(sh - reserve, sh * 0.8f));
     }
-    static float listH() { return listH(null); }
-    static void addClose(BaseDialog d) {
-        if (!shortScreen()) { d.addCloseButton(); return; }
-        d.buttons.defaults().size(160, 44);
-        d.buttons.button("@back", Icon.left, () -> d.hide());
-        d.closeOnBack();
-    }
-    static int gridCols() { return !narrowScreen() && panelW() >= 560 ? 2 : 1; }
-    static int cardW() { return (int) Math.floor((panelW() - 36) / gridCols()) - 8; }
-    static float cardMinW() { return narrowScreen() ? 170f : 260f; }
+    @Deprecated static float listH() { return listH(null); }
+    @Deprecated static void addClose(BaseDialog d) { d.addCloseButton(); }
+    /** Hàng/thẻ hẹp hơn mức này thì thu nhỏ icon + nút (đo theo bề rộng thật của khung MachineUi, không theo màn hình). */
+    static boolean narrowAt(float w) { return w < 430f; }
+    /** Số cột lưới thẻ theo bề rộng khung: 1 cột trên điện thoại, 2-3 cột khi rộng. */
+    static int colsFor(float w) { return Math.max(1, Math.min(3, (int) (w / 330f))); }
     static float measureHeight(Cons<Table> buildFn) {
         Table probe = new Table();
         buildFn.get(probe);
@@ -5436,8 +5428,9 @@ public class NewModePvp {
         UnitType ut = tierType(t);
         Table row = new Table(Styles.black6);
         row.margin(8);
-        float selW = narrowScreen() ? 84 : 110;
-        row.add(new Image(ut.uiIcon)).size(narrowScreen() ? 32 : 40).padRight(narrowScreen() ? 6 : 10);
+        boolean nr = narrowAt(w);
+        float selW = nr ? 84 : 110;
+        row.add(new Image(ut.uiIcon)).size(nr ? 32 : 40).padRight(nr ? 6 : 10);
         Table col = new Table();
         col.left();
         col.add("[white]" + ut.localizedName + "[]").left().row();
@@ -5475,7 +5468,7 @@ public class NewModePvp {
         col.add("[white]" + tr(STATS[i].vi, STATS[i].en) + "[]   [lightgray]" + lv + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
         col.add("[lightgray]" + STATS[i].f.get(lv) + (lv < statMax(i) ? "  >  " + STATS[i].f.get(lv + 1) : "  MAX") + "[]").left().wrap().growX();
         row.add(col).growX().left();
-        TextButton btn = row.button("+", () -> send(REQ_UP, String.valueOf(i))).size(narrowScreen() ? 52 : 64, btnH()).padLeft(narrowScreen() ? 4 : 8).get();
+        TextButton btn = row.button("+", () -> send(REQ_UP, String.valueOf(i))).size(narrowAt(w) ? 52 : 64, btnH()).padLeft(narrowAt(w) ? 4 : 8).get();
         btn.setDisabled(st.pts < 1 || lv >= statMax(i));
         p.add(row).width(w).pad(4).row();
     }
@@ -5519,19 +5512,20 @@ public class NewModePvp {
             + (multiTurretOn() ? tr("Mua được nhiều pháo cùng loại.", "Same turret can be bought many times.") : tr("Mỗi loại chỉ mua 1.", "1 per turret type.")) + "[]").colspan(cols).width(w).left().wrap().minWidth(0).pad(2).row();
     }
     static Table turretCard(St st, Def def, float cw) {
-        float inner = Math.max(narrowScreen() ? 130 : 150, cw - 20);
+        final boolean nr = cw < 330f;
+        float inner = Math.max(nr ? 130 : 150, cw - 20);
         int ownedN = ownedCount(st, def.id);
         Table card = new Table(Styles.black6);
         card.margin(8);
         card.top().left();
         boolean single = !multiTurretOn() && ownedN > 0;
         int price = turretCost(st, def);
-        float iconSz = narrowScreen() ? 30 : (Vars.mobile ? 40 : 34);
+        float iconSz = nr ? 30 : (Vars.mobile ? 40 : 34);
         Table top = new Table();
         top.left();
         top.add(new Image(def.block.uiIcon)).size(iconSz).padRight(8);
         top.add("[white]" + def.block.localizedName + "[]" + (ownedN > 0 ? "  [accent]x" + ownedN + "[]" : "")).left().growX().minWidth(0).wrap();
-        TextButton buyBtn = top.button(tr("Mua", "Buy") + " " + price, () -> send(REQ_BUY, def.id)).size(narrowScreen() ? 72 : 86, btnH()).padLeft(6).get();
+        TextButton buyBtn = top.button(tr("Mua", "Buy") + " " + price, () -> send(REQ_BUY, def.id)).size(nr ? 72 : 86, btnH()).padLeft(6).get();
         buyBtn.setDisabled(st.pts < price || !def.equip || single);
         card.add(top).width(inner).left().row();
         String rd = roleDesc(def.id);
@@ -5543,78 +5537,28 @@ public class NewModePvp {
     }
 
 
-    // ===== PHAN 17: chuyen trang co hoat anh, Tui do, Pilot (JS 6499-6930, 7256-7317) =====
-    static final int UP_EXIT_MS = 90, UP_ENTER_MS = 170, BAG_PER_PAGE = 5;
-    static void slideEl(Element el, int dir, boolean enter, int ms, Runnable done) {
-        final long t0 = Time.millis();
-        final float dist = Vars.mobile ? 28 : 40;
-        final boolean[] fin = {false};
-        final Runnable[] step = new Runnable[1];
-        step[0] = () -> {
-            if (fin[0]) return;
-            float k = Math.min(1f, (Time.millis() - t0) / (float) ms);
-            float sh = enter ? (1 - (float) Math.pow(1 - k, 3)) : (1 - k * k);
-            float off = (enter ? 1 : -1) * (1 - sh) * dir * dist;
-            try { el.color.a = sh; } catch (Throwable err) {}
-            try { el.translation.set(off, 0); } catch (Throwable err) {}
-            if (k >= 1) {
-                fin[0] = true;
-                if (enter) { try { el.color.a = 1; } catch (Throwable err) {} try { el.translation.set(0, 0); } catch (Throwable err) {} }
-                if (done != null) done.run();
-            }
-        };
-        try { el.update(step[0]); } catch (Throwable err) {}
-        step[0].run();
-    }
-    /** JS newPageNav(): chuyen trang co hoat anh truot. go(dir, apply) -> thoat, doi trang, show(el) -> vao. */
-    static final class PageNav {
-        Element body; Pend2 pending; int enterDir;
-        static final class Pend2 { Runnable apply; int dir; }
-        void go(int dir, Runnable apply) {
-            if (body == null || pending != null) {
-                if (pending != null) flush();
-                apply.run();
-                enterDir = dir;
-                return;
-            }
-            Pend2 p = new Pend2(); p.apply = apply; p.dir = dir; pending = p;
-            slideEl(body, dir, false, UP_EXIT_MS, () -> flush());
-        }
-        void flush() {
-            Pend2 pd = pending;
-            if (pd == null) return;
-            pending = null;
-            pd.apply.run();
-            enterDir = pd.dir;
-        }
-        void show(Element el) {
-            body = el;
-            if (enterDir != 0) { int ed = enterDir; enterDir = 0; slideEl(el, ed, true, UP_ENTER_MS, null); }
-        }
-        void reset() { body = null; pending = null; enterDir = 0; }
-    }
-    static PageNav newPageNav() { return new PageNav(); }
-    static final PageNav bagNav = newPageNav(), pilotNav = newPageNav(), upNav = newPageNav();
+    // ===== PHAN 17: Tui do, Pilot (giao dien MachineUi; chuyen trang truot nam trong MachineUi.Panel) =====
 
     // ===== Tui do =====
     static BaseDialog bagDialog = null;
-    static int bagPage = 0;
     static ArrayList<String> bagRecent = new ArrayList<>(), viewBag = new ArrayList<>();
     static void bagTouch(String id) { bagRecent.remove(id); bagRecent.add(0, id); }
     static final class BagGroup { Def def; final ArrayList<Integer> bag = new ArrayList<>(), on = new ArrayList<>(), built = new ArrayList<>(); int n; }
-    static void buildBag(BaseDialog d) {
-        Table c = d.cont;
+    static void buildBag(MachineUi.Panel pnl) {
+        Table h = pnl.header(), c = pnl.content();
+        h.clear();
         c.clear();
         St st = localState();
         if (st == null) { c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row(); return; }
         Defs defs = droneDefs();
-        float W = Math.min(panelW(), 520f);
+        final float W = pnl.innerW();
+        final boolean narrow = narrowAt(W);
         boolean slotFull = equipCount(st) >= equipSlots(st), builtFull = builtCount(st) >= maxBuilt();
         Table head = new Table(Styles.black6);
         head.margin(8);
         head.add("[accent]" + tr("Túi đồ", "Bag") + "[]").left().expandX();
         head.add("[lightgray]" + tr("Đang lắp: ", "Mounted: ") + "[white]" + equipCount(st) + "/" + equipSlots(st) + "[]  [lightgray]" + tr("Xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]").right();
-        c.add(head).width(W).pad(4).row();
+        h.add(head).growX().pad(4).row();
 
         ArrayList<BagGroup> groups = new ArrayList<>();
         HashMap<String, BagGroup> byType = new HashMap<>();
@@ -5632,19 +5576,10 @@ public class NewModePvp {
             if (iy < 0) iy = 9999;
             return ix != iy ? ix - iy : x.n - y.n;
         });
-        if (groups.size() == 0) { c.add("[lightgray]" + tr("Túi đồ trống. Hãy mua pháo ở tab Pháo.", "Your bag is empty. Buy turrets in the Turrets tab.") + "[]").width(W).wrap().pad(20).row(); return; }
+        if (groups.size() == 0 && st.w != IN_BAG) { c.add("[lightgray]" + tr("Túi đồ trống. Hãy mua pháo ở tab Pháo.", "Your bag is empty. Buy turrets in the Turrets tab.") + "[]").width(W - 20f).wrap().pad(20).row(); return; }
 
-        float rowH = btnH() + 22 + (narrowScreen() ? btnH() + 6 : 0);
-        float availH = Math.max(60f, listH(btnH() * 2 + 40));
-        int perPage = Math.min(BAG_PER_PAGE, Math.max(1, (int) Math.floor(availH / rowH)));
-        int totalPages = Math.max(1, (int) Math.ceil(groups.size() / (double) perPage));
-        if (bagPage < 0) bagPage = 0;
-        if (bagPage > totalPages - 1) bagPage = totalPages - 1;
-        int start = bagPage * perPage, end = Math.min(groups.size(), start + perPage);
-        float btnW = narrowScreen() ? 50 : (Vars.mobile ? 70 : 62), iconSz = narrowScreen() ? 32 : (Vars.mobile ? 44 : 36);
-        Table list = new Table();
-        list.top();
-        for (int n = start; n < end; n++) {
+        float btnW = narrow ? 50 : (Vars.mobile ? 70 : 62), iconSz = narrow ? 32 : (Vars.mobile ? 44 : 36);
+        for (int n = 0; n < groups.size(); n++) {
             BagGroup g = groups.get(n);
             Def def = g.def;
             int total = g.bag.size() + g.on.size() + g.built.size();
@@ -5656,7 +5591,7 @@ public class NewModePvp {
                 + (g.built.size() > 0 ? "\n[lightgray]" + tr("Đã xây: ", "Built: ") + "[white]" + g.built.size() + "[]" : "");
             row.add(nm).left().growX().wrap().minWidth(0);
             Table bt = row;
-            if (narrowScreen()) { row.row(); bt = new Table(); }
+            if (narrow) { row.row(); bt = new Table(); }
             final int bagIdx = g.bag.size() > 0 ? g.bag.get(0) : -1;
             final int backIdx = g.on.size() > 0 ? g.on.get(g.on.size() - 1) : (g.built.size() > 0 ? g.built.get(g.built.size() - 1) : -1);
             final int sellIdx = bagIdx >= 0 ? bagIdx : backIdx;
@@ -5668,51 +5603,33 @@ public class NewModePvp {
             TextButton bb = bt.button(tr("Xây", "Build"), () -> { bagTouch(did); startBuild(did); }).size(btnW, btnH()).padLeft(4).get();
             bb.setDisabled(bagIdx < 0 || builtFull);
             bt.button(tr("Bán", "Sell"), () -> { bagTouch(did); send(REQ_SELL, String.valueOf(sellIdx)); }).size(btnW, btnH()).padLeft(4);
-            if (narrowScreen()) row.add(bt).colspan(2).growX().padTop(6).row();
-            list.add(row).width(W - 24).pad(3).row();
+            if (narrow) row.add(bt).colspan(2).growX().padTop(6).row();
+            c.add(row).width(W).pad(3).row();
         }
-        c.add(list).width(W).top().row();
-        bagNav.show(list);
         if (st.w == IN_BAG) {
             Table wr = new Table(Styles.black6);
             wr.margin(8);
             Block wb0 = wallBlock(st.wl);
             if (wb0 != null) wr.add(new Image(wb0.uiIcon)).size(32).padRight(10);
             wr.add("[white]" + wallName(st.wl) + "[]  [accent]+" + wallBonus(st) + tr(" lính", " cap") + "[]").left().growX().wrap().minWidth(0);
-            wr.button(tr("Xây", "Build"), () -> startWallBuild()).size(narrowScreen() ? 72 : 90, btnH()).padLeft(6);
-            c.add(wr).width(W - 24).pad(3).row();
-        }
-        if (totalPages > 1) {
-            Table nav = new Table();
-            float navBtnW = narrowScreen() ? 56 : 72;
-            final int tp = totalPages;
-            TextButton prevBtn = nav.button("<", () -> { if (bagPage > 0) bagNav.go(-1, () -> { bagPage--; ver++; }); }).size(navBtnW, btnH()).get();
-            prevBtn.setDisabled(bagPage <= 0);
-            nav.add("[white]" + (bagPage + 1) + "/" + totalPages + "[]").width(80).center();
-            TextButton nextBtn = nav.button(">", () -> { if (bagPage < tp - 1) bagNav.go(1, () -> { bagPage++; ver++; }); }).size(navBtnW, btnH()).get();
-            nextBtn.setDisabled(bagPage >= totalPages - 1);
-            c.add(nav).width(W).pad(4).row();
+            wr.button(tr("Xây", "Build"), () -> startWallBuild()).size(narrow ? 72 : 90, btnH()).padLeft(6);
+            c.add(wr).width(W).pad(3).row();
         }
     }
     static void openBag() {
         if (Vars.headless || !isActive()) return;
         if (bagDialog != null && bagDialog.isShown()) return;
-        BaseDialog dialog = new BaseDialog(tr("Túi đồ", "Bag"));
-        addClose(dialog);
-        bagPage = 0;
-        bagNav.reset();
+        final MachineUi.Panel p = MachineUi.panel(tr("Túi đồ", "Bag"));
         viewBag = new ArrayList<>(bagRecent);
-        final String[] lastVer = {null}; final long[] lastW = {-1};
-        dialog.update(() -> {
-            if (!nearOwnCore()) { dialog.hide(); return; }
-            long w = (long) Core.graphics.getWidth() * 10000 + Core.graphics.getHeight();
+        p.onBuild(() -> buildBag(p));
+        final String[] lastVer = {curVer()};
+        p.onTick(() -> {
+            if (!nearOwnCore()) { p.hide(); return; }
             String cv = curVer();
-            boolean changed = !cv.equals(lastVer[0]) || lastW[0] != w;
-            if (bagNav.pending != null && changed) bagNav.flush();
-            if (changed) { lastVer[0] = cv; lastW[0] = w; buildBag(dialog); }
+            if (!cv.equals(lastVer[0])) { lastVer[0] = cv; p.rebuild(); }
         });
-        bagDialog = dialog;
-        dialog.show();
+        bagDialog = p.dialog;
+        p.show();
     }
 
     // ===== Pilot =====
@@ -5735,7 +5652,8 @@ public class NewModePvp {
         if (Vars.headless) return;
         final TextureRegion reg = pilotIconRegion(pi);
         if (reg == null) return;
-        BaseDialog dlg = new BaseDialog(name);
+        final MachineUi.Panel dlg = MachineUi.panel(name);
+        dlg.scrollable(false);
         final float t0 = Time.time;
         final float[] s = new float[4]; // tx, ty, cx, cy
         final boolean[] down = {false};
@@ -5772,14 +5690,11 @@ public class NewModePvp {
             }
             @Override public void touchUp(InputEvent event, float x, float y, int pointer, KeyCode button) { down[0] = false; }
         });
-        dlg.cont.add(view[0]).grow();
-        dlg.cont.row();
-        dlg.cont.add("[lightgray]" + tr("Chạm và lướt để xoay ảnh", "Touch and drag to tilt the image") + "[]").padTop(4);
-        dlg.addCloseButton();
+        dlg.content().add(view[0]).grow().row();
+        dlg.content().add("[lightgray]" + tr("Chạm và lướt để xoay ảnh", "Touch and drag to tilt the image") + "[]").padTop(4).growX().get().setAlignment(arc.util.Align.center);
         dlg.show();
     }
-    static int pilotPage = 0; static long pilotLastW = -1;
-    static ArrayList<Integer> pilotRecent = new ArrayList<>(), viewPilot = new ArrayList<>();
+        static ArrayList<Integer> pilotRecent = new ArrayList<>(), viewPilot = new ArrayList<>();
     static void pilotTouch(int pi) { pilotRecent.remove(Integer.valueOf(pi)); pilotRecent.add(0, pi); }
     static final class PilotDef { final int pi, minLv; final String name, vi, en; PilotDef(int pi, String name, String vi, String en, int minLv) { this.pi = pi; this.name = name; this.vi = vi; this.en = en; this.minLv = minLv; } }
     static ArrayList<PilotDef> pilotOrdered(ArrayList<PilotDef> list) {
@@ -5819,10 +5734,10 @@ public class NewModePvp {
         for (PilotDef x : pilotList()) if (x.pi == pi) d = x;
         if (d == null) return;
         final PilotDef dd = d;
-        BaseDialog dlg = new BaseDialog(tr("Thông tin ", "Info ") + d.name);
-        addClose(dlg);
-        float W = Math.min(panelW(), 520f) - 40;
-        Table body = new Table();
+        final MachineUi.Panel dlg = MachineUi.panel(tr("Thông tin ", "Info ") + d.name);
+        float W = dlg.innerW() - 28f;
+        Table body = dlg.content();
+        body.margin(8);
         body.top().left();
         body.defaults().left().pad(3);
         Table head = new Table();
@@ -5852,9 +5767,6 @@ public class NewModePvp {
                 return "[scarlet]" + (left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
             }).left().padLeft(10).row();
         }
-        arc.scene.ui.ScrollPane sp = dlg.cont.pane(body).width(W + 24).maxHeight(Math.max(100f, listH())).get();
-        sp.setScrollingDisabled(true, false);
-        sp.setFadeScrollBars(false);
         dlg.show();
     }
     static void pilotCard(Table p, St st, float W, PilotDef d) {
@@ -5862,7 +5774,7 @@ public class NewModePvp {
         final boolean on = st.pi == pi, locked = st.lv < minLv;
         Table box = new Table(Styles.black6);
         box.margin(8);
-        float isz = narrowScreen() ? 48 : 64;
+        float isz = narrowAt(W) ? 48 : 64;
         TextureRegion reg = pilotIconRegion(pi);
         if (reg != null) {
             Image iconImg = box.image(reg).size(isz).top().left().padRight(8).get();
@@ -5886,58 +5798,27 @@ public class NewModePvp {
         if (!on && locked) b.setDisabled(true);
         p.add(box).width(W).pad(3).row();
     }
-    static void buildPilot(BaseDialog dialog) {
-        Table c = dialog.cont;
+    static void buildPilot(MachineUi.Panel pnl) {
+        Table c = pnl.content();
         c.clear();
         final St st = localState();
         if (st == null) return;
-        final float W = Math.min(panelW(), 520f) - 24;
+        final float W = pnl.innerW() - 6f;
         ArrayList<PilotDef> list = pilotOrdered(pilotList());
-        float navH = btnH() + 12, availH = Math.max(60f, listH() - navH), cardH = 0;
-        for (PilotDef d : list) { float h = measureHeight(p -> pilotCard(p, st, W, d)); if (h > cardH) cardH = h; }
-        int perPage = Math.max(1, Math.min(list.size(), (int) Math.floor(availH / Math.max(1f, cardH + 6))));
-        int totalPages = Math.max(1, (int) Math.ceil(list.size() / (double) perPage));
-        if (pilotPage < 0) pilotPage = 0;
-        if (pilotPage > totalPages - 1) pilotPage = totalPages - 1;
-        int start = pilotPage * perPage, end = Math.min(list.size(), start + perPage);
-        Table body = new Table();
-        body.top();
-        for (int i = start; i < end; i++) pilotCard(body, st, W, list.get(i));
-        arc.scene.ui.ScrollPane sp = c.pane(body).width(W + 24).maxHeight(Math.max(100f, listH() - (totalPages > 1 ? navH : 0))).get();
-        sp.setScrollingDisabled(true, false);
-        sp.setFadeScrollBars(false);
-        sp.setOverscroll(false, false);
-        c.row();
-        pilotNav.show(sp);
-        if (totalPages > 1) {
-            Table nav = new Table();
-            float nb = narrowScreen() ? 56 : 72;
-            final int tp = totalPages;
-            TextButton pv = nav.button("<", () -> { if (pilotPage > 0) pilotNav.go(-1, () -> { pilotPage--; ver++; }); }).size(nb, btnH()).get();
-            pv.setDisabled(pilotPage <= 0);
-            nav.add("[white]" + (pilotPage + 1) + "/" + totalPages + "[]").width(narrowScreen() ? 56 : 80).center();
-            TextButton nx = nav.button(">", () -> { if (pilotPage < tp - 1) pilotNav.go(1, () -> { pilotPage++; ver++; }); }).size(nb, btnH()).get();
-            nx.setDisabled(pilotPage >= totalPages - 1);
-            c.add(nav).width(W + 24).pad(4).row();
-        }
+        for (PilotDef d : list) pilotCard(c, st, W, d);
     }
     static void openPilot() {
         if (Vars.headless || !isActive()) return;
-        BaseDialog dialog = new BaseDialog(tr("Chiêu mộ pilot", "Recruit pilot"));
-        pilotPage = 0; pilotLastW = -1;
-        pilotNav.reset();
+        final MachineUi.Panel p = MachineUi.panel(tr("Chiêu mộ pilot", "Recruit pilot"));
         viewPilot = new ArrayList<>(pilotRecent);
-        addClose(dialog);
-        final String[] lastVer = {null};
-        dialog.update(() -> {
-            if (!nearOwnCore()) { dialog.hide(); return; }
-            long w0 = (long) Core.graphics.getWidth() * 10000 + Core.graphics.getHeight();
+        p.onBuild(() -> buildPilot(p));
+        final String[] lastVer = {curVer()};
+        p.onTick(() -> {
+            if (!nearOwnCore()) { p.hide(); return; }
             String cv = curVer();
-            boolean changed = !cv.equals(lastVer[0]) || pilotLastW != w0;
-            if (pilotNav.pending != null && changed) pilotNav.flush();
-            if (changed) { lastVer[0] = cv; pilotLastW = w0; buildPilot(dialog); }
+            if (!cv.equals(lastVer[0])) { lastVer[0] = cv; p.rebuild(); }
         });
-        dialog.show();
+        p.show();
     }
 
 
@@ -6069,51 +5950,50 @@ public class NewModePvp {
             p.add("[white]" + ln[1] + "[]").left().wrap().growX().padBottom(pad).row();
         }
     }
-    static void openUnitDetail(int pid) {
-        BaseDialog d = new BaseDialog(tr("Chi tiết unit", "Unit details"));
-        addClose(d);
-        float W = Math.min(panelW(), 520f);
+    static void openUnitDetail(final int pid) {
+        final MachineUi.Panel d = MachineUi.panel(tr("Chi tiết unit", "Unit details"));
         final Runnable[] fill = new Runnable[1];
         fill[0] = () -> {
-            d.cont.clear();
-            d.cont.button(tr("Quét lại", "Rescan"), () -> fill[0].run()).width(W).height(btnH()).pad(4).row();
-            d.cont.pane((Cons<Table>) p -> {
-                p.margin(10);
-                p.top();
-                St st = byId.get(pid);
-                if (st == null) { p.add("[scarlet]" + tr("Người chơi đã rời đi.", "Player left.") + "[]").row(); return; }
-                p.add("[accent]" + plName(pid) + "[]  [white]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
-                p.add(kcText(st)).left().wrap().growX().padBottom(6).row();
-                Unit u = plUnit(pid);
-                if (u != null && !(u.isValid() && !u.dead)) u = null;
-                ArrayList<String[]> lines = u != null ? scanLines(st, u) : null;
-                if (lines == null) p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[white]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
-                else addScanLines(p, lines, 4f);
-                p.add("[accent]" + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(6).row();
-                boolean any = false;
-                for (int i = 0; i < STATS.length; i++) {
-                    if (!(st.s[i] > 0)) continue;
-                    any = true;
-                    p.add("[lightgray]" + tr(STATS[i].vi, STATS[i].en) + "[]  [white]" + st.s[i] + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
+            Table hd = d.header();
+            hd.clear();
+            hd.button(tr("Quét lại", "Rescan"), () -> fill[0].run()).growX().height(btnH()).pad(4).row();
+            Table p = d.content();
+            p.clear();
+            p.margin(10);
+            p.top();
+            St st = byId.get(pid);
+            if (st == null) { p.add("[scarlet]" + tr("Người chơi đã rời đi.", "Player left.") + "[]").row(); return; }
+            p.add("[accent]" + plName(pid) + "[]  [white]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
+            p.add(kcText(st)).left().wrap().growX().padBottom(6).row();
+            Unit u = plUnit(pid);
+            if (u != null && !(u.isValid() && !u.dead)) u = null;
+            ArrayList<String[]> lines = u != null ? scanLines(st, u) : null;
+            if (lines == null) p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[white]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
+            else addScanLines(p, lines, 4f);
+            p.add("[accent]" + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(6).row();
+            boolean any = false;
+            for (int i = 0; i < STATS.length; i++) {
+                if (!(st.s[i] > 0)) continue;
+                any = true;
+                p.add("[lightgray]" + tr(STATS[i].vi, STATS[i].en) + "[]  [white]" + st.s[i] + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
+            }
+            if (!any) p.add("[lightgray]-[]").left().row();
+            p.add("[accent]" + tr("Pháo lắp trên unit ", "Turrets mounted ") + equipCount(st) + "/" + equipSlots(st) + "[]").left().padTop(8).row();
+            Defs defs = droneDefs();
+            if (st.p.size() == st.d.size()) {
+                for (int i = 0; i < st.d.size(); i++) {
+                    if (st.p.get(i) != EQUIPPED) continue;
+                    Def def = defs.map.get(st.d.get(i));
+                    if (def == null) continue;
+                    Table row = new Table();
+                    row.add(new Image(def.block.uiIcon)).size(28).padRight(6);
+                    row.add("[white]" + def.block.localizedName + "[]  " + roleText(def.id)).left();
+                    p.add(row).left().padTop(2).row();
                 }
-                if (!any) p.add("[lightgray]-[]").left().row();
-                p.add("[accent]" + tr("Pháo lắp trên unit ", "Turrets mounted ") + equipCount(st) + "/" + equipSlots(st) + "[]").left().padTop(8).row();
-                Defs defs = droneDefs();
-                if (st.p.size() == st.d.size()) {
-                    for (int i = 0; i < st.d.size(); i++) {
-                        if (st.p.get(i) != EQUIPPED) continue;
-                        Def def = defs.map.get(st.d.get(i));
-                        if (def == null) continue;
-                        Table row = new Table();
-                        row.add(new Image(def.block.uiIcon)).size(28).padRight(6);
-                        row.add("[white]" + def.block.localizedName + "[]  " + roleText(def.id)).left();
-                        p.add(row).left().padTop(2).row();
-                    }
-                }
-                p.add("[lightgray]" + tr("Pháo xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]  " + tr("Nhà máy lính: ", "Barracks: ") + "[white]" + st.b + "[]").left().padTop(6).row();
-            }).width(W).maxHeight(listH(btnH() + 12)).get().setScrollingDisabled(true, false);
+            }
+            p.add("[lightgray]" + tr("Pháo xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]  " + tr("Nhà máy lính: ", "Barracks: ") + "[white]" + st.b + "[]").left().padTop(6).row();
         };
-        fill[0].run();
+        d.onBuild(() -> fill[0].run());
         d.show();
     }
     static ArrayList<Integer> orderedIds() {
@@ -6123,56 +6003,56 @@ public class NewModePvp {
     }
     static void openUnitList() {
         if (Vars.headless || !isActive()) return;
-        BaseDialog d = new BaseDialog(tr("Unit người chơi", "Player units"));
-        addClose(d);
-        float W = Math.min(panelW(), 520f);
+        final MachineUi.Panel d = MachineUi.panel(tr("Unit người chơi", "Player units"));
         final Runnable[] fill = new Runnable[1];
         fill[0] = () -> {
-            d.cont.clear();
-            d.cont.button(tr("Quét lại", "Rescan"), () -> fill[0].run()).width(W).height(btnH()).pad(4).row();
-            d.cont.pane((Cons<Table>) p -> {
-                p.top();
-                int n = 0;
-                for (int pid : orderedIds()) {
-                    St st = byId.get(pid);
-                    if (st == null) continue;
-                    n++;
-                    Table row = new Table(Styles.black6);
-                    row.margin(8);
-                    row.touchable = Touchable.enabled;
-                    row.add(new Image(tierType(activeTier(st)).uiIcon)).size(narrowScreen() ? 32 : 40).padRight(10);
-                    Table col = new Table();
-                    col.left();
-                    col.add("[white]" + plName(pid) + "[]  [accent]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
-                    col.add(kcText(st)).left().wrap().growX();
-                    row.add(col).growX().left().minWidth(0);
-                    row.clicked(() -> openUnitDetail(pid));
-                    p.add(row).width(W - 24).pad(4).row();
-                }
-                if (n == 0) p.add("[lightgray]" + tr("Chưa có dữ liệu.", "No data yet.") + "[]").pad(10).row();
-            }).width(W).maxHeight(listH(btnH() + 12)).get().setScrollingDisabled(true, false);
+            final float W = d.innerW();
+            final boolean nr = narrowAt(W);
+            Table hd = d.header();
+            hd.clear();
+            hd.button(tr("Quét lại", "Rescan"), () -> fill[0].run()).growX().height(btnH()).pad(4).row();
+            Table p = d.content();
+            p.clear();
+            p.top();
+            int n = 0;
+            for (final int pid : orderedIds()) {
+                St st = byId.get(pid);
+                if (st == null) continue;
+                n++;
+                Table row = new Table(Styles.black6);
+                row.margin(8);
+                row.touchable = Touchable.enabled;
+                row.add(new Image(tierType(activeTier(st)).uiIcon)).size(nr ? 32 : 40).padRight(10);
+                Table col = new Table();
+                col.left();
+                col.add("[white]" + plName(pid) + "[]  [accent]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
+                col.add(kcText(st)).left().wrap().growX();
+                row.add(col).growX().left().minWidth(0);
+                row.clicked(() -> openUnitDetail(pid));
+                p.add(row).width(W).pad(4).row();
+            }
+            if (n == 0) p.add("[lightgray]" + tr("Chưa có dữ liệu.", "No data yet.") + "[]").pad(10).row();
         };
-        fill[0].run();
+        d.onBuild(() -> fill[0].run());
         d.show();
     }
     static void statDetailDialog(St st0) {
-        BaseDialog dialog = new BaseDialog(tr("Chi tiết chỉ số", "Stat details"));
-        addClose(dialog);
-        float W2 = Math.min(480f, panelW());
+        final MachineUi.Panel dialog = MachineUi.panel(tr("Chi tiết chỉ số", "Stat details"));
         final Runnable[] fill = new Runnable[1];
         fill[0] = () -> {
-            dialog.cont.clear();
             St cur = localState();
             ArrayList<String[]> lines = cur != null ? scanLines(cur) : null;
-            dialog.cont.button(tr("Quét lại unit", "Rescan unit"), () -> fill[0].run()).width(W2).height(btnH()).pad(4).row();
-            dialog.cont.pane((Cons<Table>) p -> {
-                p.margin(10);
-                p.top();
-                if (lines == null) { p.add("[scarlet]" + tr("Không quét được: bạn chưa điều khiển unit nào.", "Scan failed: you are not controlling a unit.") + "[]").left().wrap().growX().row(); return; }
-                addScanLines(p, lines, 8f);
-            }).width(W2).maxHeight(listH(btnH() + 12)).get().setScrollingDisabled(true, false);
+            Table hd = dialog.header();
+            hd.clear();
+            hd.button(tr("Quét lại unit", "Rescan unit"), () -> fill[0].run()).growX().height(btnH()).pad(4).row();
+            Table p = dialog.content();
+            p.clear();
+            p.margin(10);
+            p.top();
+            if (lines == null) { p.add("[scarlet]" + tr("Không quét được: bạn chưa điều khiển unit nào.", "Scan failed: you are not controlling a unit.") + "[]").left().wrap().growX().row(); return; }
+            addScanLines(p, lines, 8f);
         };
-        fill[0].run();
+        dialog.onBuild(() -> fill[0].run());
         dialog.show();
     }
     /** Nut "Unit" keo tha tren HUD + muc cai dat (JS 7180-7225). */
@@ -6218,15 +6098,18 @@ public class NewModePvp {
 
     // ===== PHAN 19: bang nang cap chinh, popup EXP (JS 7320-7690) =====
     static BaseDialog upDialog = null;
-    static int upTab = 0, upPage = 0;
-    static String turCardKey = ""; static float turCardH = 0;
+    static MachineUi.Panel upPanel = null;
+    static int upTab = 0;
 
-    static void buildDialog(BaseDialog d) {
-        Table c = d.cont;
+    /** Điền header (cấp/điểm/EXP) + nội dung của tab hiện tại. Thanh tab, trượt trang, cuộn do MachineUi.Panel lo. */
+    static void buildDialog(final MachineUi.Panel pnl) {
+        Table hd = pnl.header(), c = pnl.content();
+        hd.clear();
         c.clear();
         final St st = localState();
         if (st == null) { c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row(); return; }
-        final float W = panelW();
+        final float W = pnl.innerW();
+        final boolean narrow = narrowAt(W);
         Defs defs = droneDefs();
         if (Vars.state.isCampaign()) {
             Defs fd = new Defs();
@@ -6239,7 +6122,7 @@ public class NewModePvp {
         head.margin(shortScreen() ? 4 : 8);
         float bagBtnH = shortScreen() ? 32 : (Vars.mobile ? 40 : 32);
         String bagLabel = tr("Túi đồ", "Bag") + " (" + st.d.size() + ")", pilotLabel = "Pilot";
-        if (narrowScreen()) {
+        if (narrow) {
             head.add("[accent]" + tr("Cấp ", "Level ") + st.lv + "/" + maxLevel() + "[]").left().minWidth(0);
             head.add("[white]" + tierType(activeTier(st)).localizedName + "[]").expandX().right().minWidth(0);
             head.row();
@@ -6259,117 +6142,45 @@ public class NewModePvp {
             head.add(ptsBox).right();
             head.row();
         }
-        head.add(new Bar(() -> "EXP " + expText(), () -> Pal.accent, () -> expFrac())).growX().height(shortScreen() ? 16 : (Vars.mobile ? 26 : 20)).colspan(narrowScreen() ? 2 : 3).padTop(shortScreen() ? 2 : 6);
-        c.add(head).width(W).pad(4).row();
+        head.add(new Bar(() -> "EXP " + expText(), () -> Pal.accent, () -> expFrac())).growX().height(shortScreen() ? 16 : (Vars.mobile ? 26 : 20)).colspan(narrow ? 2 : 3).padTop(shortScreen() ? 2 : 6);
+        hd.add(head).growX().pad(4).row();
 
         if (upTab < 0 || upTab > 3) upTab = 0;
-        String[] names = {tr("Unit", "Unit"), tr("Chỉ số", "Stats"), tr("Pháo", "Turrets"), tr("Lính", "Army")};
-        arc.scene.ui.TextButton.TextButtonStyle tabStyle = Styles.togglet != null ? Styles.togglet : Styles.defaultt;
-        Table tabs = new Table();
-        final ArrayList<TextButton> tabBtns = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
-            final int ix = i;
-            TextButton tb = tabs.button(names[i], tabStyle, () -> {
-                if (ix == upTab) { upPage = 0; ver++; return; }
-                int dir = ix > upTab ? 1 : -1;
-                for (int j = 0; j < tabBtns.size(); j++) tabBtns.get(j).setChecked(j == ix);
-                upNav.go(dir, () -> { upTab = ix; upPage = 0; ver++; });
-            }).growX().uniformX().minWidth(0).height(narrowScreen() ? Math.min(btnH(), 44f) : btnH()).pad(2).get();
-            try { if (narrowScreen()) tb.getLabel().setFontScale(0.85f); } catch (Throwable err) {}
-            tb.setChecked(upTab == i);
-            tabBtns.add(tb);
-        }
-        c.add(tabs).width(W).row();
-
-        final int tab = upTab, cols = gridCols(), cw = cardW();
-        final float innerW = W - 24, navH = btnH() + 12, availH = Math.max(60f, listH() - navH);
-        ArrayList<Object> unitBase = new ArrayList<>();
-        for (int k = 1; k <= TIER_MAX; k++) unitBase.add(k);
-        final ArrayList<Object> unitList = (tab == 0 && st.lv >= FREE_SWITCH_LEVEL) ? orderedBy(0, unitBase) : null;
-        ArrayList<Object> statBase = new ArrayList<>();
-        for (int q = 0; q < STATS.length; q++) if (q != STAT_ARMY) statBase.add(q);
-        final ArrayList<Object> statOrder = orderedBy(1, statBase);
-        ArrayList<Object> turBase = new ArrayList<>();
-        for (Def df : fdefs.list) turBase.add(df.id);
-        final ArrayList<Object> turOrder = orderedBy(2, turBase);
-        int itemCount = 1, perPage = 1;
+        final int tab = upTab;
         if (tab == 0) {
-            if (unitList != null) {
-                itemCount = unitList.size();
-                float rowH = measureHeight(p -> unitRow(p, st, (Integer) unitList.get(0), activeTier(st), innerW));
-                perPage = Math.min(UNIT_PER_PAGE, Math.max(1, (int) Math.floor(availH / Math.max(1f, rowH))));
+            if (st.lv < FREE_SWITCH_LEVEL) {
+                c.add("[lightgray]" + tr("Đạt cấp " + FREE_SWITCH_LEVEL + " để được đổi unit tùy ý.", "Reach level " + FREE_SWITCH_LEVEL + " to switch units freely.") + "[]").width(Math.max(100f, W - 20f)).wrap().pad(10).row();
+            } else {
+                ArrayList<Object> unitBase = new ArrayList<>();
+                for (int k = 1; k <= TIER_MAX; k++) unitBase.add(k);
+                ArrayList<Object> unitList = orderedBy(0, unitBase);
+                int cur = activeTier(st);
+                for (Object o : unitList) unitRow(c, st, (Integer) o, cur, W);
             }
         } else if (tab == 1) {
-            itemCount = statOrder.size();
-            float hH = measureHeight(p -> statHeader(p, st, innerW)), rowH = 0;
-            for (Object o : statOrder) { final int idx = (Integer) o; float h = measureHeight(p -> statRow(p, st, idx, innerW)); if (h > rowH) rowH = h; }
-            perPage = Math.min(STAT_PER_PAGE, Math.max(1, (int) Math.floor(Math.max(0f, availH - hH) / Math.max(1f, rowH))));
+            ArrayList<Object> statBase = new ArrayList<>();
+            for (int q = 0; q < STATS.length; q++) if (q != STAT_ARMY) statBase.add(q);
+            ArrayList<Object> statOrder = orderedBy(1, statBase);
+            statHeader(c, st, W);
+            for (Object o : statOrder) statRow(c, st, (Integer) o, W);
         } else if (tab == 2) {
-            itemCount = fdefs.list.size();
-            final float cwM = Math.max(cw, cardMinW());
-            float hH = measureHeight(p -> turretHeader(p, st, innerW, cols)), cardH = 0;
-            String ckey = cwM + "|" + cols + "|" + (Vars.mobile ? 1 : 0) + "|" + tr("v", "e") + "|" + fdefs.list.size();
-            if (turCardKey.equals(ckey)) cardH = turCardH;
-            else {
-                for (Def df : fdefs.list) { Table card = turretCard(st, df, cwM); card.pack(); if (card.getPrefHeight() > cardH) cardH = card.getPrefHeight(); }
-                turCardKey = ckey; turCardH = cardH;
-            }
-            int rows = Math.max(1, (int) Math.floor(Math.max(0f, availH - hH) / Math.max(1f, cardH + 8)));
-            perPage = Math.min(TURRET_PER_PAGE, rows) * cols;
-        } else {
-            itemCount = BARRACKS.length;
-            float hH = measureHeight(p -> armyHeader(p, st, innerW)), rowH = measureHeight(p -> armyList(p, st, innerW, 0, 1));
-            perPage = Math.min(ARMY_PER_PAGE, Math.max(1, (int) Math.floor(Math.max(0f, availH - hH) / Math.max(1f, rowH))));
-        }
-        final int totalPages = Math.max(1, (int) Math.ceil(itemCount / (double) perPage));
-        if (upPage < 0) upPage = 0;
-        if (upPage > totalPages - 1) upPage = totalPages - 1;
-        int start = upPage * perPage, end = Math.min(itemCount, start + perPage);
-
-        Table body = new Table();
-        body.margin(4);
-        body.top();
-        if (tab == 0) {
-            if (st.lv < FREE_SWITCH_LEVEL) body.add("[lightgray]" + tr("Đạt cấp " + FREE_SWITCH_LEVEL + " để được đổi unit tùy ý.", "Reach level " + FREE_SWITCH_LEVEL + " to switch units freely.") + "[]").pad(10).row();
-            else { int cur = activeTier(st); for (int idx = start; idx < end; idx++) unitRow(body, st, (Integer) unitList.get(idx), cur, innerW); }
-        } else if (tab == 1) {
-            if (start == 0) statHeader(body, st, innerW);
-            for (int i = start; i < end; i++) statRow(body, st, (Integer) statOrder.get(i), innerW);
-        } else if (tab == 2) {
-            float cwE = Math.max(cw, cardMinW()), bodyW = (cwE + 8) * cols;
-            if (start == 0) turretHeader(body, st, Math.max(innerW, bodyW - 8), cols);
+            ArrayList<Object> turBase = new ArrayList<>();
+            for (Def df : fdefs.list) turBase.add(df.id);
+            ArrayList<Object> turOrder = orderedBy(2, turBase);
+            final int cols = colsFor(W);
+            final float cwE = Math.max(150f, (pnl.pageW() - 8f * cols) / cols);
+            turretHeader(c, st, W, cols);
             int colCount = 0;
-            for (int j = start; j < end; j++) {
-                body.add(turretCard(st, fdefs.map.get((String) turOrder.get(j)), cwE)).width(cwE).pad(4).top().left();
-                colCount++;
-                if (colCount % cols == 0) body.row();
+            for (Object o : turOrder) {
+                Def df = fdefs.map.get((String) o);
+                if (df == null) continue;
+                c.add(turretCard(st, df, cwE)).width(cwE).pad(4).top().left();
+                if (++colCount % cols == 0) c.row();
             }
         } else {
-            if (start == 0) armyHeader(body, st, innerW);
-            armyList(body, st, innerW, start, end);
+            armyHeader(c, st, W);
+            armyList(c, st, W, 0, BARRACKS.length);
         }
-        Table nav = null;
-        if (totalPages > 1) {
-            nav = new Table();
-            float navBtnW = narrowScreen() ? 56 : 72;
-            TextButton prevBtn = nav.button("<", () -> { if (upPage > 0) upNav.go(-1, () -> { if (upPage > 0) upPage--; ver++; }); }).size(navBtnW, btnH()).get();
-            prevBtn.setDisabled(upPage <= 0);
-            nav.add("[white]" + (upPage + 1) + "/" + totalPages + "[]").width(narrowScreen() ? 56 : 80).center();
-            TextButton nextBtn = nav.button(">", () -> { if (upPage < totalPages - 1) upNav.go(1, () -> { if (upPage < totalPages - 1) upPage++; ver++; }); }).size(navBtnW, btnH()).get();
-            nextBtn.setDisabled(upPage >= totalPages - 1);
-        }
-        if (nav != null && Vars.mobile) c.add(nav).width(W).pad(4).row();
-        boolean hs;
-        if (tab == 2) { float cwE2 = Math.max(cw, cardMinW()); hs = (cwE2 + 8) * cols > W - 8; }
-        else { float bodyPrefW = 0; try { bodyPrefW = body.getPrefWidth(); } catch (Throwable err) {} hs = bodyPrefW > W + 1; }
-        arc.scene.ui.ScrollPane sp = c.pane(body).width(W).maxHeight(Math.max(100f, listH() - (nav != null ? navH : 0))).get();
-        sp.setScrollingDisabled(!hs, false);
-        sp.setFadeScrollBars(false);
-        sp.setOverscroll(false, false);
-        sp.setSmoothScrolling(true);
-        c.row();
-        upNav.show(sp);
-        if (nav != null && !Vars.mobile) c.add(nav).width(W).pad(4).row();
     }
     @SuppressWarnings("unchecked")
     static void openUpgrade() {
@@ -6377,23 +6188,20 @@ public class NewModePvp {
         if (upDialog != null && upDialog.isShown()) return;
         if (Core.scene.hasDialog()) return;
         if (!nearOwnCore()) { Vars.ui.showInfoToast(tr("[scarlet]Hãy về gần lõi và nhấn vào lõi để nâng cấp!", "[scarlet]Go near your core and tap it to upgrade!"), 2.5f); return; }
-        BaseDialog dialog = new BaseDialog(tr("Nâng cấp PvP", "PvP Upgrades"));
-        addClose(dialog);
-        final String[] lastVer = {null}; final int[] lastTab = {-1}; final long[] lastW = {-1};
+        final MachineUi.Panel p = MachineUi.panel(tr("Nâng cấp PvP", "PvP Upgrades"));
         upTab = lastUpTab;
-        upPage = 0;
-        upNav.reset();
         viewUp = new ArrayList[]{new ArrayList<Object>(recentUp[0]), new ArrayList<Object>(recentUp[1]), new ArrayList<Object>(recentUp[2]), new ArrayList<Object>(recentUp[3])};
-        dialog.update(() -> {
-            if (!nearOwnCore()) { dialog.hide(); return; }
-            long w = (long) Core.graphics.getWidth() * 10000 + Core.graphics.getHeight();
+        p.tabs(new String[]{tr("Unit", "Unit"), tr("Chỉ số", "Stats"), tr("Pháo", "Turrets"), tr("Lính", "Army")}, upTab, ix -> upTab = ix);
+        p.onBuild(() -> buildDialog(p));
+        final String[] lastVer = {curVer()};
+        p.onTick(() -> {
+            if (!nearOwnCore()) { p.hide(); return; }
             String cv = curVer();
-            boolean verChanged = !cv.equals(lastVer[0]) || lastW[0] != w;
-            if (upNav.pending != null && verChanged) upNav.flush();
-            if (verChanged || lastTab[0] != upTab) { lastVer[0] = cv; lastTab[0] = upTab; lastW[0] = w; buildDialog(dialog); }
+            if (!cv.equals(lastVer[0])) { lastVer[0] = cv; p.rebuild(); }
         });
-        upDialog = dialog;
-        dialog.show();
+        upDialog = p.dialog;
+        upPanel = p;
+        p.show();
     }
 
     // ===== popup EXP =====

@@ -2,13 +2,16 @@ package newex;
 
 import arc.Core;
 import arc.Events;
+import arc.func.Intc;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
 import arc.input.KeyCode;
 import arc.math.geom.Vec2;
 import arc.scene.Element;
 import arc.scene.Group;
+import arc.scene.Scene;
 import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
@@ -41,19 +44,22 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
- * Giao diện "máy móc" cho các hộp thoại của newex, chạy trên cả mobile (ngang) lẫn PC.
- * Bố cục: thanh trên (tiêu đề kéo được + tab gạch chân + nút đóng) -> dải tài nguyên lõi -> 2 cột thẻ viền góc.
- * Tab 1 "NÂNG CẤP": dải tài nguyên + cột Yêu cầu | cột Thao tác. Tab 2 "KHO LÕI": lưới tài nguyên đầy đủ.
+ * Giao diện "máy móc" duy nhất của newex, chạy trên mobile (ngang + dọc) lẫn PC.
  *
- * Hộp thoại nào được áp dụng:
- *  1) Hộp thoại cấu hình của khối "newex-*" đang được chọn (như cũ).
- *  2) Mọi trang của newmode-pvp: tự nhận khi bản đồ có tên chứa "pvpnewex", hoặc khi gọi setPvpMode(true).
- *  3) Hộp thoại được đăng ký tay bằng track(d) / dialog(title). Muốn loại một hộp thoại ra thì gọi skip(d).
+ * Khung chung {@link Panel}:
+ *   thanh trên (đèn LED + tiêu đề kéo được + tab gạch chân + nút đóng)
+ *   -> vùng header cố định (tuỳ chọn) -> vùng nội dung cuộn được -> vùng footer cố định (tuỳ chọn).
+ * Đổi tab / đổi trang đi qua {@link Panel#go(int, Runnable)}: trang cũ trượt ra (90ms), đổi nội dung, trang mới trượt vào (170ms).
  *
- * Trang nào bị mod xóa cont rồi dựng lại (ví dụ sau khi mua/nâng cấp) sẽ được tự dựng lại giao diện, giữ nguyên tab đang xem.
+ * Canh màn hình (mọi nền tảng, không còn điều kiện active()):
+ *   - Bố cục được dựng lại theo kích thước + tỉ lệ khung hình thật của màn hình (ngang / dọc / cửa sổ PC),
+ *     rồi phóng/thu cả hộp thoại cho vừa màn hình (trừ vùng tai thỏ nếu đọc được), luôn nằm trọn trong màn hình.
+ *   - Đổi kích thước cửa sổ / xoay máy: tự dựng lại bố cục và nội dung.
  *
- * Mobile: bố cục dựng theo chiều cao chuẩn REF_H rồi phóng/thu cả hộp thoại cho vừa màn hình (chữ luôn vừa mắt).
- * PC: bố cục dùng kích thước thật (không phóng to), chỉ tự thu nhỏ khi cửa sổ quá bé.
+ * Hai cách dùng:
+ *   1) Dựng mới:  Panel p = MachineUi.panel("Tiêu đề"); ... p.show();   (NewModePvp dùng cách này)
+ *   2) Tự bọc hộp thoại có sẵn: hộp thoại cấu hình khối "newex-*", mọi trang newmode-pvp khi bản đồ chứa "pvpnewex"
+ *      hoặc setPvpMode(true), hoặc hộp thoại đăng ký bằng track(d) / dialog(title). Loại ra bằng skip(d).
  */
 public final class MachineUi {
     private MachineUi() {}
@@ -64,26 +70,26 @@ public final class MachineUi {
 
     private static final Color STEEL = Color.valueOf("8a97a8"), AMBER = Color.valueOf("ffb347"), PANEL = Color.valueOf("12161c");
 
-    /** Chiều cao chuẩn của bố cục trên mobile (đơn vị ảo). Nhỏ hơn -> chữ to hơn; lớn hơn -> chữ nhỏ hơn. */
-    private static final float REF_H = 520f;
-    /** Hộp thoại chiếm tối đa tỉ lệ này của màn hình (cả chiều ngang lẫn dọc). */
+    /** Chiều cao chuẩn (mobile ngang) / chiều rộng chuẩn (mobile dọc) của bố cục; nhỏ hơn -> chữ to hơn. */
+    private static final float REF_H = 520f, REF_W = 400f;
+    /** Hộp thoại chiếm tối đa tỉ lệ này của vùng khả dụng (cả ngang lẫn dọc). */
     private static final float FIT_LIMIT = 0.97f;
     /** Giới hạn phóng/thu để không méo giao diện trên màn hình quá lạ. */
-    private static final float MIN_SCALE = 0.4f, MAX_SCALE = 4f;
+    private static final float MIN_SCALE = 0.35f, MAX_SCALE = 4f;
+    /** Thời gian trượt trang (ms): thoát / vào. Giữ y như giao diện cũ. */
+    public static final int EXIT_MS = 90, ENTER_MS = 170;
 
     private static boolean pvpFlag = false;
     private static Object lastMap;
     private static boolean lastMapPvp;
 
-    /** Trạng thái theo từng hộp thoại. shell giữ bằng WeakReference để WeakHashMap không giữ hộp thoại mãi. */
+    /** Trạng thái theo từng hộp thoại được bọc tự động. */
     private static final class State {
-        WeakReference<Element> shellRef;
-        float extraH;
-        float maxScale = MAX_SCALE;
-        boolean styled, failed, buttonsRemoved;
-        int tab;
+        /** Giữ yếu: Panel -> dialog là khóa của WeakHashMap, giữ mạnh thì hộp thoại không bao giờ được giải phóng. */
+        WeakReference<Panel> panelRef;
+        boolean failed, buttonsRemoved;
 
-        Element shell() { return shellRef == null ? null : shellRef.get(); }
+        Panel panel() { return panelRef == null ? null : panelRef.get(); }
     }
 
     public static void init() {
@@ -92,7 +98,10 @@ public final class MachineUi {
 
     // ------------------------------------------------------------------ API công khai
 
-    /** Bật/tắt chế độ PvP thủ công: bật thì mọi trang của mod (BaseDialog) đều được áp dụng giao diện này. */
+    /** Giữ lại cho tương thích mã cũ: giao diện này chạy trên mọi nền tảng và mọi hướng màn hình nên luôn là true. */
+    public static boolean active() { return true; }
+
+    /** Bật/tắt chế độ PvP thủ công: bật thì mọi trang của mod (BaseDialog) đều được bọc tự động. */
     public static void setPvpMode(boolean on) { pvpFlag = on; }
 
     /** Chế độ PvP đang bật thủ công, hoặc bản đồ hiện tại có tên chứa "pvpnewex". */
@@ -115,30 +124,490 @@ public final class MachineUi {
         return s == null ? "" : s.toLowerCase().replaceAll("[^a-z0-9]", "");
     }
 
-    /** Đăng ký một hộp thoại có sẵn để luôn dùng giao diện này (không phụ thuộc bản đồ/khối đang chọn). */
+    /** Đăng ký một hộp thoại có sẵn để luôn được bọc giao diện này. */
     public static void track(BaseDialog d) {
         if (d != null) tracked.add(d);
     }
 
-    /** Tạo BaseDialog mới và đăng ký luôn. Dùng thay cho new BaseDialog(title). */
+    /** Tạo BaseDialog mới và đăng ký luôn (được bọc tự động). Muốn tự điều khiển tab/nội dung thì dùng {@link #panel(String)}. */
     public static BaseDialog dialog(String title) {
         BaseDialog d = new BaseDialog(title);
         track(d);
         return d;
     }
 
-    /** Loại một hộp thoại khỏi giao diện này (giữ nguyên giao diện gốc). */
+    /** Loại một hộp thoại khỏi việc bọc tự động. */
     public static void skip(BaseDialog d) {
         if (d != null) skipped.add(d);
+    }
+
+    /** Dựng một hộp thoại MachineUi mới hoàn toàn. */
+    public static Panel panel(String title) {
+        return new Panel(new BaseDialog(title), title, true);
     }
 
     static boolean isEn() { return Core.settings.getString("locale", "vi").startsWith("en"); }
     static String T(String vi, String en) { return isEn() ? en : vi; }
 
-    /** Mobile: chỉ khi màn hình ngang. PC: luôn bật. */
-    public static boolean active() {
-        return !Vars.mobile || !Core.graphics.isPortrait();
+    // ------------------------------------------------------------------ canh màn hình
+
+    private static java.lang.reflect.Field[] insetFields;
+
+    /** Vùng khả dụng của màn hình: {rộng, cao, lề trái, lề dưới}. Trừ vùng tai thỏ nếu Scene có các field margin*. */
+    private static float[] avail() {
+        float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
+        float l = 0f, r = 0f, t = 0f, b = 0f;
+        try {
+            if (insetFields == null) {
+                String[] names = {"marginLeft", "marginRight", "marginTop", "marginBottom"};
+                java.lang.reflect.Field[] fs = new java.lang.reflect.Field[4];
+                for (int i = 0; i < 4; i++) {
+                    try {
+                        fs[i] = Scene.class.getDeclaredField(names[i]);
+                        fs[i].setAccessible(true);
+                    } catch (Throwable ignored) { fs[i] = null; }
+                }
+                insetFields = fs;
+            }
+            float[] v = new float[4];
+            for (int i = 0; i < 4; i++) {
+                if (insetFields[i] == null) continue;
+                float x = insetFields[i].getFloat(Core.scene);
+                v[i] = (Float.isNaN(x) || x < 0f || x > Math.min(sw, sh) * 0.25f) ? 0f : x;
+            }
+            l = v[0]; r = v[1]; t = v[2]; b = v[3];
+        } catch (Throwable ignored) {}
+        float aw = Math.max(100f, sw - l - r), ah = Math.max(100f, sh - t - b);
+        return new float[]{aw, ah, l, b};
     }
+
+    private static float clamp(float v, float lo, float hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    // ------------------------------------------------------------------ khung dùng chung
+
+    /**
+     * Một hộp thoại MachineUi. Nội dung do người gọi tự điền vào header()/content()/footer();
+     * Panel lo khung, tab, trượt trang, canh màn hình, kéo thả, đóng.
+     */
+    public static final class Panel {
+        public final BaseDialog dialog;
+        private final boolean owned;
+
+        private String title;
+        private String[] tabNames = new String[0];
+        private int tab;
+        private Intc onTab;
+        private Runnable refill, ticker;
+        private boolean scrollable = true, scrollX = false;
+        private float maxW = 900f;
+        float extraH;
+        boolean keepButtons;
+        /** Phần tử gốc của hộp thoại bọc tự động: trái = yêu cầu/thông tin, phải = thao tác (nằm trong Panel để không bị State giữ mạnh). */
+        final Seq<Element> autoLeft = new Seq<>(), autoRight = new Seq<>();
+
+        private final Table header = new Table(), content = new Table(), footer = new Table();
+        private ScrollPane scroll;
+        private Slide slide;
+        Element shell;
+        private float W, H, pageW, pageH;
+        private float lastSw = -1f, lastSh = -1f;
+        private boolean moved;
+        private float maxScale = MAX_SCALE;
+
+        // chuyển trang
+        private boolean exiting;
+        private Runnable pendingApply;
+        private int pendingDir;
+
+        Panel(BaseDialog d, String title, boolean owned) {
+            this.dialog = d;
+            this.owned = owned;
+            this.title = title == null ? "" : title;
+            header.top().left();
+            content.top().left();
+            footer.top().left();
+            if (owned) {
+                skip(d);
+                d.closeOnBack();
+            }
+            d.hidden(this::onHidden);
+            // chạy mỗi khung hình trên phần tử con bền vững (Dialog.show() xóa action của chính hộp thoại, không đụng tới con)
+            d.cont.update(this::tick);
+            // hộp thoại bọc tự động: người gọi đặt keepButtons/extraH rồi mới gọi relayout()
+            if (owned) layout();
+        }
+
+        // ---- cấu hình
+
+        public Panel title(String t) { this.title = t == null ? "" : t; return this; }
+
+        /** Thanh tab trên đầu. onTab được gọi khi đã đổi tab (sau nửa trượt thoát), ngay trước khi dựng lại nội dung. */
+        public Panel tabs(String[] names, int selected, Intc onTab) {
+            this.tabNames = names == null ? new String[0] : names;
+            this.tab = Math.max(0, Math.min(Math.max(0, tabNames.length - 1), selected));
+            this.onTab = onTab;
+            if (shell != null) layout();
+            return this;
+        }
+
+        /** Hàm điền nội dung; được gọi lại khi đổi tab, đổi kích thước màn hình, hoặc rebuild(). */
+        public Panel onBuild(Runnable r) { this.refill = r; return this; }
+
+        /** Hàm chạy mỗi khung hình khi hộp thoại đang mở (ví dụ kiểm tra phiên bản dữ liệu rồi rebuild()). */
+        public Panel onTick(Runnable r) { this.ticker = r; return this; }
+
+        /** false: nội dung đặt thẳng vào thân (không có cuộn chung), tự quản lý cuộn/kích thước. */
+        public Panel scrollable(boolean v) { this.scrollable = v; if (shell != null) layout(); return this; }
+
+        /** Cho phép cuộn ngang (mặc định chỉ cuộn dọc). */
+        public Panel scrollX(boolean v) { this.scrollX = v; if (shell != null) layout(); return this; }
+
+        /** Chiều rộng bố cục tối đa (đơn vị ảo). */
+        public Panel maxWidth(float w) { this.maxW = w; if (shell != null) layout(); return this; }
+
+        public Table header() { return header; }
+        public Table content() { return content; }
+        public Table footer() { return footer; }
+
+        /** Bề rộng trang (đã trừ lề). */
+        public float pageW() { return pageW; }
+        /** Chiều cao trang (đã trừ lề, tính cả header/footer). */
+        public float pageH() { return pageH; }
+        /** Bề rộng nên dùng cho mỗi thẻ/hàng trong content() khi để pad(4) hai bên. */
+        public float innerW() { return Math.max(120f, pageW - 8f); }
+        public int tab() { return tab; }
+
+        public void show() {
+            if (refill != null) refill.run();
+            dialog.show();
+        }
+
+        public void hide() { dialog.hide(); }
+
+        /** Dựng lại nội dung ngay, không hiệu ứng (giữ nguyên vị trí cuộn). */
+        public void rebuild() {
+            if (refill != null) refill.run();
+        }
+
+        /** Dựng lại cả khung lẫn nội dung (khi kích thước màn hình đổi). */
+        public void relayout() {
+            layout();
+            if (refill != null) refill.run();
+        }
+
+        public void scrollTop() {
+            if (scroll != null) scroll.setScrollY(0f);
+        }
+
+        /** Chọn tab có hiệu ứng trượt; chọn lại tab đang xem thì chỉ cuộn lên đầu. */
+        public void selectTab(final int ix) {
+            if (ix < 0 || ix >= tabNames.length) return;
+            if (ix == tab) { scrollTop(); return; }
+            final int dir = ix > tab ? 1 : -1;
+            go(dir, () -> {
+                tab = ix;
+                if (onTab != null) onTab.get(ix);
+            });
+        }
+
+        /**
+         * Chuyển trang có hiệu ứng: trượt thoát -> apply.run() -> dựng lại nội dung -> trượt vào.
+         * dir > 0: trang mới đến từ bên phải; dir < 0: từ bên trái.
+         */
+        public void go(int dir, Runnable apply) {
+            if (slide == null) { apply.run(); rebuild(); return; }
+            if (exiting) {              // đang thoát dở: chốt luôn trang trước rồi chạy tiếp
+                flush();
+                apply.run();
+                rebuild();
+                slide.run(dir, true, ENTER_MS, null);
+                return;
+            }
+            exiting = true;
+            pendingApply = apply;
+            pendingDir = dir;
+            slide.run(dir, false, EXIT_MS, this::flush);
+        }
+
+        private void flush() {
+            if (!exiting) return;
+            exiting = false;
+            Runnable a = pendingApply;
+            int d = pendingDir;
+            pendingApply = null;
+            if (a != null) a.run();
+            rebuild();
+            scrollTop();
+            if (slide != null) slide.run(d, true, ENTER_MS, null);
+        }
+
+        private void onHidden() {
+            exiting = false;
+            pendingApply = null;
+            if (slide != null) slide.stop();
+        }
+
+        // ---- vòng đời mỗi khung hình
+
+        private void tick() {
+            if (Core.scene == null || shell == null) return;
+            float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
+            if (sw != lastSw || sh != lastSh) {
+                moved = false;
+                if (exiting) flush();
+                relayout();
+            }
+            fit();
+            place();
+            if (ticker != null) ticker.run();
+        }
+
+        /** Phóng/thu cả hộp thoại quanh tâm để khung (cộng chân trang nếu có) nằm trọn trong vùng khả dụng. */
+        void fit() {
+            Element sh = shell;
+            if (sh == null || Core.scene == null) return;
+            float nw = sh.getWidth(), nh = sh.getHeight() + extraH;
+            if (nw <= 0f || nh <= 0f) return;
+            float[] a = avail();
+            float k = Math.min(FIT_LIMIT * a[0] / nw, FIT_LIMIT * a[1] / nh);
+            k = clamp(k, MIN_SCALE, maxScale);
+            if (Math.abs(dialog.scaleX - k) > 0.002f || Math.abs(dialog.scaleY - k) > 0.002f) {
+                dialog.setTransform(true);
+                dialog.setOrigin(Align.center);
+                dialog.setScale(k);
+            }
+        }
+
+        /** Căn giữa vùng khả dụng, trừ khi người dùng đã kéo đi chỗ khác. */
+        void place() {
+            if (moved || Core.scene == null) return;
+            float[] a = avail();
+            float nx = Math.round(a[2] + a[0] / 2f - dialog.getWidth() / 2f);
+            float ny = Math.round(a[3] + a[1] / 2f - dialog.getHeight() / 2f);
+            if (Math.abs(dialog.x - nx) > 0.5f || Math.abs(dialog.y - ny) > 0.5f) dialog.setPosition(nx, ny);
+        }
+
+        // ---- dựng khung
+
+        private void prepareDialog() {
+            BaseDialog d = dialog;
+            d.setFillParent(false);
+            d.setKeepWithinStage(false);
+            d.setMovable(false);
+            d.margin(0f);
+            d.cont.margin(0f);
+            if (d.getCell(d.cont) != null) d.getCell(d.cont).pad(0f);
+            if (d.titleTable != null) d.titleTable.remove();
+            if (d.buttons != null) {
+                if (keepButtons) d.buttons.margin(4f);
+                else d.buttons.remove();
+            }
+        }
+
+        /** Tính kích thước bố cục {rộng, cao} theo hướng và tỉ lệ màn hình, rồi dựng lại khung. */
+        private void layout() {
+            if (Core.scene == null) return;
+            prepareDialog();
+            final float[] av = avail();
+            lastSw = Core.scene.getWidth();
+            lastSh = Core.scene.getHeight();
+            final boolean pc = !Vars.mobile;
+            final float cap = Math.max(maxW, REF_H * 1.4f);
+            float w, h;
+            if (av[1] > av[0]) {                       // màn hình dọc
+                if (pc) {
+                    w = clamp(av[0] * 0.92f, 320f, Math.min(cap, 720f));
+                    h = clamp(av[1] * 0.9f, 420f, 1000f);
+                } else {
+                    w = clamp(av[0] / 1.15f, 340f, 480f);
+                    h = clamp(w * av[1] / av[0], 520f, 1100f);
+                }
+            } else {                                   // màn hình ngang
+                if (pc) {
+                    h = clamp(av[1] * 0.9f, 300f, 780f);
+                    w = clamp(av[0] * 0.85f, 480f, cap);
+                } else {
+                    h = REF_H;
+                    w = clamp(REF_H * av[0] / av[1], REF_H * 1.4f, cap);
+                }
+            }
+            maxScale = pc ? 1f : MAX_SCALE;
+            W = w;
+            H = h;
+
+            final float topH = Vars.mobile ? 44f : 38f, line = 2.5f, pad = 6f;
+            final boolean tabsInBar = tabNames.length > 0 && W >= 560f;
+            final float tabsH = (tabNames.length > 0 && !tabsInBar) ? Vars.mobile ? 40f : 34f : 0f;
+            final float shellH = Math.max(160f, H - extraH);
+            final float areaH = shellH - topH - line - tabsH;
+            pageW = W - pad * 2f;
+            pageH = areaH - pad * 2f;
+
+            // gỡ phần bền vững khỏi khung cũ trước khi dựng khung mới
+            header.remove();
+            content.remove();
+            footer.remove();
+
+            slide = new Slide();
+            if (scrollable) {
+                ScrollPane sp = new ScrollPane(content, Styles.noBarPane);
+                sp.setScrollingDisabled(!scrollX, false);
+                sp.setFlickScroll(true);
+                sp.setOverscroll(false, true);
+                sp.setFadeScrollBars(true);
+                sp.setSmoothScrolling(true);
+                sp.setClip(true);
+                final ScrollPane spf = sp;
+                sp.addListener(new InputListener() {
+                    @Override
+                    public void enter(InputEvent event, float x, float y, int pointer, Element fromActor) {
+                        if (pointer == -1 && Core.scene != null) Core.scene.setScrollFocus(spf);
+                    }
+                });
+                float keep = scroll != null ? scroll.getScrollY() : 0f;
+                scroll = sp;
+                slide.add(sp).grow();
+                slide.target = sp;
+                sp.setScrollY(keep);
+            } else {
+                scroll = null;
+                slide.add(content).grow();
+                slide.target = content;
+            }
+
+            Table body = new Table();
+            body.margin(pad);
+            body.top().left();
+            body.add(header).growX().row();
+            body.add(slide).grow().row();
+            body.add(footer).growX();
+
+            Fixed sh = new Fixed(Styles.black8, W, shellH);
+            sh.setClip(true);
+            sh.add(topBar(topH, tabsInBar)).growX().height(topH).row();
+            sh.image(Tex.whiteui, AMBER).growX().height(line).row();
+            if (tabsH > 0f) {
+                Table row = new Table(Styles.black6);
+                tabsInto(row, true);
+                sh.add(row).growX().height(tabsH).row();
+            }
+            sh.add(body).size(W, areaH);
+
+            shell = sh;
+            dialog.cont.clearChildren();
+            dialog.cont.add(sh).size(W, shellH);
+            dialog.pack();
+            place();
+            fit();
+        }
+
+        private Table topBar(float topH, boolean tabsInBar) {
+            Table top = new Table();
+            top.setBackground(Tex.whiteui);
+            top.setColor(new Color(PANEL).lerp(AMBER, 0.14f));
+
+            Table zone = new Table();            // vùng giữ & kéo để di chuyển hộp thoại
+            zone.touchable = Touchable.enabled;
+            final Image led = zone.image(Tex.whiteui).size(8f).color(AMBER).padLeft(8f).padRight(7f).get();
+            led.update(() -> led.setColor(AMBER.r, AMBER.g, AMBER.b, 0.55f + 0.45f * (float) Math.sin(Time.time * 0.08f)));
+            Label tl = zone.add(title.isEmpty() ? "NEWEX" : title).left().growX().minWidth(0f).get();
+            tl.setColor(Color.lightGray);
+            tl.setFontScale(0.85f);
+            tl.setEllipsis(true);
+            dragHandle(zone, this);
+            top.add(zone).growX().height(topH).minWidth(0f);
+
+            if (tabsInBar) {
+                Table tabs = new Table();
+                tabsInto(tabs, false);
+                top.add(tabs).growY().padLeft(6f).padRight(4f);
+            }
+            top.button(Icon.cancel, Styles.cleari, () -> dialog.hide()).size(topH);
+            return top;
+        }
+
+        private void tabsInto(Table t, boolean fill) {
+            for (int i = 0; i < tabNames.length; i++) {
+                Cell<Table> c = t.add(tabButton(tabNames[i], i, this, fill)).growY();
+                if (fill) c.growX().uniformX();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ hiệu ứng trượt trang
+
+    /**
+     * Vùng thân có xén: phần tử bên trong (target) trượt ngang + mờ dần (phủ lớp nền tối) khi đổi trang.
+     * Công thức giống PageNav cũ: thoát nhanh (bậc 2), vào chậm dần (bậc 3).
+     */
+    private static final class Slide extends Table {
+        Element target;
+        float alpha = 1f;
+        private boolean running, enter;
+        private int dir;
+        private int ms;
+        private long t0;
+        private Runnable done;
+
+        Slide() {
+            setClip(true);
+            update(this::step);
+        }
+
+        @Override public float getPrefWidth() { return 0f; }
+        @Override public float getPrefHeight() { return 0f; }
+        @Override public float getMinWidth() { return 0f; }
+        @Override public float getMinHeight() { return 0f; }
+
+        void run(int dir, boolean enter, int ms, Runnable done) {
+            this.dir = dir;
+            this.enter = enter;
+            this.ms = Math.max(1, ms);
+            this.done = done;
+            this.t0 = Time.millis();
+            this.running = true;
+            step();
+        }
+
+        void stop() {
+            running = false;
+            done = null;
+            alpha = 1f;
+            if (target != null) target.translation.set(0f, 0f);
+        }
+
+        private void step() {
+            if (!running) return;
+            float dist = Vars.mobile ? 28f : 40f;
+            float k = Math.min(1f, (Time.millis() - t0) / (float) ms);
+            float sh = enter ? (1f - (float) Math.pow(1f - k, 3)) : (1f - k * k);
+            float off = (enter ? 1f : -1f) * (1f - sh) * dir * dist;
+            alpha = sh;
+            if (target != null) target.translation.set(off, 0f);
+            if (k >= 1f) {
+                running = false;
+                if (enter) {
+                    alpha = 1f;
+                    if (target != null) target.translation.set(0f, 0f);
+                }
+                Runnable d = done;
+                done = null;
+                if (d != null) d.run();
+            }
+        }
+
+        @Override
+        public void draw() {
+            super.draw();
+            if (alpha < 0.995f) {
+                Draw.color(0f, 0f, 0f, (1f - alpha) * 0.85f);
+                Fill.crect(x, y, width, height);
+                Draw.reset();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ bọc tự động hộp thoại có sẵn
 
     private static boolean fromNewexConfig() {
         try {
@@ -156,7 +625,7 @@ public final class MachineUi {
     }
 
     private static void tick() {
-        if (Vars.headless || Core.scene == null || !Vars.state.isGame() || !active()) return;
+        if (Vars.headless || Core.scene == null || !Vars.state.isGame()) return;
         boolean cfg = fromNewexConfig();
         boolean pvp = pvpMode();
 
@@ -176,9 +645,11 @@ public final class MachineUi {
             }
 
             try {
-                Element shell = st.shell();
+                Panel pn = st.panel();
+                Element shell = pn == null ? null : pn.shell;
                 if (shell == null || hasForeign(d, shell)) restyle(d, st);
-                applyFit(d, st);
+                pn = st.panel();
+                if (pn != null) { pn.fit(); pn.place(); }
             } catch (Throwable err) {
                 st.failed = true;
                 arc.util.Log.err("[MachineUi] Không dựng lại được hộp thoại, giữ giao diện cũ", err);
@@ -280,10 +751,9 @@ public final class MachineUi {
         }
     }
 
-    // ------------------------------------------------------------------ dựng lại hộp thoại
-
     private static void restyle(final BaseDialog d, final State st) {
-        final Element oldShell = st.shell();
+        Panel pnl = st.panel();
+        final Element oldShell = pnl == null ? null : pnl.shell;
         final Seq<Element> originals = new Seq<>();
         Seq<Cell> cells = d.cont.getCells();
         for (int i = 0; i < cells.size; i++) {
@@ -293,48 +763,23 @@ public final class MachineUi {
         }
         if (originals.isEmpty()) return;
 
-        final String title = titleOf(d);
         // Bảng nút gốc chỉ có 1 nút (thường là "Quay lại") thì bỏ vì đã có nút X; nhiều nút hơn thì giữ lại làm chân trang.
         final boolean keepButtons = !st.buttonsRemoved && d.buttons != null && countButtons(d.buttons) > 1;
-
-        d.setFillParent(false);
-        d.setKeepWithinStage(false);
-        d.setMovable(false);
-        d.margin(0f);
-        d.cont.margin(0f);
-        if (d.getCell(d.cont) != null) d.getCell(d.cont).pad(0f);
-        if (d.titleTable != null) d.titleTable.remove();
-        if (d.buttons != null) {
-            if (keepButtons) d.buttons.margin(4f);
-            else d.buttons.remove();
-        }
+        final float btnH = keepButtons ? Math.max(46f, d.buttons.getPrefHeight()) : 0f;
         st.buttonsRemoved = !keepButtons;
 
-        // ---- kích thước bố cục
-        final float sceneW = Core.scene.getWidth();
-        final float sceneH = Core.scene.getHeight();
-        final boolean scaled = Vars.mobile;
-        final float W, H;
-        if (scaled) {
-            // mobile: dựng theo chiều cao chuẩn, rộng theo tỉ lệ khung hình, rồi phóng/thu bằng applyFit
-            H = REF_H;
-            W = Math.max(REF_H * 1.4f, Math.min(REF_H * 3f, REF_H * sceneW / sceneH));
-        } else {
-            // PC: kích thước thật, không phóng to
-            H = Math.max(300f, Math.min(sceneH * 0.9f, 780f));
-            W = Math.max(480f, Math.min(sceneW * 0.85f, 1180f));
+        if (pnl == null) {
+            final Panel p = new Panel(d, titleOf(d), false);
+            pnl = p;
+            st.panelRef = new WeakReference<>(p);
+            p.scrollable(false).maxWidth(1180f);
+            p.tabs(new String[]{T("NÂNG CẤP", "UPGRADE"), T("KHO LÕI", "CORE")}, 0, null);
+            p.onBuild(() -> buildAutoPages(p));
         }
-        st.maxScale = scaled ? MAX_SCALE : 1f;
 
-        final float btnH = keepButtons ? Math.max(46f, d.buttons.getPrefHeight()) : 0f;
-        final float topH = 38f, line = 2.5f, pad = 6f, gap = 6f, stripH = 30f;
-        final float shellH = H - btnH;
-        final float areaH = shellH - topH - line;
-        final float pw = W - pad * 2f;                 // bề rộng trang
-        final float ph = areaH - pad * 2f;             // chiều cao trang
-
-        // ---- phân loại nội dung gốc: trái = yêu cầu/thông tin, phải = thao tác (có nút)
-        final Seq<Element> leftEls = new Seq<>(), rightEls = new Seq<>();
+        // phân loại nội dung gốc: trái = yêu cầu/thông tin, phải = thao tác (có nút)
+        pnl.autoLeft.clear();
+        pnl.autoRight.clear();
         for (Element el : originals) el.remove();
         d.cont.clear();
         for (Element el : originals) {
@@ -342,120 +787,61 @@ public final class MachineUi {
                 Element w = ((ScrollPane) el).getWidget();
                 if (w != null) {
                     w.remove();
-                    rightEls.add(w);
+                    pnl.autoRight.add(w);
                 }
             } else if (hasButton(el)) {
-                rightEls.add(el);
+                pnl.autoRight.add(el);
             } else {
-                leftEls.add(el);
+                pnl.autoLeft.add(el);
             }
         }
-        final boolean hasLeft = leftEls.size > 0;
 
-        final float colW = hasLeft ? (pw - gap) / 2f : pw;
-        final float colH = Math.max(100f, ph - stripH - gap);
-        final float cw = Math.max(150f, colW - 12f);   // trừ lề cột
-        final float ew = Math.max(130f, cw - 12f);     // trừ lề thẻ
-
-        // ---- trang 1: NÂNG CẤP
-        final Table page1 = new Table();
-        page1.top().left();
-        page1.add(coreStrip(stripH)).size(pw, stripH).padBottom(gap).row();
-
-        Table cols = new Table();
-        cols.top().left();
-        if (hasLeft) {
-            Table lc = column(T("YÊU CẦU", "REQUIREMENTS"), AMBER, cardStack(leftEls, AMBER, ew, cw));
-            cols.add(lc).size(colW, colH).padRight(gap);
-        }
-        Table rc = column(T("THAO TÁC", "ACTIONS"), Pal.accent, cardStack(rightEls, Pal.accent, ew, cw));
-        cols.add(rc).size(colW, colH);
-        page1.add(cols).left().top();
-
-        // ---- trang 2: KHO LÕI
-        final Table page2 = new Table();
-        page2.top().left();
-        page2.add(column(T("KHO LÕI", "CORE STORAGE"), Pal.accent, coreView(false, pw - 12f))).size(pw, ph);
-
-        final Table[] pages = {page1, page2};
-
-        // ---- thân + chuyển tab (nhớ tab đang xem qua các lần dựng lại)
-        final Table body = new Table();
-        body.margin(pad);
-        body.top().left();
-        final int[] cur = {Math.max(0, Math.min(pages.length - 1, st.tab))};
-        final Runnable pick = () -> {
-            st.tab = cur[0];
-            body.clearChildren();
-            body.add(pages[cur[0]]).size(pw, ph).top().left();
-        };
-
-        // ---- thanh trên
-        Table top = new Table();
-        top.setBackground(Tex.whiteui);
-        top.setColor(new Color(PANEL).lerp(AMBER, 0.14f));
-
-        Table zone = new Table();            // vùng giữ & kéo để di chuyển hộp thoại
-        zone.touchable = Touchable.enabled;
-        final Image led = zone.image(Tex.whiteui).size(8f).color(AMBER).padLeft(8f).padRight(7f).get();
-        led.update(() -> led.setColor(AMBER.r, AMBER.g, AMBER.b, 0.55f + 0.45f * (float) Math.sin(Time.time * 0.08f)));
-        Label tl = zone.add(title.isEmpty() ? "NEWEX" : title).left().growX().get();
-        tl.setColor(Color.lightGray);
-        tl.setFontScale(0.85f);
-        tl.setEllipsis(true);
-        dragHandle(zone, d);
-        top.add(zone).growX().height(topH);
-
-        Table tabs = new Table();
-        tabs.add(tabButton(T("NÂNG CẤP", "UPGRADE"), 0, cur, pick)).growY();
-        tabs.add(tabButton(T("KHO LÕI", "CORE"), 1, cur, pick)).growY();
-        top.add(tabs).growY().padLeft(6f).padRight(4f);
-
-        top.button(Icon.cancel, Styles.cleari, () -> d.hide()).size(topH);
-
-        // ---- khung ngoài (kích thước cố định, không phụ thuộc nội dung bên trong)
-        final Fixed shell = new Fixed(Styles.black8, W, shellH);
-        shell.setClip(true);
-        shell.add(top).growX().height(topH).row();
-        shell.image(Tex.whiteui, AMBER).growX().height(line).row();
-        shell.add(body).size(W, areaH);
-
-        pick.run();
-
-        d.cont.clearChildren();
-        d.cont.add(shell).size(W, shellH);
-        d.pack();
-        // lần đầu thì căn giữa; dựng lại sau đó giữ nguyên vị trí người dùng đã kéo
-        if (!st.styled) d.setPosition(Math.round((sceneW - d.getWidth()) / 2f), Math.round((sceneH - d.getHeight()) / 2f));
-
-        st.shellRef = new WeakReference<>(shell);
-        st.extraH = btnH;
-        st.styled = true;
+        pnl.keepButtons = keepButtons;
+        pnl.extraH = btnH;
+        pnl.relayout();
     }
 
-    /**
-     * Phóng/thu cả hộp thoại quanh tâm sao cho khung (cộng thêm chân trang nếu có) chiếm tối đa FIT_LIMIT màn hình.
-     * Chạy mỗi frame từ tick (không dùng action của hộp thoại vì Dialog.show() xóa hết action).
-     */
-    private static void applyFit(BaseDialog d, State st) {
-        Element shell = st.shell();
-        if (shell == null || Core.scene == null) return;
-        float nw = shell.getWidth(), nh = shell.getHeight() + st.extraH;
-        if (nw <= 0f || nh <= 0f) return;
+    /** Điền trang hiện tại của hộp thoại được bọc tự động: trang 1 = NÂNG CẤP (2 cột thẻ), trang 2 = KHO LÕI. */
+    private static void buildAutoPages(Panel p) {
+        final float pw = p.pageW(), ph = p.pageH();
+        final float gap = 6f, stripH = 30f;
+        Table c = p.content();
+        c.clearChildren();
 
-        float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
-        float k = Math.min(FIT_LIMIT * sw / nw, FIT_LIMIT * sh / nh);
-        k = Math.max(MIN_SCALE, Math.min(st.maxScale, k));
+        if (p.tab() == 0) {
+            final boolean hasLeft = p.autoLeft.size > 0;
+            final float colW = hasLeft ? (pw - gap) / 2f : pw;
+            final float colH = Math.max(100f, ph - stripH - gap);
+            final float cw = Math.max(150f, colW - 12f);   // trừ lề cột
+            final float ew = Math.max(130f, cw - 12f);     // trừ lề thẻ
 
-        if (Math.abs(d.scaleX - k) > 0.002f || Math.abs(d.scaleY - k) > 0.002f) {
-            d.setTransform(true);
-            d.setOrigin(Align.center);
-            d.setScale(k);
+            Table page = new Table();
+            page.top().left();
+            page.add(coreStrip(stripH)).size(pw, stripH).padBottom(gap).row();
+
+            Table cols = new Table();
+            cols.top().left();
+            if (hasLeft) {
+                Table lc = column(T("YÊU CẦU", "REQUIREMENTS"), AMBER, cardStack(p.autoLeft, AMBER, ew, cw));
+                cols.add(lc).size(colW, colH).padRight(gap);
+            }
+            Table rc = column(T("THAO TÁC", "ACTIONS"), Pal.accent, cardStack(p.autoRight, Pal.accent, ew, cw));
+            cols.add(rc).size(colW, colH);
+            page.add(cols).left().top();
+            c.add(page).size(pw, ph).top().left();
+        } else {
+            Table page = new Table();
+            page.top().left();
+            page.add(column(T("KHO LÕI", "CORE STORAGE"), Pal.accent, coreView(false, pw - 12f))).size(pw, ph);
+            c.add(page).size(pw, ph).top().left();
         }
     }
+
+    // ------------------------------------------------------------------ thành phần giao diện
 
     /** Kéo thả hộp thoại theo mọi hướng bằng cách giữ & kéo vùng tiêu đề (chừa lại 48px để không mất hộp thoại). */
-    private static void dragHandle(Element handle, final BaseDialog d) {
+    private static void dragHandle(Element handle, final Panel p) {
+        final BaseDialog d = p.dialog;
         handle.addListener(new InputListener() {
             float lx, ly;
             @Override
@@ -476,12 +862,11 @@ public final class MachineUi {
                 float vx = Math.max(m - vw, Math.min(Core.scene.getWidth() - m, nx + ox));
                 float vy = Math.max(m - vh, Math.min(Core.scene.getHeight() - m, ny + oy));
                 d.setPosition(vx - ox, vy - oy);
+                p.moved = true;
                 lx = v.x; ly = v.y;
             }
         });
     }
-
-    // ------------------------------------------------------------------ thành phần giao diện
 
     /** Khung có kích thước cố định: cha luôn thấy đúng w x h, bất kể nội dung bên trong dài/rộng cỡ nào. */
     private static class Fixed extends Table {
@@ -533,6 +918,7 @@ public final class MachineUi {
         Table t = new Table();
         t.top().left();
         for (Element el : els) {
+            el.remove();
             fitRecursive(el, ew);
             Card c = new Card(edge);
             c.margin(6f);
@@ -578,24 +964,23 @@ public final class MachineUi {
         return t;
     }
 
-    /** Tab phẳng: chữ + gạch chân sáng khi được chọn. */
-    private static Table tabButton(String text, final int idx, final int[] cur, final Runnable onPick) {
+    /** Tab phẳng: chữ + gạch chân sáng khi được chọn. Bấm đi qua Panel.selectTab nên có hiệu ứng trượt. */
+    private static Table tabButton(String text, final int idx, final Panel p, boolean fill) {
         final Table t = new Table();
         t.touchable = Touchable.enabled;
-        final Label l = t.add(text).grow().padLeft(12f).padRight(12f).get();
+        float padX = fill ? 4f : 12f;
+        final Label l = t.add(text).grow().padLeft(padX).padRight(padX).get();
         l.setFontScale(0.82f);
+        l.setAlignment(Align.center);
+        l.setEllipsis(true);
         t.row();
         final Image bar = t.image(Tex.whiteui).growX().height(3f).get();
         t.update(() -> {
-            boolean on = cur[0] == idx;
+            boolean on = p.tab == idx;
             l.setColor(on ? Color.white : Color.gray);
             bar.setColor(on ? AMBER : Color.clear);
         });
-        t.clicked(() -> {
-            if (cur[0] == idx) return;
-            cur[0] = idx;
-            onPick.run();
-        });
+        t.clicked(() -> p.selectTab(idx));
         return t;
     }
 
