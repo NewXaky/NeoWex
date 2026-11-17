@@ -77,6 +77,7 @@ import newex.content.Plasanod;
 import newex.content.Suv27;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
+import newex.content.Zeralion;
 import newex.content.Tank15;
 import newex.content.aureon;
 import newex.content.Cos;
@@ -270,6 +271,7 @@ public class NexMod extends Mod {
         Tank15.create(); // unit Tank-15
         aureon.create(); // unit Aureon (4 chân, 4 tia sét)
         Honivery.create(); // unit Honivery (chuyển từ mod Multi Dimensional)
+        Zeralion.create(); // unit Zeralion (2 chân bước luân phiên, 2 pháo bắn 3 nhịp)
         Emperical.create(); // paralyzed/oppressive (không tạo trong constructor)
         Flarmed.create(); // bong/viem-hoa
     }
