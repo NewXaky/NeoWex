@@ -1,5 +1,6 @@
 package newex.content;
 
+import arc.audio.Sound;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
@@ -41,6 +42,8 @@ public final class Aureon {
     private static final Rand rand = new Rand();
 
     public static UnitType aureon;
+    /** Âm thanh điện giật tự tạo: assets/sounds/aureon-zap.ogg */
+    public static Sound zapSound;
 
     /** Tầm bắn tối đa (42.5 ô). */
     public static final float RANGE = 340f;
@@ -58,6 +61,7 @@ public final class Aureon {
 
     /** Gọi từ NexMod.loadContent(). */
     public static void create() {
+        zapSound = Vars.headless ? Sounds.none : Vars.tree.loadSound("aureon-zap");
         final ElectricArcBulletType arcBullet = new ElectricArcBulletType() {{
             damage = 6f;
             damageInterval = 5f;
@@ -132,7 +136,7 @@ public final class Aureon {
             reload = 10f;
             continuous = true;
             alwaysContinuous = true;
-            shootSound = Sounds.laserbeam;
+            shootSound = zapSound;
 
             bullet = arcBullet;
         }};
