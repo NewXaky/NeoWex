@@ -132,6 +132,7 @@ public final class aureon {
             x = wx;
             y = wy;
             mirror = true;
+            alternate = false; // bắn đồng thời, không luân phiên trái/phải
             top = true;
             rotate = true;
             rotateSpeed = 6f;
