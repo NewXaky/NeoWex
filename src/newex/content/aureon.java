@@ -76,6 +76,18 @@ public final class aureon {
     public static final float LOCK_DURATION = 90f;
     /** Chỉ bắn khi thân unit hướng về mục tiêu trong góc này (độ). */
     public static final float FIRE_CONE = 20f;
+    /** Chỉ số Tấn công chuẩn (cùng quy ước Honivery/Zeralion), nhân thêm damageMultiplier của unit. */
+    public static final float BASE_ATK = 300f;
+    /** Mỗi tia điện: 60% Tấn công + 60% Giáp, tính cho 1 GIÂY (chia đều cho các nhịp chạm mỗi damageInterval tick). */
+    public static final float ARC_ATK_RATIO = 0.60f;
+    public static final float ARC_ARMOR_RATIO = 0.60f;
+
+    /** Sát thương mỗi nhịp chạm của 1 tia = (60% Tấn công + 60% Giáp) * damageInterval / 60. */
+    static float arcDamage(Unit u, float interval) {
+        float atk = BASE_ATK + NewModePvp.skillFlatAtk(u); // + sát thương cộng thêm từ trang nâng cấp (PvP)
+        float raw = ARC_ATK_RATIO * atk * Math.max(0.1f, u.damageMultiplier) + ARC_ARMOR_RATIO * Math.max(0f, u.armor);
+        return raw * interval / 60f;
+    }
 
     private static final Color OUTLINE_COL = Color.valueOf("232933");
     private static final Color ARC_OUTER = Color.valueOf("66d9ff");
@@ -118,7 +130,7 @@ public final class aureon {
 
             localizedName = "Aureon";
             description = "Robot xung kích 4 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
-            details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa.";
+            details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa. Mỗi tia điện gây 60% Tấn công + 60% Giáp mỗi giây.";
 
             health = 22000f;
             armor = 22f;
@@ -257,6 +269,7 @@ public final class aureon {
             b.fdata += Time.delta; // đồng hồ hiệu ứng: dừng lại khi game tạm dừng
 
             if (b.timer(1, damageInterval)) {
+                b.damage = arcDamage(u, damageInterval);
                 if (target instanceof Hitboxc) {
                     Hitboxc h = (Hitboxc) target;
                     h.collision(b, target.x(), target.y());

@@ -208,7 +208,11 @@ public class NewModePvp {
     static final String KEY_MAXLV = "newex-pvp-max-level";
     static final int LIMIT_MAXLV = 999;
     static final int FREE_SWITCH_LEVEL = 5;
-    static final int TIER_MAX = 8; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery
+    static final int TIER_MAX = 10; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion (unit moi chien tranh)
+    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64;
+    /** Cấp tối thiểu để chọn unit bậc t (0 = không yêu cầu). */
+    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : 0; }
+    static boolean isWarTier(int t) { return t >= 9; }
     static final int STAT_MAX = 20;
     static final int STAT_MAIN = 12;
     static final int STAT_ARMY = 12;
@@ -602,6 +606,8 @@ public class NewModePvp {
         if (lv == 6) return UnitTypes.reign;
         if (lv == 7) return UnitTypes.disrupt;
         if (lv == 8) { UnitType h = Honivery.honivery; return h != null ? h : UnitTypes.collaris; }
+        if (lv == 9) { UnitType a = newex.content.aureon.aureon; return a != null ? a : UnitTypes.collaris; }
+        if (lv == 10) { UnitType z = Zeralion.zeralion; return z != null ? z : UnitTypes.collaris; }
         if (tierList == null) tierList = new UnitType[]{UnitTypes.merui, UnitTypes.cleroi, UnitTypes.anthicus, UnitTypes.tecta, UnitTypes.collaris};
         return tierList[Math.min(5, Math.max(1, lv)) - 1];
     }
@@ -611,7 +617,7 @@ public class NewModePvp {
         int cap = tierCap(st.lv);
         if (st.lv < FREE_SWITCH_LEVEL) return cap;
         int u = st.u;
-        if (!(u >= 1) || u > TIER_MAX) return cap;
+        if (!(u >= 1) || u > TIER_MAX || st.lv < tierMinLevel(u)) return cap;
         return u;
     }
     static int expNeed(int lv) { int n = lv - 1; return Math.round(100 + 70 * n + 12 * n * n); }
@@ -5036,6 +5042,7 @@ public class NewModePvp {
             Integer k0 = leadInt(payload);
             if (k0 == null || !(k0 >= 1 && k0 <= TIER_MAX)) return;
             int k = k0, nu = (k == tierCap(st.lv)) ? 0 : k;
+            if (st.lv < tierMinLevel(k)) { toast(player, tr("[scarlet]Cần đạt cấp " + tierMinLevel(k) + " để chọn unit này.", "[scarlet]Reach level " + tierMinLevel(k) + " to select this unit.")); return; }
             if (st.u == nu) return;
             st.u = nu;
             toast(player, tr("[accent]Đã đổi sang unit: ", "[accent]Switched unit: ") + tierType(k).localizedName);
@@ -5539,10 +5546,11 @@ public class NewModePvp {
         Table col = new Table();
         col.left();
         col.add("[white]" + ut.localizedName + "[]").left().row();
-        col.add("[lightgray]" + (isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t)) + "[]").left();
+        col.add("[lightgray]" + (isWarTier(t) ? tr("Unit mới chiến tranh · yêu cầu cấp " + tierMinLevel(t), "New war unit · requires Lv " + tierMinLevel(t)) : isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t)) + "[]").left().wrap().growX();
         row.add(col).growX().left().minWidth(0);
         final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : null;
         if (t == cur) row.add("[accent]" + tr("Đang dùng", "In use") + "[]").width(selW).center();
+        else if (st.lv < tierMinLevel(t)) row.add("[scarlet]" + tr("Cần cấp ", "Need Lv ") + tierMinLevel(t) + "[]").width(selW).center();
         else row.button(tr("Chọn", "Select"), () -> send(REQ_UNIT, String.valueOf(t))).size(selW, btnH());
         if (newex.UnitSkillInfo.has(sk)) row.button("i", () -> newex.UnitSkillInfo.showDialog(sk)).size(btnH()).padLeft(4);
         p.add(row).width(w).pad(4).row();
