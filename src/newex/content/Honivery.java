@@ -427,6 +427,21 @@ public final class Honivery {
         }
     }
 
+    /** Tầm tìm mục tiêu để xác định hướng chém (giống combo 8 nhát của HoniveryPvp.SEEK). */
+    static final float AIM_SEEK = 88f;
+
+    /**
+     * Hướng chém của Tinh Quang Trảm: giống combo 8 nhát - chém về phía mục tiêu gần nhất trong tầm,
+     * không có mục tiêu thì chém theo hướng unit đang quay (hướng tấn công), KHÔNG theo con trỏ chuột.
+     */
+    static float skillAim(Unit u) {
+        mindustry.gen.Teamc tg = null;
+        try {
+            tg = Units.closestTarget(u.team, u.x, u.y, AIM_SEEK, e -> !e.dead, b -> true);
+        } catch (Throwable err) {}
+        return tg != null ? Angles.angle(u.x, u.y, tg.x(), tg.y()) : u.rotation;
+    }
+
     static void triggerCastFromClient(Unit u, float ang) {
         if (!isHonivery(u) || u.dead || Time.time < cdEnd) return;
         cdEnd = Time.time + SKILL_CD;
@@ -512,8 +527,7 @@ public final class Honivery {
         if (!Vars.headless && !Vars.mobile && Vars.player != null && Core.scene != null && !Core.scene.hasField()) {
             Unit pu = Vars.player.unit();
             if (isHonivery(pu) && !pu.dead && Core.input.keyTap(getSkillKey())) {
-                float aim = Angles.angle(pu.x, pu.y, Vars.player.mouseX, Vars.player.mouseY);
-                triggerCastFromClient(pu, aim);
+                triggerCastFromClient(pu, skillAim(pu));
             }
         }
 
@@ -739,8 +753,7 @@ public final class Honivery {
                 } else if (!Vars.state.isPaused() && Vars.player != null) {
                     Unit u = Vars.player.unit();
                     if (isHonivery(u) && !u.dead) {
-                        float aim = Vars.mobile ? u.rotation : Angles.angle(u.x, u.y, Vars.player.mouseX, Vars.player.mouseY);
-                        triggerCastFromClient(u, aim);
+                        triggerCastFromClient(u, skillAim(u));
                     }
                 }
                 dragging = false;
