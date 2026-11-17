@@ -213,6 +213,9 @@ public final class MachineUi {
         private float lastSw = -1f, lastSh = -1f;
         private boolean moved;
         private float maxScale = MAX_SCALE;
+        // khôi phục vị trí cuộn sau khi dựng lại nội dung
+        private float restoreY;
+        private int restoreN;
 
         // chuyển trang
         private boolean exiting;
@@ -286,16 +289,39 @@ public final class MachineUi {
 
         /** Dựng lại nội dung ngay, không hiệu ứng (giữ nguyên vị trí cuộn). */
         public void rebuild() {
+            float keep = scroll != null ? scroll.getScrollY() : 0f;
             if (refill != null) refill.run();
+            restoreScroll(keep);
+        }
+
+        /**
+         * Dựng lại nội dung xóa sạch rồi thêm lại nên chiều cao tụt về 0 và ScrollPane tự kẹp scrollY về 0 (đang lướt xuống bị giật lên đầu).
+         * Ép bố cục tính lại ngay rồi đặt lại vị trí cũ, và giữ thêm vài khung hình phòng khi bố cục chậm một nhịp.
+         */
+        private void restoreScroll(float y) {
+            if (scroll == null || y <= 0.5f) return;
+            try { scroll.validate(); } catch (Throwable ignored) {}
+            scroll.setScrollY(y);
+            snapScroll();
+            restoreY = y;
+            restoreN = 4;
         }
 
         /** Dựng lại cả khung lẫn nội dung (khi kích thước màn hình đổi). */
         public void relayout() {
+            float keep = scroll != null ? scroll.getScrollY() : 0f;
             layout();
             if (refill != null) refill.run();
+            restoreScroll(keep);
+        }
+
+        /** Cuộn mượt có vị trí hiển thị riêng; ép nó khớp ngay để không thấy cảnh nhảy lên đầu rồi trượt xuống lại. */
+        private void snapScroll() {
+            try { scroll.updateVisualScroll(); } catch (Throwable ignored) {}
         }
 
         public void scrollTop() {
+            restoreN = 0;
             if (scroll != null) scroll.setScrollY(0f);
         }
 
@@ -320,6 +346,7 @@ public final class MachineUi {
                 flush();
                 apply.run();
                 rebuild();
+                scrollTop();
                 slide.run(dir, true, ENTER_MS, null);
                 return;
             }
@@ -359,6 +386,10 @@ public final class MachineUi {
             }
             fit();
             place();
+            if (restoreN > 0 && scroll != null) {
+                restoreN--;
+                if (Math.abs(scroll.getScrollY() - restoreY) > 0.5f) { scroll.setScrollY(restoreY); snapScroll(); }
+            }
             if (ticker != null) ticker.run();
         }
 
