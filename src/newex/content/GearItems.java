@@ -26,6 +26,13 @@ import mindustry.gen.Tex;
 import mindustry.gen.Unit;
 import mindustry.ui.Styles;
 
+import arc.Events;
+import arc.audio.Sound;
+import arc.util.Time;
+import mindustry.content.StatusEffects;
+import mindustry.graphics.Layer;
+import mindustry.type.UnitType;
+import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -261,8 +268,22 @@ final class GearItems {
     /** Máy chủ gọi khi quái đợt chết: nếu người chơi pid là người hạ gục thì có thể nhận 1 vật phẩm. */
     static void onWaveKill(Unit u, int pid) {
         if (Vars.net.client() || u == null || !NewModePvp.isFull() || !war() || Vars.state.gameOver) return;
-        NewModePvp.St st = NewModePvp.byId.get(pid);
+        Integer cid = carry.remove(u.id);
+        NewModePvp.St st = pid < 0 ? null : NewModePvp.byId.get(pid);
         if (st == null) return;
+        if (cid != null) {                                   // quái mang vật phẩm bị bỏ: người hạ gục nhận chắc chắn
+            Def cd = def(cid);
+            if (cd == null) return;
+            st.gInv.add(cd.id);
+            Player cp = playerById(pid);
+            if (cp != null) {
+                if (NewModePvp.isBotPl(cp)) botAutoEquip(st);
+                else NewModePvp.toast(cp, tr("[accent]Nhận vật phẩm từ quái: ", "[accent]Item from monster: ") + col(cd.rarity) + name(cd) + " [" + rarName(cd.rarity) + "][]");
+            }
+            playFx(u, pid, cd.rarity);
+            NewModePvp.changed();
+            return;
+        }
         if (Math.random() >= dropChance(u)) return;
         if (st.gInv.size() >= INV_CAP) return;
         Def d = rollDef(rollRarity(u.maxHealth));
@@ -291,31 +312,46 @@ final class GearItems {
     }
 
     // ------------------------------------------------------------------ hiệu ứng tia sáng bay về người chơi
-    /** Tia sáng màu theo độ hiếm bay cong (lên/xuống ngẫu nhiên) từ xác quái tới người nhận; e.rotation = độ cong, e.data = đích. */
+    /** Điểm sáng màu theo độ hiếm bay cong (lên/xuống ngẫu nhiên) từ xác quái tới người nhận; e.rotation = độ cong, e.data = đích.
+     *  Bay chậm lúc đầu rồi tăng tốc dần (ease-in) để tạo cảm giác "hút" vật phẩm về phía mình; vệt theo sau là chuỗi hạt tròn mờ dần
+     *  (không dùng đường thẳng quanh điểm sáng) để trông mượt và sạch hơn, giống hiệu ứng thu thập trong các game gacha/idle. */
     static final Effect beamFx = new Effect(48f, 900f, e -> {
         if (!(e.data instanceof Position)) return;
         Position t = (Position) e.data;
         float x0 = e.x, y0 = e.y, x1 = t.getX(), y1 = t.getY();
         float dx = x1 - x0, dy = y1 - y0, dist = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
         float cx = (x0 + x1) / 2f - dy / dist * e.rotation * dist * 0.5f, cy = (y0 + y1) / 2f + dx / dist * e.rotation * dist * 0.5f;
-        float head = Mathf.clamp(e.fin() * 1.15f), fade = 1f - Mathf.clamp((e.fin() - 0.85f) / 0.15f);
-        int seg = 12; float px = 0, py = 0;
-        for (int k = 0; k <= seg; k++) {
-            float q = Math.max(0f, head - k * 0.03f), iq = 1f - q;
+        float lin = Mathf.clamp(e.fin());
+        float travel = Mathf.clamp(lin / 0.87f);             // mốc 0.87 = lúc chạm đích, sau đó chỉ còn mờ dần
+        float eased = travel * travel * travel;               // ease-in: chậm hẳn lúc đầu rồi tăng tốc liên tục tới khi chạm đích
+        float head = Mathf.clamp(eased);
+        float fade = 1f - Mathf.clamp((lin - 0.85f) / 0.15f);
+        // vệt sáng: chuỗi hạt tròn nhỏ dần + mờ dần phía sau, tuyệt đối không dùng đường thẳng quanh điểm sáng
+        int trailN = 8;
+        for (int k = trailN; k >= 1; k--) {
+            float q = Math.max(0f, head - k * 0.05f), iq = 1f - q;
             float bx = iq * iq * x0 + 2f * iq * q * cx + q * q * x1, by = iq * iq * y0 + 2f * iq * q * cy + q * q * y1;
-            if (k > 0) {
-                float w = (1f - k / (float) seg) * 3.2f;
-                Draw.color(e.color, fade * (1f - k / (float) seg));
-                Lines.stroke(w); Lines.line(px, py, bx, by);
-            }
-            if (k == 0) { Draw.color(e.color, fade); Fill.circle(bx, by, 3.6f); Draw.color(1f, 1f, 1f, fade); Fill.circle(bx, by, 1.8f); }
-            px = bx; py = by;
+            float frac = 1f - k / (float) (trailN + 1);
+            Draw.color(e.color, fade * frac * 0.65f);
+            Fill.circle(bx, by, Math.max(0.6f, 3.4f * frac));
         }
+        // điểm sáng ở đầu: quầng sáng mờ (glow) + lõi màu + tâm trắng sáng, lớn nhẹ lúc gần chạm đích cho cảm giác "nạp năng lượng"
+        float iq0 = 1f - head;
+        float hx = iq0 * iq0 * x0 + 2f * iq0 * head * cx + head * head * x1;
+        float hy = iq0 * iq0 * y0 + 2f * iq0 * head * cy + head * head * y1;
+        float pulse = 1f + 0.35f * Mathf.clamp(head) * head;
+        Draw.color(e.color, fade * 0.3f);
+        Fill.circle(hx, hy, 6.6f * pulse);
+        Draw.color(e.color, fade);
+        Fill.circle(hx, hy, 3.6f * pulse);
+        Draw.color(1f, 1f, 1f, fade);
+        Fill.circle(hx, hy, 1.7f * pulse);
         Draw.reset();
     });
     static void showFx(float x, float y, int rarity, float curve, Unit target) {
         if (Vars.headless || target == null) return;
         try { beamFx.at(x, y, curve, colorOf(rarity), target); } catch (Throwable ignored) {}
+        try { if (Vars.player != null && target == Vars.player.unit()) Time.run(40f, () -> playGet(rarity)); } catch (Throwable ignored) {}
     }
     /** Máy chủ/host: phát tia ở máy mình và gửi cho mọi client để ai cũng thấy. */
     static void playFx(Unit src, int pid, int rarity) {
@@ -334,6 +370,133 @@ final class GearItems {
             Unit tg = NewModePvp.plUnit(Integer.parseInt(a[0]));
             if (tg != null) showFx(Float.parseFloat(a[1]), Float.parseFloat(a[2]), Integer.parseInt(a[3]), Float.parseFloat(a[4]), tg);
         } catch (Throwable ignored) {}
+    }
+
+
+    // ------------------------------------------------------------------ quái mang vật phẩm (bỏ vật phẩm -> hóa quái)
+    static final String RING_KIND = "newex-pvp-gearring";
+    /** id quái -> id vật phẩm nó đang mang (máy chủ). Không tính vào giới hạn quái đợt. */
+    static final HashMap<Integer, Integer> carry = new HashMap<>();
+    /** Vòng tròn màu độ hiếm dưới chân quái; vẽ theo vị trí thật của quái (e.data = id quái), nên sống tới khi quái chết. */
+    static final Effect ringFx = new Effect(1e6f, 1e6f, e -> {
+        if (!(e.data instanceof Integer)) return;
+        Unit u = Groups.unit.getByID((Integer) e.data);
+        if (u == null || !u.isValid()) return;
+        float t = Time.time, rad = Math.max(12f, u.hitSize * 0.8f + 4f), cx = u.x, cy = u.y - u.hitSize * 0.12f;
+        float pulse = 0.5f + 0.5f * Mathf.sin(t / 18f), k = (t / 70f) % 1f;
+        Draw.color(e.color, 0.10f + 0.07f * pulse);
+        Fill.circle(cx, cy, rad);
+        Lines.stroke(1.8f);
+        Draw.color(e.color, 0.9f);
+        Lines.circle(cx, cy, rad);
+        Lines.stroke(1.4f * (1f - k));
+        Draw.color(e.color, 0.7f * (1f - k));
+        Lines.circle(cx, cy, rad * (0.6f + 0.9f * k));
+        Lines.stroke(2.4f);
+        Draw.color(Color.white, 0.75f);
+        for (int i = 0; i < 4; i++) Lines.arc(cx, cy, rad + 3f, 0.12f, t * 1.6f + i * 90f);
+        Draw.reset();
+    });
+    static { ringFx.layer = Layer.groundUnit - 1f; }
+    static void showRing(int uid, int rarity) {
+        if (Vars.headless) return;
+        try { ringFx.at(0f, 0f, 0f, colorOf(rarity), uid); } catch (Throwable ignored) {}
+    }
+    static void onRingPacket(String content) {
+        if (!Vars.net.client()) return;
+        try { String[] a = content.split("\\|"); showRing(Integer.parseInt(a[0]), Integer.parseInt(a[1])); } catch (Throwable ignored) {}
+    }
+    /** Chọn quái đợt ngẫu nhiên (độ hiếm cao -> loại trâu hơn), đặt xuống bản đồ, gắn vật phẩm. Bỏ qua giới hạn 200 quái. */
+    static boolean spawnCarrier(Def d) {
+        try {
+            ArrayList<UnitType> ts = new ArrayList<>();
+            for (NewModePvp.Wave g : NewModePvp.WAVES) {
+                UnitType t = Vars.content.getByName(ContentType.unit, g.t);
+                if (t != null && !t.flying && !t.naval) ts.add(t);
+            }
+            if (ts.isEmpty()) return false;
+            ts.sort((a, b) -> Float.compare(a.health, b.health));
+            int idx = Mathf.clamp(Math.round(d.rarity / (float) (RARITIES - 1) * (ts.size() - 1) + ((float) Math.random() - 0.5f) * 1.6f), 0, ts.size() - 1);
+            UnitType type = ts.get(idx);
+            NewModePvp.allowWaveUnits(Vars.state.rules);
+            NewModePvp.prepareWaveType(type);
+            float[] pos = NewModePvp.spawnPos(type);
+            if (pos == null) return false;
+            Unit u = type.create(Vars.state.rules.waveTeam);
+            u.shield = Math.max(0, Vars.state.wave - 1) * 6f + d.rarity * 150f;
+            u.set(pos[0], pos[1]);
+            u.apply(StatusEffects.invincible, 60f);
+            u.add();
+            carry.put(u.id, d.id);
+            Events.fire(new mindustry.game.EventType.UnitSpawnEvent(u));
+            NewModePvp.fx(pos[0], pos[1]);
+            showRing(u.id, d.rarity);
+            if (Vars.net.server()) Call.clientPacketReliable(RING_KIND, u.id + "|" + d.rarity);
+            return true;
+        } catch (Throwable err) { return false; }
+    }
+
+    // ------------------------------------------------------------------ âm thanh nhận vật phẩm (sounds/item-get-0..4.ogg, càng hiếm càng dài/hay)
+    static final Sound[] getSnd = new Sound[RARITIES];
+    static void playGet(int r) {
+        r = Math.max(0, Math.min(RARITIES - 1, r));
+        try {
+            if (getSnd[r] == null) getSnd[r] = Vars.tree.loadSound("item-get-" + r);
+            getSnd[r].play(0.5f + 0.1f * r);
+        } catch (Throwable ignored) {}
+    }
+
+    // ------------------------------------------------------------------ viền vật phẩm động theo độ hiếm
+    static final float[] PT = new float[2];
+    static final Color TC = new Color(), TW = new Color();
+    /** Điểm trên chu vi hình chữ nhật, s in [0,1). */
+    static void per(float x, float y, float w, float h, float s) {
+        float d = (((s % 1f) + 1f) % 1f) * 2f * (w + h);
+        if (d < w) { PT[0] = x + d; PT[1] = y; return; } d -= w;
+        if (d < h) { PT[0] = x + w; PT[1] = y + d; return; } d -= h;
+        if (d < w) { PT[0] = x + w - d; PT[1] = y + h; return; } d -= w;
+        PT[0] = x; PT[1] = y + h - d;
+    }
+    /** Hiếm: thở nhẹ · Sử thi: +quầng sáng, 1 tia chạy · Huyền thoại: 2 tia + lấp lánh · Thần thoại: đổi màu cầu vồng, 3 tia, nhiều sao. */
+    static void drawRarity(float x, float y, float w, float h, int r, float seed) {
+        if (r <= 0) return;
+        float t = Time.time + seed * 37f;
+        Color c = TC;
+        if (r >= 4) c.fromHsv((t * 1.1f) % 360f, 0.6f, 1f); else c.set(colorOf(r));
+        TW.set(c).lerp(Color.white, 0.65f);
+        float pulse = 0.5f + 0.5f * Mathf.sin(t / (r >= 3 ? 16f : 26f));
+        if (r >= 2) { Lines.stroke(5f); Draw.color(c, 0.08f + 0.12f * pulse); Lines.rect(x - 1.5f, y - 1.5f, w + 3f, h + 3f); }
+        Lines.stroke(r >= 3 ? 2.2f : 1.6f);
+        Draw.color(c, 0.4f + 0.45f * pulse);
+        Lines.rect(x + 1f, y + 1f, w - 2f, h - 2f);
+        int runners = r >= 4 ? 3 : r >= 3 ? 2 : r >= 2 ? 1 : 0;
+        for (int j = 0; j < runners; j++) {
+            float head = t / (r >= 3 ? 140f : 210f) + j / (float) runners;
+            for (int k = 0; k < 10; k++) {
+                per(x + 1f, y + 1f, w - 2f, h - 2f, head - k * 0.006f);
+                float f = 1f - k / 10f;
+                Draw.color(TW, f * 0.9f);
+                Fill.circle(PT[0], PT[1], 2.4f * f + 0.4f);
+            }
+        }
+        int sp = r >= 4 ? 6 : r >= 3 ? 3 : 0;
+        for (int i = 0; i < sp; i++) {
+            float ph = t / 70f + i * 0.317f + seed;
+            float a = Mathf.sin((ph % 1f) * Mathf.pi), s = 3.5f * a;
+            per(x, y, w, h, (i * 0.173f + (float) Math.floor(ph) * 0.37f) % 1f);
+            Lines.stroke(1f);
+            Draw.color(Color.white, a);
+            Lines.line(PT[0] - s, PT[1], PT[0] + s, PT[1]);
+            Lines.line(PT[0], PT[1] - s, PT[0], PT[1] + s);
+            Draw.color(c, a * 0.8f);
+            Fill.circle(PT[0], PT[1], 1.3f * a);
+        }
+        Draw.reset();
+    }
+    static final class RarBorder extends Table {
+        final int r; final float seed = (float) Math.random() * 100f;
+        RarBorder(int r, float a) { super(tinted(colorOf(r).cpy().a(a))); this.r = r; }
+        @Override public void draw() { super.draw(); drawRarity(x, y, width, height, r, seed); }
     }
 
     // ------------------------------------------------------------------ cửa hàng (giá theo tốc độ lên cấp/điểm của từng phe)
@@ -443,8 +606,12 @@ final class GearItems {
                 st.gEq[v] = -1;
             } else if (op.equals("d")) {                  // bỏ vật phẩm id=v trong túi
                 int idx = st.gInv.indexOf(v);
-                if (idx < 0) return;
-                st.gInv.remove(idx);
+                Def dd = def(v);
+                if (idx < 0 || dd == null) return;
+                if (spawnCarrier(dd)) {
+                    st.gInv.remove(idx);
+                    NewModePvp.toast(player, tr("[accent]Vật phẩm hóa thành quái trên bản đồ - hạ nó để nhận!", "[accent]The item became a monster on the map - kill it to claim!"));
+                } else NewModePvp.toast(player, tr("[scarlet]Không tìm được chỗ spawn, giữ lại vật phẩm.", "[scarlet]No spawn spot found, item kept."));
             } else if (op.equals("b")) {                  // mua vật phẩm mẫu id=v bằng điểm
                 Def d = def(v);
                 if (d == null || st.gInv.size() >= INV_CAP) return;
@@ -483,7 +650,7 @@ final class GearItems {
 
     /** Thẻ vật phẩm: icon + tên + độ hiếm + chỉ số; tối đa 2 nút. */
     static Table itemRow(Def d, float W, boolean narrow, String b1, Runnable r1, String b2, Runnable r2, boolean glow) {
-        Table border = new Table(tinted(colorOf(d.rarity).cpy().a(glow ? 0.95f : 0.55f)));
+        Table border = new RarBorder(d.rarity, glow ? 0.95f : 0.55f);
         border.margin(2f);
         Table row = new Table(Styles.black8);
         row.margin(8);
@@ -504,7 +671,7 @@ final class GearItems {
     static Table slotTile(NewModePvp.St st, final int slot, float w) {
         Def d = def(st.gEq[slot]);
         Color c = d != null ? colorOf(d.rarity) : Color.valueOf("5b6070");
-        Table border = new Table(tinted(c.cpy().a(d != null ? 0.95f : 0.5f)));
+        Table border = d != null ? new RarBorder(d.rarity, 0.95f) : new Table(tinted(c.cpy().a(0.5f)));
         border.margin(2f);
         Table in = new Table(Styles.black8);
         in.margin(6);
@@ -534,6 +701,7 @@ final class GearItems {
             "Kill wave monsters to get item drops in your Bag (rarer = lower chance). Tap a slot to open the Bag then press Equip. Items add/subtract stat levels.") + "[]").left().growX().wrap().minWidth(0).row();
         c.add(hd).width(W).pad(3).row();
         c.button(tr("Cửa hàng", "Shop"), Styles.flatBordert, GearItems::openShop).width(W - 8f).height(NewModePvp.btnH() * 0.9f).pad(3).row();
+        c.button(tr("Chỉ số", "Stats"), Styles.flatBordert, NewModePvp::openStatsView).width(W - 8f).height(NewModePvp.btnH() * 0.9f).pad(3).row();
 
         int cols = W < 440f ? 2 : 3;
         float cw = Math.max(110f, (W - 8f * cols - 8f) / cols);

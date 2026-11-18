@@ -859,6 +859,7 @@ public class NewModePvp {
             Vars.netClient.addPacketHandler(SYNC_KIND, content -> onSync(content));
             Vars.netClient.addPacketHandler(SHIELD_KIND, content -> onShieldSync(content));
             Vars.netClient.addPacketHandler(GearItems.FX_KIND, content -> GearItems.onFxPacket(content));
+            Vars.netClient.addPacketHandler(GearItems.RING_KIND, content -> GearItems.onRingPacket(content));
             Vars.netClient.addPacketHandler(PFX_KIND, content -> {
                 try {
                     Integer id = leadInt(content);
@@ -4770,7 +4771,7 @@ public class NewModePvp {
         allowWaveUnits(Vars.state.rules);
         final Team team = Vars.state.rules.waveTeam;
         final int[] alive = {0};
-        if (!fresh) Groups.unit.each(u -> { if (u.team == team) alive[0]++; });
+        if (!fresh) Groups.unit.each(u -> { if (u.team == team && !GearItems.carry.containsKey(u.id)) alive[0]++; });
         for (Wave g : WAVES) {
             UnitType type = Vars.content.getByName(ContentType.unit, g.t);
             if (type == null) continue;
@@ -5036,7 +5037,7 @@ public class NewModePvp {
             }
         } catch (Throwable err) {}
         if (u.team == Vars.state.rules.waveTeam) {
-            try { if (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) GearItems.onWaveKill(u, krGear.pid); } catch (Throwable err) { logOnce("gear-drop", "gear drop failed: " + err, false); }
+            try { GearItems.onWaveKill(u, krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS ? krGear.pid : -1); } catch (Throwable err) { logOnce("gear-drop", "gear drop failed: " + err, false); }
             final float gained = killExp(u);
             if (gained > 0) {
                 final float rx = u.x, ry = u.y;
@@ -5727,6 +5728,45 @@ public class NewModePvp {
         // +10: đủ 10 điểm thì nâng 10, không đủ thì nâng hết số điểm đang có (server tự giới hạn theo điểm & mức tối đa)
         TextButton btn10 = row.button("+10", () -> send(REQ_UP, i + "|10")).size(narrowAt(w) ? 56 : 68, btnH()).padLeft(narrowAt(w) ? 3 : 6).get();
         btn10.setDisabled(off);
+        p.add(row).width(w).pad(4).row();
+    }
+    // ===== Chiến tranh: trang xem chỉ số (không nâng cấp, chỉ để xem cấp hiện tại gồm cả cộng từ vật phẩm) =====
+    static mindustry.ui.dialogs.BaseDialog statsViewDialog = null;
+    static void openStatsView() {
+        if (Vars.headless) return;
+        if (statsViewDialog != null && statsViewDialog.isShown()) return;
+        final MachineUi.Panel p = MachineUi.panel(tr("Chỉ số", "Stats"));
+        p.onBuild(() -> buildStatsView(p));
+        final String[] last = {curVer()};
+        p.onTick(() -> {
+            if (!nearOwnCore()) { p.hide(); return; }
+            String cv = curVer();
+            if (!cv.equals(last[0]) && !Core.input.isTouched()) { last[0] = cv; p.rebuild(); }
+        });
+        statsViewDialog = p.dialog;
+        p.show();
+    }
+    static void buildStatsView(MachineUi.Panel pnl) {
+        Table h = pnl.header(), c = pnl.content();
+        h.clear(); c.clear();
+        St st = localState();
+        if (st == null) { c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row(); return; }
+        final float W = pnl.innerW();
+        h.add("[lightgray]" + tr("Chỉ số hiện tại (đã gồm cộng/trừ từ vật phẩm trang bị). Trang này chỉ để xem, không có nút nâng cấp.",
+            "Current stats (includes item bonuses/penalties). View only, no upgrade button here.") + "[]").growX().wrap().minWidth(0).pad(6).row();
+        for (int i = 0; i < STATS.length; i++) {
+            if (i == STAT_ARMY) continue;
+            statRowView(c, st, i, W);
+        }
+    }
+    static void statRowView(Table p, St st, int i, float w) {
+        int[] eff = GearItems.eff(st);
+        int base = eff != null && i < eff.length ? eff[i] : st.s[i];
+        int lv = base + (st.pi == PILOT_HIST && i != STAT_ARMY ? 1 : 0) + (st.pi == PILOT_XAKYNEO && (i == 5 || i == 6 || i == 8) ? XAKYNEO_CRIT_BONUS_LV : 0);
+        Table row = new Table(Styles.black6);
+        row.margin(8);
+        row.add("[white]" + tr(STATS[i].vi, STATS[i].en) + "[]   [lightgray]" + lv + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
+        row.add("[lightgray]" + STATS[i].f.get(lv) + (lv < statMax(i) ? "  >  " + STATS[i].f.get(lv + 1) : "  MAX") + "[]").left().wrap().growX();
         p.add(row).width(w).pad(4).row();
     }
     static String turretDesc(Def def) {
