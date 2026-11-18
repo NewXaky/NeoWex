@@ -376,6 +376,7 @@ public final class Tank15 {
 
         @Override
         public void update(Unit unit) {
+            if (Zeralion.isBound(unit)) return;
             super.update(unit);
 
             float re = Mathf.clamp(reloadMultiplier, 1, maxMultiplier);

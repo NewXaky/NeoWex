@@ -178,6 +178,7 @@ public final class Cin {
         cinAbility = new Ability() {
             @Override
             public void update(Unit unit) {
+            if (Zeralion.isBound(unit)) return;
                 if (unit == null || unit.dead || Vars.net.client()) return;
                 State s = states.get(unit.id);
                 if (s == null) {

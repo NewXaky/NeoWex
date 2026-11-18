@@ -1,6 +1,7 @@
 package newex.content;
 
 import arc.Core;
+import arc.Events;
 import arc.audio.Sound;
 import arc.graphics.Blending;
 import arc.graphics.Color;
@@ -11,22 +12,27 @@ import arc.graphics.g2d.TextureRegion;
 import arc.math.Angles;
 import arc.math.Interp;
 import arc.math.Mathf;
-import arc.struct.IntFloatMap;
+import arc.struct.Seq;
 import arc.util.Time;
 import arc.util.Tmp;
 import mindustry.Vars;
 import mindustry.content.Fx;
 import mindustry.entities.Effect;
+import mindustry.entities.Units;
+import mindustry.entities.abilities.Ability;
 import mindustry.entities.bullet.BasicBulletType;
 import mindustry.entities.bullet.BulletType;
 import mindustry.entities.units.WeaponMount;
+import mindustry.game.EventType;
 import mindustry.gen.Bullet;
 import mindustry.gen.LegsUnit;
 import mindustry.gen.Sounds;
+import mindustry.gen.Teamc;
 import mindustry.gen.Unit;
 import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
 import mindustry.graphics.Pal;
+import mindustry.type.StatusEffect;
 import mindustry.type.UnitType;
 import mindustry.type.Weapon;
 import mindustry.world.meta.Env;
@@ -371,30 +377,6 @@ public final class Zeralion {
         });
     }
 
-    // ================================================================== Khóa (bind)
-
-    /** id unit -> thời điểm (Time.time) hết khóa. Unit bị khóa không bắn được. */
-    static final IntFloatMap BOUND_UNTIL = new IntFloatMap();
-
-    /** Khóa unit trong {@code ticks} tick (cộng dồn lấy mốc lớn hơn). */
-    public static void bind(Unit u, float ticks) {
-        if (u == null) return;
-        float until = Time.time + ticks;
-        if (until > BOUND_UNTIL.get(u.id, 0f)) BOUND_UNTIL.put(u.id, until);
-    }
-
-    /** true nếu unit đang bị Zeralion khóa. */
-    public static boolean isBound(Unit u) {
-        if (u == null) return false;
-        float until = BOUND_UNTIL.get(u.id, 0f);
-        if (until <= 0f) return false;
-        if (!u.isValid() || Time.time >= until) {
-            BOUND_UNTIL.remove(u.id, 0f);
-            return false;
-        }
-        return true;
-    }
-
     // ================================================================== Vũ khí 3 nhịp
 
     public static class ZeralionMount extends WeaponMount {
@@ -495,6 +477,212 @@ public final class Zeralion {
         }
     }
 
+    // ================================================================== Nội tại: khóa mục tiêu + laser cấm hành động
+
+    public static final float LOCK_TICKS = 90f;       // 1.5s khóa như Aureon
+    public static final float BIND_TICKS = 54f;       // 0.9s cấm hành động
+    public static final float BIND_COOLDOWN = 480f;   // 8s nghỉ giữa 2 lần khóa
+
+    static StatusEffect bindStatus;
+    static Effect laserFx, bindHitFx, bindSparkFx;
+    static final class BindRec { Unit u; float rot; }
+    static final Seq<BindRec> recs = new Seq<>();
+    static boolean hooked;
+
+    /** Đang bị Zeralion cấm hành động (không bắn, không đi, không quay, không dùng kỹ năng). Pilot không bị ảnh hưởng. */
+    public static boolean isBound(Unit u) { return bindStatus != null && u != null && u.hasEffect(bindStatus); }
+
+    static void bind(Unit t, float ticks) {
+        if (bindStatus == null || t == null || !t.isValid() || t.dead) return;
+        if (!t.hasEffect(bindStatus)) {
+            BindRec r = new BindRec();
+            r.u = t;
+            r.rot = t.rotation;
+            recs.add(r);
+        }
+        t.apply(bindStatus, ticks);
+    }
+
+    /** Giữ nguyên hướng nhìn của mục tiêu trong thời gian bị khóa. */
+    static void tickBinds() {
+        for (int i = recs.size - 1; i >= 0; i--) {
+            BindRec r = recs.get(i);
+            if (!r.u.isValid() || r.u.dead || !r.u.hasEffect(bindStatus)) recs.remove(i);
+            else r.u.rotation = r.rot;
+        }
+    }
+
+    static void makeBindContent() {
+        bindStatus = new StatusEffect("zeralion-bind") {{
+            localizedName = "Phong ấn Zeralion";
+            color = GOLD;
+            speedMultiplier = 0f;
+            disarm = true;
+            effect = bindSparkFx = new Effect(26f, e -> {
+                Draw.color(GOLD_L, GOLD, e.fin());
+                Angles.randLenVectors(e.id, 2, 12f * e.finpow() + 2f, (x, y) -> Fill.circle(e.x + x, e.y + y, 1.4f * e.fout() + 0.2f));
+                Draw.reset();
+            });
+            effectChance = 0.5f;
+        }};
+
+        // tia laser vàng kim: lõi đen như hố đen, viền vàng sáng (vành bồi tụ), hạt xoáy dọc tia, đĩa hố đen ở mục tiêu
+        laserFx = new Effect(26f, 1400f, e -> {
+            if (!(e.data instanceof Object[])) return;
+            Object[] d = (Object[]) e.data;
+            Unit src = (Unit) d[0];
+            Teamc tg = (Teamc) d[1];
+            if (tg == null) return;
+            float sx = e.x, sy = e.y;
+            if (src != null && src.isValid()) {
+                sx = src.x + Angles.trnsx(src.rotation, 12f);
+                sy = src.y + Angles.trnsy(src.rotation, 12f);
+            }
+            float tx = tg.x(), ty = tg.y();
+            float ang = Angles.angle(sx, sy, tx, ty), len = Mathf.dst(sx, sy, tx, ty);
+            float fin = e.fin(), fout = e.fout(), grow = Interp.pow3Out.apply(Math.min(1f, fin * 6f));
+            float ex = sx + Angles.trnsx(ang, len * grow), ey = sy + Angles.trnsy(ang, len * grow);
+            float px = Angles.trnsx(ang + 90f, 1f), py = Angles.trnsy(ang + 90f, 1f);
+
+            Draw.blend(Blending.additive);
+            Draw.color(GOLD, 0.28f * fout);
+            Lines.stroke(15f * fout + 2f);
+            Lines.line(sx, sy, ex, ey);
+            Draw.color(GOLD_L, 0.45f * fout);
+            Lines.stroke(9f * fout + 1f);
+            Lines.line(sx, sy, ex, ey);
+            Draw.blend();
+
+            Draw.color(Color.black, 0.95f * Math.min(1f, fout * 2f));
+            Lines.stroke(5.5f * fout + 0.5f);
+            Lines.line(sx, sy, ex, ey);
+
+            Draw.blend(Blending.additive);
+            for (int sgn = -1; sgn <= 1; sgn += 2) {
+                float off = sgn * (3.4f * fout + 1.2f);
+                Draw.color(GOLD_L, fout);
+                Lines.stroke(1.8f * fout + 0.4f);
+                Lines.line(sx + px * off, sy + py * off, ex + px * off, ey + py * off);
+            }
+            Draw.color(Color.white, fout);
+            int n = 18;
+            for (int i = 0; i < n; i++) {
+                float p = Mathf.mod(i / (float) n + fin * 1.6f, 1f);
+                float off = Mathf.sin(p * 40f + e.time * 0.9f + i) * (4.5f * fout + 0.8f);
+                Fill.circle(sx + (ex - sx) * p + px * off, sy + (ey - sy) * p + py * off, 1.1f * fout + 0.3f);
+            }
+            Draw.color(GOLD_L, fout);
+            Fill.circle(sx, sy, 5f * fout + 1f);
+            Draw.color(Color.white, fout);
+            Fill.circle(sx, sy, 2.5f * fout);
+            Draw.blend();
+
+            Draw.color(Color.black, 0.9f * fout);
+            Fill.circle(tx, ty, 8f * fout * grow);
+            Draw.blend(Blending.additive);
+            Draw.color(GOLD_L, fout);
+            Lines.stroke(2f * fout + 0.4f);
+            Lines.circle(tx, ty, 9f * grow + 10f * (1f - fout));
+            Draw.blend();
+            Draw.reset();
+            Drawf.light(sx, sy, 60f, GOLD, 0.6f * fout);
+        });
+
+        // nổ hố đen vàng kim tại mục tiêu khi bị khóa
+        bindHitFx = new Effect(32f, 160f, e -> {
+            float fin = e.fin(), fout = e.fout();
+            Draw.color(Color.black, fout);
+            Fill.circle(e.x, e.y, 10f * Interp.pow2Out.apply(Math.min(1f, fin * 3f)) * (0.6f + 0.4f * fout));
+            Draw.blend(Blending.additive);
+            Draw.color(GOLD_L, fout);
+            Lines.stroke(3f * fout + 0.5f);
+            Lines.circle(e.x, e.y, 10f + 26f * Interp.pow3Out.apply(fin));
+            Draw.color(GOLD, fout);
+            Lines.stroke(2f * fout + 0.3f);
+            Lines.circle(e.x, e.y, 8f + 14f * Interp.pow2Out.apply(fin));
+            Draw.color(Color.white, GOLD_L, fin);
+            Angles.randLenVectors(e.id, 10, 28f * Interp.pow3Out.apply(fin) + 4f, (x, y) -> Fill.circle(e.x + x, e.y + y, 1.2f * fout + 0.3f));
+            Draw.blend();
+            Draw.reset();
+        });
+
+        if (!hooked) {
+            hooked = true;
+            Events.run(EventType.Trigger.update, Zeralion::tickBinds);
+        }
+    }
+
+    public static class BindLockAbility extends Ability {
+        public Teamc target;
+        public float progress, cooldown, phase;
+
+        @Override
+        public void update(Unit unit) {
+            phase += Time.delta;
+            if (isBound(unit)) { progress = 0f; return; }
+            if (cooldown > 0f) { cooldown -= Time.delta; target = null; progress = 0f; return; }
+
+            if (target != null && !(target instanceof Unit && validTarget(unit, (Unit) target))) { target = null; progress = 0f; }
+
+            if (unit.isPlayer()) {
+                Teamc hov = Units.closestTarget(unit.team, unit.aimX, unit.aimY, 48f,
+                    u -> u.checkTarget(true, true) && !isBound(u) && unit.within(u, RANGE),
+                    b -> false);
+                if (hov != null && hov != target) { target = hov; progress = 0f; }
+            }
+            if (target == null) {
+                target = Units.closestTarget(unit.team, unit.x, unit.y, RANGE,
+                    u -> u.checkTarget(true, true) && !isBound(u),
+                    b -> false);
+                progress = 0f;
+            }
+            if (!(target instanceof Unit)) { target = null; return; }
+
+            progress = Math.min(1f, progress + Time.delta / LOCK_TICKS);
+            if (progress >= 1f) fire(unit, (Unit) target);
+        }
+
+        private boolean validTarget(Unit unit, Unit t) {
+            return t.isValid() && !t.dead && t.hittable() && unit.within(t, RANGE);
+        }
+
+        private void fire(Unit unit, Unit tu) {
+            laserFx.at(unit.x, unit.y, unit.angleTo(tu), GOLD, new Object[]{unit, tu});
+            bindHitFx.at(tu.x, tu.y, 0f, GOLD);
+            if (!Vars.headless) {
+                cannonSound.at(unit.x, unit.y, 1.4f, 0.9f);
+                Effect.shake(2.5f, 10f, tu.x, tu.y);
+            }
+            if (!Vars.net.client()) bind(tu, BIND_TICKS);
+            cooldown = BIND_COOLDOWN;
+            target = null;
+            progress = 0f;
+        }
+
+        @Override
+        public void draw(Unit unit) {
+            if (!(target instanceof Unit) || progress <= 0.02f) return;
+            final Unit tu = (Unit) target;
+            final boolean mine = Vars.player != null && Vars.player.unit() == unit;
+            final float pr = progress, ph = phase;
+            Draw.draw(Layer.overlayUI, () -> {
+                float r = Math.max(tu.hitSize() * 0.7f, 14f), a = mine ? 1f : 0.6f;
+                Draw.color(pr >= 1f ? Color.white : GOLD, a);
+                Lines.stroke(1.6f);
+                Lines.circle(tu.x, tu.y, r * (1f + 1.2f * (1f - pr)));
+                Draw.color(GOLD_L, a);
+                for (int i = 0; i < 4; i++) {
+                    float ang = i * 90f + ph * 1.5f * (1f + pr);
+                    Drawf.tri(tu.x + Angles.trnsx(ang, r * 1.35f), tu.y + Angles.trnsy(ang, r * 1.35f), 3.5f, 6f, ang + 180f);
+                }
+                Draw.color(GOLD, a * 0.9f);
+                Lines.stroke(2f);
+                Lines.arc(tu.x, tu.y, r * 1.6f, pr, 90f);
+                Draw.reset();
+            });
+        }
+    }
+
     // ================================================================== Khởi tạo unit
 
     /** Gọi từ NexMod.loadContent(). */
@@ -503,6 +691,7 @@ public final class Zeralion {
         cannonSound = Vars.headless ? Sounds.none : Vars.tree.loadSound("cannon-shot-1");
         for (int i = 0; i < STAGES; i++) BULLETS[i] = new ZBullet(i);
         chargeFx = makeChargeFx();
+        makeBindContent();
 
         zeralion = new UnitType("zeralion") {{
             constructor = LegsUnit::create;
@@ -511,7 +700,9 @@ public final class Zeralion {
             description = "Cơ giáp sư tử vàng 4 chân, 2 pháo vai bắn chu kỳ 3 nhịp, nhịp sau mạnh hơn nhịp trước.";
             details = "Mỗi khe pháo bắn lần lượt (rồi lặp lại): 3 viên 50% Tấn công -> 2 viên 125% Tấn công + 10% máu hiện tại "
                 + "-> 1 viên 270% Tấn công + 30% máu hiện tại. Các viên bắn thẳng hàng nối tiếp nhau; "
-                + "nhịp càng nặng đạn càng nhanh, màn hình rung nhẹ. Đòn 3 tụ lực gần 1 giây trước khi bắn.";
+                + "nhịp càng nặng đạn càng nhanh, màn hình rung nhẹ. Đòn 3 tụ lực gần 1 giây trước khi bắn. "
+                + "Nội tại: tự khóa mục tiêu 1.5 giây rồi bắn tia laser vàng kim, cấm mục tiêu hành động 0.9 giây "
+                + "(không bắn, không di chuyển, không quay, không dùng kỹ năng; pilot vẫn hoạt động), hồi 8 giây.";
 
             outlineColor = Pal.darkOutline;
             envDisabled = Env.none;
@@ -528,6 +719,7 @@ public final class Zeralion {
             targetAir = true;
             targetGround = true;
             faceTarget = true;
+            abilities.add(new BindLockAbility());
 
             // 4 chân kiểu Aureon (sprite leg / leg-base / joint / joint-base copy từ Aureon)
             hovering = true;

@@ -48,6 +48,7 @@ public final class ExplayderAbility {
         explayder.abilities.add(new Ability() {
             @Override
             public void update(Unit unit) {
+            if (Zeralion.isBound(unit)) return;
                 if (unit == null) return;
 
                 int id = unit.id;
