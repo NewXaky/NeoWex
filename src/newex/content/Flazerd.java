@@ -52,6 +52,7 @@ public final class Flazerd {
 
     static final float deadZone = 40f;
     static final Color laserColor = Color.valueOf("bf7fff");
+    static final Color burstBlue = Color.valueOf("4d7dff");
     static final Color particleColor = Color.valueOf("e8bfff");
     static final Color deepPurple = Color.valueOf("6a1b9a");
     static final Color greenLaserColor = Color.valueOf("33ff55");
@@ -72,47 +73,52 @@ public final class Flazerd {
     static final HashMap<Integer, State> states = new HashMap<>();
     static State state(int id) { State s = states.get(id); if (s == null) { s = new State(); states.put(id, s); } return s; }
 
-    /** Hiệu ứng nổ đa lớp Pyroclastic Impact màu tím (Vòng xung kích, khói bốc lên, cầu lửa, tia lửa văng và lõi chớp sáng). */
-    static final Effect purplePyroclasticExplosion = new Effect(55f, 120f, e -> {
-        float fin = e.fin();
-        float fout = e.fout();
+    static final Color fireA = Color.valueOf("ffd27a"), fireB = Color.valueOf("ff7a1a"), smokeC = Color.valueOf("4a4540");
 
-        // 1. Rising Billowing Smoke (Khói tím sẫm cuộn lên)
-        Draw.color(deepPurple, Color.darkGray, fin);
-        Draw.alpha(fout * 0.65f);
-        Angles.randLenVectors(e.id + 1, 10, 12f + fin * 34f, (x, y) -> {
-            Fill.circle(e.x + x, e.y + y + fin * 16f, 4f + fout * 9f);
-        });
+    /** Pyroclastic Impact (như ảnh): chớp lõi, cầu lửa cuộn, tia lửa + mảnh vỡ, sóng xung kích + bụi, khói bốc lên. */
+    static final Effect purplePyroclasticExplosion = new Effect(75f, 220f, e -> {
+        final float fin = e.fin(), fout = e.fout();
 
-        // 2. Radial Shockwave & Dust (Sóng xung kích lan tỏa)
-        Draw.color(laserColor, particleColor, fin);
-        Lines.stroke(fout * 3.5f);
-        Lines.circle(e.x, e.y, fin * 56f);
-        Lines.stroke(fout * 1.5f);
-        Lines.circle(e.x, e.y, fin * 40f);
+        // 1. Khói bốc lên, phình to
+        Draw.color(smokeC);
+        Draw.alpha(Mathf.clamp(fin * 4f) * fout * 0.7f);
+        Angles.randLenVectors(e.id + 1, 14, 8f + fin * 26f, (x, y) -> Fill.circle(e.x + x * 0.6f, e.y + y * 0.6f + fin * 36f, 6f + fin * 10f));
 
-        // 3. Rolling Fireball Volumetrics (Cầu lửa năng lượng tím)
-        Draw.color(particleColor, laserColor, fin);
-        Draw.alpha(fout * 0.9f);
-        Angles.randLenVectors(e.id + 2, 8, fin * 24f, (x, y) -> {
-            Fill.circle(e.x + x, e.y + y, fout * 11f);
-        });
+        // 2. Sóng xung kích hình elip + bụi trên mặt đất
+        Draw.color(fireA, fireB, fin);
+        Lines.stroke(fout * 3f);
+        float rw = fin * 70f, rh = rw * 0.4f;
+        for (int i = 0; i < 36; i++) {
+            float a1 = i * 10f, a2 = (i + 1) * 10f;
+            Lines.line(e.x + Mathf.cosDeg(a1) * rw, e.y + Mathf.sinDeg(a1) * rh, e.x + Mathf.cosDeg(a2) * rw, e.y + Mathf.sinDeg(a2) * rh);
+        }
+        Draw.color(smokeC);
+        Draw.alpha(fout * 0.4f);
+        for (int i = 0; i < 12; i++) {
+            float ang = i * 30f + e.id * 7f;
+            Fill.circle(e.x + Mathf.cosDeg(ang) * rw, e.y + Mathf.sinDeg(ang) * rh, 3f + fin * 5f);
+        }
 
-        // 4. Sparks & Flying Debris (Tia lửa & mảnh vỡ văng ra)
-        Draw.color(Color.white, laserColor, fin);
-        Lines.stroke(fout * 2f);
-        Angles.randLenVectors(e.id + 3, 16, 8f + fin * 65f, (x, y) -> {
-            float ang = Mathf.angle(x, y);
-            Lines.lineAngle(e.x + x, e.y + y, ang, fout * 9f);
-            Fill.square(e.x + x * 0.85f, e.y + y * 0.85f, fout * 2.2f, ang + fin * 180f);
-        });
+        // 3. Cầu lửa cuộn (vàng -> cam)
+        Draw.color(fireA, fireB, fin);
+        Draw.alpha(fout * 0.95f);
+        Angles.randLenVectors(e.id + 2, 12, 4f + fin * 26f, (x, y) -> Fill.circle(e.x + x, e.y + y, fout * 11f + 2f));
 
-        // 5. Core Flash & Glow (Chớp sáng lõi trắng-tím)
-        if (fin < 0.45f) {
-            float flashOut = 1f - (fin / 0.45f);
+        // 4. Tia lửa + mảnh vỡ văng
+        Draw.color(Color.white, fireB, fin);
+        Lines.stroke(fout * 1.8f);
+        Angles.randLenVectors(e.id + 3, 22, 10f + fin * 85f, (x, y) -> Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), fout * 11f));
+        Draw.color(Color.darkGray);
+        Angles.randLenVectors(e.id + 4, 8, 6f + fin * 55f, (x, y) -> Fill.square(e.x + x, e.y + y + fin * 6f - fin * fin * 14f, fout * 2.4f, fin * 300f));
+
+        // 5. Chớp lõi trắng + quầng sáng
+        if (fin < 0.4f) {
+            float f = 1f - fin / 0.4f;
             Draw.color(Color.white);
-            Fill.circle(e.x, e.y, flashOut * 16f);
-            Drawf.light(e.x, e.y, flashOut * 75f, laserColor, 0.9f);
+            Fill.circle(e.x, e.y, f * 17f);
+            Draw.color(fireA);
+            for (int i = 0; i < 4; i++) Lines.lineAngle(e.x, e.y, i * 90f + 45f, f * 34f);
+            Drawf.light(e.x, e.y, f * 90f, fireB, 0.9f);
         }
         Draw.reset();
     });
@@ -328,28 +334,46 @@ public final class Flazerd {
                 float spread = (1f - progress) * 28f; // 2 tia ngoài ép sát vào tia giữa
                 float beamAlpha = Mathf.clamp(progress * 2.5f);
 
-                // Vòng năng lượng tụ ở đầu nòng & dọc trục
-                Draw.color(laserColor);
-                Draw.alpha(beamAlpha);
-                Lines.stroke(2f);
-                Lines.circle(startX + Angles.trnsx(laserAngle, 14f), startY + Angles.trnsy(laserAngle, 14f), 6f + (1f - progress) * 14f);
+                float mx = startX + Angles.trnsx(laserAngle, 14f), my = startY + Angles.trnsy(laserAngle, 14f);
 
-                // Vẽ 3 tia: 1 tia chính giữa + 2 tia phụ hai bên hội tụ về mục tiêu
-                for (int side = -1; side <= 1; side++) {
-                    float sx = startX + Angles.trnsx(laserAngle + 90f, side * spread);
-                    float sy = startY + Angles.trnsy(laserAngle + 90f, side * spread);
-                    float width = (side == 0) ? (4.5f + progress * 4f) : (2.2f + progress * 2f);
+                // Quả cầu năng lượng + vòng tụ ở đầu nòng
+                Draw.color(burstBlue);
+                Draw.alpha(0.5f + progress * 0.5f);
+                Fill.circle(mx, my, 3f + progress * 4f);
+                Draw.color(Color.white);
+                Fill.circle(mx, my, 1.5f + progress * 2.5f);
+                Draw.color(burstBlue);
+                Lines.stroke(1.5f);
+                Lines.circle(mx, my, 6f + (1f - progress) * 16f);
+                Drawf.light(mx, my, 30f + progress * 40f, burstBlue, 0.8f);
 
-                    Draw.color(laserColor);
-                    Draw.alpha(beamAlpha);
-                    Lines.stroke(width);
-                    Lines.line(sx, sy, endX, endY);
+                // Tia mảnh sáng chói (lõi trắng, quầng xanh)
+                float ba = Mathf.clamp((progress - 0.15f) * 2.5f);
+                Draw.color(burstBlue); Draw.alpha(0.3f * ba); Lines.stroke(9f + progress * 5f); Lines.line(mx, my, endX, endY);
+                Draw.alpha(ba); Lines.stroke(3.2f); Lines.line(mx, my, endX, endY);
+                Draw.color(Color.white); Draw.alpha(ba); Lines.stroke(1.3f); Lines.line(mx, my, endX, endY);
 
-                    Draw.color(Color.white);
-                    Draw.alpha(beamAlpha);
-                    Lines.stroke(width * 0.4f);
-                    Lines.line(sx, sy, endX, endY);
+                // Các vòng xoáy chạy dọc tia
+                for (int r = 0; r < 5; r++) {
+                    float rt = ((Time.time * 0.05f) + r / 5f) % 1f;
+                    Draw.color(burstBlue); Draw.alpha(ba);
+                    drawLaserRing(Mathf.lerp(mx, endX, rt), Mathf.lerp(my, endY, rt), 2.5f, 8f * (1f - rt * 0.4f), laserAngle, 1f, burstBlue);
                 }
+
+                // Chớp + tia sét tại điểm chạm
+                Draw.color(Color.white); Draw.alpha(ba);
+                Fill.circle(endX, endY, 4f + progress * 9f);
+                Draw.color(burstBlue); Lines.stroke(1.2f);
+                for (int i = 0; i < 5; i++) {
+                    Mathf.randomSeed((long) (Time.time / 2f) * 31L + i);
+                    float cx = endX, cy = endY, ang = Mathf.random(360f);
+                    for (int sg = 0; sg < 4; sg++) {
+                        float nx = cx + Angles.trnsx(ang, 7f), ny = cy + Angles.trnsy(ang, 7f);
+                        Lines.line(cx, cy, nx, ny);
+                        cx = nx; cy = ny; ang += Mathf.range(55f);
+                    }
+                }
+                Drawf.light(endX, endY, 40f + progress * 50f, burstBlue, 0.9f);
                 Draw.reset();
                 return;
             }
