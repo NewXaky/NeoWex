@@ -440,6 +440,8 @@ public final class MachineUi {
             Element sh = shell;
             if (sh == null || Core.scene == null) return;
             float nw = sh.getWidth(), nh = sh.getHeight() + extraH;
+            // hàng nút giữ lại có thể rộng hơn khung -> tính vào để không tràn khỏi màn hình
+            if (keepButtons && dialog.buttons != null) nw = Math.max(nw, dialog.buttons.getPrefWidth() + 8f);
             if (nw <= 0f || nh <= 0f) return;
             float[] a = avail();
             float k = Math.min(FIT_LIMIT * a[0] / nw, FIT_LIMIT * a[1] / nh);
@@ -781,32 +783,53 @@ public final class MachineUi {
     }
 
     /** Label.getAlignment() không có ở v157 -> đọc field labelAlign bằng reflection (không đọc được thì coi như không phải center). */
+    private static java.lang.reflect.Field labelAlignField, cellMaxWField;
+    private static boolean labelAlignTried, cellMaxWTried;
+    /** Các Label đã được ép wrap rồi: tránh gọi setWrap lặp lại làm bố cục giật. */
+    private static final Set<Label> fitted = Collections.newSetFromMap(new WeakHashMap<>());
+
     private static int labelAlign(Label l) {
         try {
-            java.lang.reflect.Field f = Label.class.getDeclaredField("labelAlign");
-            f.setAccessible(true);
-            return f.getInt(l);
+            if (!labelAlignTried) {
+                labelAlignTried = true;
+                try {
+                    labelAlignField = Label.class.getDeclaredField("labelAlign");
+                    labelAlignField.setAccessible(true);
+                } catch (Throwable ignored) { labelAlignField = null; }
+            }
+            return labelAlignField == null ? -1 : labelAlignField.getInt(l);
         } catch (Throwable ignored) { return -1; }
     }
 
     /** Cell.getMaxWidth() không có ở v157 -> đọc field maxWidth bằng reflection (đọc không được thì trả 0 = chưa đặt). */
     private static float cellMaxWidth(Cell c) {
         try {
-            java.lang.reflect.Field f = Cell.class.getDeclaredField("maxWidth");
-            f.setAccessible(true);
+            if (!cellMaxWTried) {
+                cellMaxWTried = true;
+                try {
+                    cellMaxWField = Cell.class.getDeclaredField("maxWidth");
+                    cellMaxWField.setAccessible(true);
+                } catch (Throwable ignored) { cellMaxWField = null; }
+            }
+            java.lang.reflect.Field f = cellMaxWField;
+            if (f == null) return 0f;
             Object v = f.get(c);
             if (v instanceof Number) { float w = ((Number) v).floatValue(); return (Float.isNaN(w) || Float.isInfinite(w)) ? 0f : w; }
         } catch (Throwable ignored) {}
         return 0f;
     }
 
+    private static void wrapLabel(Label l) {
+        if (!fitted.add(l)) return;
+        l.setWrap(true);
+        if (labelAlign(l) == Align.center) l.setAlignment(Align.left);
+    }
+
     /** Ép mọi Label bên trong tự động xuống dòng và giới hạn chiều rộng để không tràn khỏi khung. */
     private static void fitRecursive(Element el, float maxW) {
         if (el == null) return;
         if (el instanceof Label) {
-            Label l = (Label) el;
-            l.setWrap(true);
-            if (labelAlign(l) == Align.center) l.setAlignment(Align.left);
+            wrapLabel((Label) el);
         } else if (el instanceof Table) {
             Table t = (Table) el;
             Seq<Cell> cells = t.getCells();
@@ -814,7 +837,7 @@ public final class MachineUi {
                 Cell c = cells.get(i);
                 Element child = c.get();
                 if (child instanceof Label) {
-                    ((Label) child).setWrap(true);
+                    wrapLabel((Label) child);
                     if (cellMaxWidth(c) <= 0f) c.maxWidth(maxW);
                 }
                 fitRecursive(child, maxW);
@@ -896,17 +919,17 @@ public final class MachineUi {
             Table cols = new Table();
             cols.top().left();
             if (hasLeft) {
-                Table lc = column(T("YÊU CẦU", "REQUIREMENTS"), AMBER, cardStack(p.autoLeft, AMBER, ew, cw));
+                Table lc = column(T("YÊU CẦU", "REQUIREMENTS"), AMBER, cardStack(p.autoLeft, AMBER, ew, cw), false);
                 cols.add(lc).size(colW, colH).padRight(gap);
             }
-            Table rc = column(T("THAO TÁC", "ACTIONS"), Pal.accent, cardStack(p.autoRight, Pal.accent, ew, cw));
+            Table rc = column(T("THAO TÁC", "ACTIONS"), Pal.accent, cardStack(p.autoRight, Pal.accent, ew, cw), false);
             cols.add(rc).size(colW, colH);
             page.add(cols).left().top();
             c.add(page).size(pw, ph).top().left();
         } else {
             Table page = new Table();
             page.top().left();
-            page.add(column(T("KHO LÕI", "CORE STORAGE"), Pal.accent, coreView(false, pw - 12f))).size(pw, ph);
+            page.add(column(T("KHO LÕI", "CORE STORAGE"), Pal.accent, coreView(false, pw - 12f), false)).size(pw, ph);
             c.add(page).size(pw, ph).top().left();
         }
     }
@@ -962,9 +985,21 @@ public final class MachineUi {
     private static class Card extends Table {
         private final Color edge;
 
+        private Element target;
+        private float fitW;
+        private int frame;
+
         Card(Color edge) {
             super(Styles.black6);
             this.edge = edge;
+            setClip(true);
+        }
+
+        /** Mod có thể thêm Label mới sau khi mở: cứ ~20 khung hình ép wrap lại một lần. */
+        void keepFit(Element el, float w) {
+            target = el;
+            fitW = w;
+            update(() -> { if (++frame % 20 == 0) fitRecursive(target, fitW); });
         }
 
         @Override
@@ -997,13 +1032,14 @@ public final class MachineUi {
             Card c = new Card(edge);
             c.margin(6f);
             c.add(el).width(ew).left();
+            c.keepFit(el, ew);
             t.add(c).width(cw).left().padBottom(6f).row();
         }
         return t;
     }
 
     /** Cột nền tối: tiêu đề mục + vùng cuộn tự do cả dọc lẫn ngang (kéo theo mọi hướng, lăn chuột trên PC, có nảy ở mép). */
-    private static Table column(String title, Color accent, Table content) {
+    private static Table column(String title, Color accent, Table content, boolean scrollX) {
         Table col = new Table(Styles.black8);
         col.margin(6f);
         col.top();
@@ -1011,9 +1047,9 @@ public final class MachineUi {
         col.add(sectionHeader(title, accent)).growX().padBottom(5f).row();
 
         final ScrollPane sp = new ScrollPane(content, Styles.noBarPane);
-        sp.setScrollingDisabled(false, false);
+        sp.setScrollingDisabled(!scrollX, false);
         sp.setFlickScroll(true);
-        sp.setOverscroll(true, true);
+        sp.setOverscroll(scrollX, true);
         sp.setFadeScrollBars(true);
         sp.setClip(true);
         // PC: rê chuột vào là lăn chuột cuộn được ngay, không cần bấm
