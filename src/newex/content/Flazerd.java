@@ -402,20 +402,11 @@ public final class Flazerd {
                         Draw.color(burstBlue); Draw.alpha(fire * fade);
                         drawLaserRing(Mathf.lerp(mx, endX, rt), Mathf.lerp(my, endY, rt), 2.5f, 8f * (1f - rt * 0.4f), laserAngle, 1f, burstBlue);
                     }
-                    // Bong bóng nhỏ trôi quanh tia
-                    Draw.color(Color.white); Lines.stroke(0.8f);
+                    // Hạt tam giác chạy dọc theo tia từ nòng tới mục tiêu, liên tục tới lúc nổ
                     for (int i = 0; i < 12; i++) {
-                        float t = (tm * 0.015f + i * 0.37f) % 1f;
-                        float off = Mathf.sin(i * 7.3f) * (5f + t * 16f);
-                        Draw.alpha(0.7f * fire * fade * (1f - t));
-                        Lines.circle(mx + ax * len * t + px * off, my + ay * len * t + py * off, 1.2f + (i % 3) * 0.5f);
-                    }
-                    // Mảnh vỡ bay dọc tia
-                    for (int i = 0; i < 8; i++) {
-                        float t = (tm * 0.03f + i * 0.21f) % 1f;
-                        float off = Mathf.sin(i * 3.1f + 1f) * (8f + t * 14f);
-                        Draw.color(i % 2 == 0 ? Color.white : burstBlue); Draw.alpha(fire * fade * (1f - t * 0.6f));
-                        shard(mx + ax * len * t + px * off, my + ay * len * t + py * off, 1.8f, tm * 6f + i * 55f);
+                        float t = (tm * 0.04f + i / 12f) % 1f;
+                        Draw.color(i % 2 == 0 ? Color.white : burstBlue); Draw.alpha(fire);
+                        shard(mx + ax * len * t, my + ay * len * t, 2f, laserAngle);
                     }
                 }
                 Draw.reset();
