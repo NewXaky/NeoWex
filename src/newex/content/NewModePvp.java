@@ -475,7 +475,7 @@ public class NewModePvp {
         /** Hỗn loạn: vòng thẻ đã chọn, số thẻ đã chọn, thẻ trong tay, thẻ đã gắn {pilot, thẻ}; chs = cache chỉ số +thẻ (không lưu). */
         int chRound = 0, chPicks = 0; ArrayList<Integer> chHand = new ArrayList<>(); ArrayList<int[]> chEq = new ArrayList<>(); int[] chs;
         /** Chiến tranh: túi vật phẩm (id mẫu), 6 ô trang bị (-1 = trống) và cache cấp cộng thêm (không lưu). */
-        ArrayList<Integer> gInv = new ArrayList<>(); int[] gEq = {-1, -1, -1, -1, -1, -1};
+        ArrayList<Integer> gInv = new ArrayList<>(); int[] gEq = GearItems.newEq();
         int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE; boolean gAny = false;
         void padStats() { if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length); }
     }
@@ -858,6 +858,7 @@ public class NewModePvp {
             if (Vars.netClient == null) return;
             Vars.netClient.addPacketHandler(SYNC_KIND, content -> onSync(content));
             Vars.netClient.addPacketHandler(SHIELD_KIND, content -> onShieldSync(content));
+            Vars.netClient.addPacketHandler(GearItems.FX_KIND, content -> GearItems.onFxPacket(content));
             Vars.netClient.addPacketHandler(PFX_KIND, content -> {
                 try {
                     Integer id = leadInt(content);
@@ -5446,7 +5447,7 @@ public class NewModePvp {
         winning = false; seenBoth = false; byId = new HashMap<>(); teamsCache = null;
         mindustry.game.Rules r = Vars.state.rules;
         r.tags.put(TAG_ACTIVE, "1");
-        ChaosMode.stampTag(); ChaosMode.reset();
+        ChaosMode.stampTag(); GearItems.stampTag(); ChaosMode.reset();
         store = new LinkedHashMap<>();
         r.tags.put(TAG_STORE, "{}");
         matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldEnded = false;
@@ -5537,6 +5538,9 @@ public class NewModePvp {
         final TextField mlField = numField(content, tr("Cấp tối đa (PvP):", "Max level (PvP):"), maxLevel(), 3, tr("cấp (1 - " + LIMIT_MAXLV + ", mặc định " + MAX_LEVEL + ")", "level (1 - " + LIMIT_MAXLV + ", default " + MAX_LEVEL + ")"), false);
         final TextField shField = numField(content, tr("Thời gian khiên bất tử của lõi đầu trận (phút, 0 = tắt):", "Core invincible shield time at match start (minutes, 0 = off):"), shieldMinutes(), 4,
             tr("phút (0 - " + LIMIT_SHIELD_MIN + ", mặc định " + DEFAULT_SHIELD_MIN + "; " + LIMIT_SHIELD_MIN + " = lõi bất tử vĩnh viễn)", "min (0 - " + LIMIT_SHIELD_MIN + ", default " + DEFAULT_SHIELD_MIN + "; " + LIMIT_SHIELD_MIN + " = core invincible forever)"), true);
+        content.add(tr("[accent]-- CHẾ ĐỘ CHIẾN TRANH --[]", "[accent]-- WAR MODE --[]")).padTop(12).row();
+        final TextField gearSlotField = numField(content, tr("Số ô trang bị vật phẩm:", "Item equipment slots:"), GearItems.slots(), 2,
+            tr("ô (" + GearItems.TYPES + " - " + GearItems.MAXSLOTS + ", mặc định " + GearItems.TYPES + "; cần mở lại map)", "slots (" + GearItems.TYPES + " - " + GearItems.MAXSLOTS + ", default " + GearItems.TYPES + "; reopen the map)"), false);
         final boolean[] chaos = {Core.settings.getBool(ChaosMode.KEY, false)};
         final TextButton[] chBtn = new TextButton[1];
         content.add(tr("[scarlet]-- CHẾ ĐỘ HỖN LOẠN --[]", "[scarlet]-- CHAOS MODE --[]")).padTop(12).row();
@@ -5554,6 +5558,7 @@ public class NewModePvp {
             "At each interval pick 1 of 3 buff/debuff cards. Picking a card you already have stacks it (with diminishing returns). Stats and turret buffs become unlimited. Affects both teams; reopen the map to apply.") + "[]").width(320).wrap().left().row();
         return () -> {
             Core.settings.put(ChaosMode.KEY, chaos[0]);
+            Core.settings.put(GearItems.KEY_SLOTS, clampParse(gearSlotField, GearItems.TYPES, GearItems.TYPES, GearItems.MAXSLOTS));
             Core.settings.put(ChaosMode.KEY_PICKS, clampParse(chPickField, ChaosMode.DEF_PICKS, 1, ChaosMode.LIM_PICKS));
             Core.settings.put(ChaosMode.KEY_ROUNDS, clampParse(chRoundField, ChaosMode.DEF_ROUNDS, 1, ChaosMode.LIM_ROUNDS));
             Core.settings.put(ChaosMode.KEY_MINUTES, clampParse(chMinField, ChaosMode.DEF_MINUTES, 1, ChaosMode.LIM_MINUTES));
@@ -6247,12 +6252,22 @@ public class NewModePvp {
             ArrayList<String[]> lines = u != null ? scanLines(st, u) : null;
             if (lines == null) p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[white]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
             else addScanLines(p, lines, 4f);
-            p.add("[accent]" + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(6).row();
             boolean any = false;
-            for (int i = 0; i < STATS.length; i++) {
-                if (!(st.s[i] > 0)) continue;
-                any = true;
-                p.add("[lightgray]" + tr(STATS[i].vi, STATS[i].en) + "[]  [white]" + st.s[i] + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
+            if (GearItems.war()) {   // Chiến tranh: hiện tên vật phẩm đang lắp thay cho chỉ số đã nâng
+                p.add("[accent]" + tr("Vật phẩm đang lắp", "Equipped items") + "[]").left().padTop(6).row();
+                for (int i = 0; i < GearItems.slots(); i++) {
+                    GearItems.Def gd = GearItems.def(st.gEq[i]);
+                    if (gd == null) continue;
+                    any = true;
+                    p.add("[lightgray]" + GearItems.slotName(i) + "[]  " + GearItems.col(gd.rarity) + GearItems.name(gd) + "[]  [lightgray](" + GearItems.rarName(gd.rarity) + ")[]").left().wrap().growX().row();
+                }
+            } else {
+                p.add("[accent]" + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(6).row();
+                for (int i = 0; i < STATS.length; i++) {
+                    if (!(st.s[i] > 0)) continue;
+                    any = true;
+                    p.add("[lightgray]" + tr(STATS[i].vi, STATS[i].en) + "[]  [white]" + st.s[i] + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
+                }
             }
             if (!any) p.add("[lightgray]-[]").left().row();
             p.add("[accent]" + tr("Pháo lắp trên unit ", "Turrets mounted ") + equipCount(st) + "/" + equipSlots(st) + "[]").left().padTop(8).row();

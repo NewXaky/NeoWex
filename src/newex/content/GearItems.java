@@ -2,7 +2,16 @@ package newex.content;
 
 import arc.Core;
 import arc.graphics.Color;
+import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.Fill;
+import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
+import arc.math.Mathf;
+import arc.math.geom.Position;
+import mindustry.entities.Effect;
+import mindustry.game.Team;
+import mindustry.gen.Call;
+import mindustry.gen.Groups;
 import arc.scene.event.Touchable;
 import arc.scene.ui.Image;
 import arc.scene.ui.TextButton;
@@ -31,7 +40,8 @@ final class GearItems {
     private GearItems() {}
 
     static final String REQ_GEAR = "newex-pvp-gear";
-    static final int SLOTS = 6, INV_CAP = 80;
+    static final int MAXSLOTS = 24, TYPES = 6, INV_CAP = 80;
+    static final String KEY_SLOTS = "newex-pvp-gear-slots", TAG_SLOTS = "newex-pvp-gear-slots-t", FX_KIND = "newex-pvp-gearfx";
     static final int S_WEAPON = 0, S_HELM = 1, S_ARMOR = 2, S_BOOTS = 3, S_RING = 4, S_CHARM = 5;
     static final int R_COMMON = 0, R_RARE = 1, R_EPIC = 2, R_LEGEND = 3, R_MYTHIC = 4, RARITIES = 5;
 
@@ -119,7 +129,18 @@ final class GearItems {
     static String col(int r) { return "[#" + RAR_HEX[r] + "]"; }
     static Color colorOf(int r) { return Color.valueOf(RAR_HEX[Math.max(0, Math.min(RARITIES - 1, r))]); }
     static String name(Def d) { return tr(d.vi, d.en); }
-    static String slotName(int s) { return tr(SLOT_VI[s], SLOT_EN[s]); }
+    static String slotName(int s) { return tr(SLOT_VI[s % TYPES], SLOT_EN[s % TYPES]) + (s >= TYPES ? " " + (s / TYPES + 1) : ""); }
+    static int[] newEq() { int[] a = new int[MAXSLOTS]; Arrays.fill(a, -1); return a; }
+    static int clampI(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
+    /** Số ô trang bị (6 - 24): máy chủ ghi vào rules.tags lúc vào trận để mọi người dùng chung giá trị. */
+    static int slots() {
+        try {
+            arc.struct.StringMap tags = NewModePvp.getTags();
+            if (tags != null && tags.containsKey(TAG_SLOTS)) return clampI(Integer.parseInt(tags.get(TAG_SLOTS, "6")), TYPES, MAXSLOTS);
+        } catch (Throwable ignored) {}
+        return clampI(Core.settings.getInt(KEY_SLOTS, TYPES), TYPES, MAXSLOTS);
+    }
+    static void stampTag() { try { Vars.state.rules.tags.put(TAG_SLOTS, String.valueOf(clampI(Core.settings.getInt(KEY_SLOTS, TYPES), TYPES, MAXSLOTS))); } catch (Throwable ignored) {} }
     static String rarName(int r) { return tr(RAR_VI[r], RAR_EN[r]); }
     static Def def(int id) { return id >= 0 && id < n ? DEFS[id] : null; }
 
@@ -158,12 +179,12 @@ final class GearItems {
 
     // ------------------------------------------------------------------ chỉ số cộng thêm
     static void refreshDelta(NewModePvp.St st) {
-        int key = Arrays.hashCode(st.gEq);
+        int key = Arrays.hashCode(st.gEq) * 31 + slots();
         if (key == st.gKey) return;
         st.gKey = key;
         Arrays.fill(st.gDelta, 0);
         boolean any = false;
-        for (int s = 0; s < SLOTS; s++) {
+        for (int s = 0, ns = slots(); s < ns; s++) {
             Def d = def(st.gEq[s]);
             if (d == null) continue;
             for (int i = 0; i + 1 < d.mods.length; i += 2) {
@@ -197,7 +218,7 @@ final class GearItems {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < st.gInv.size(); i++) { if (i > 0) sb.append(','); sb.append(st.gInv.get(i)); }
         sb.append(';');
-        for (int i = 0; i < SLOTS; i++) { if (i > 0) sb.append(','); sb.append(st.gEq[i]); }
+        for (int i = 0; i < MAXSLOTS; i++) { if (i > 0) sb.append(','); sb.append(st.gEq[i]); }
         return sb.toString();
     }
     static void dec(NewModePvp.St st, String s) {
@@ -208,7 +229,7 @@ final class GearItems {
             if (p.length > 0 && !p[0].isEmpty()) for (String c : p[0].split(",")) { int id = Integer.parseInt(c.trim()); if (def(id) != null) st.gInv.add(id); }
             if (p.length > 1 && !p[1].isEmpty()) {
                 String[] q = p[1].split(",");
-                for (int i = 0; i < SLOTS && i < q.length; i++) { int id = Integer.parseInt(q[i].trim()); st.gEq[i] = (def(id) != null && def(id).slot == i) ? id : -1; }
+                for (int i = 0; i < MAXSLOTS && i < q.length; i++) { int id = Integer.parseInt(q[i].trim()); st.gEq[i] = (def(id) != null && def(id).slot == i % TYPES) ? id : -1; }
             }
         } catch (Throwable ignored) {}
     }
@@ -250,6 +271,7 @@ final class GearItems {
             if (NewModePvp.isBotPl(pl)) botAutoEquip(st);
             else NewModePvp.toast(pl, tr("[accent]Nhận vật phẩm: ", "[accent]Item received: ") + col(d.rarity) + name(d) + " [" + rarName(d.rarity) + "][]" + tr(" - xem trong Túi đồ", " - see your Bag"));
         }
+        playFx(u, pid, d.rarity);
         NewModePvp.changed();
     }
     static int power(Def d) { int p = 0; for (int i = 0; i + 1 < d.mods.length; i += 2) p += d.mods[i + 1]; return p + d.rarity * 3; }
@@ -264,6 +286,127 @@ final class GearItems {
                 if (cur != null) st.gInv.add(cur.id);
                 st.gEq[d.slot] = d.id;
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ hiệu ứng tia sáng bay về người chơi
+    /** Tia sáng màu theo độ hiếm bay cong (lên/xuống ngẫu nhiên) từ xác quái tới người nhận; e.rotation = độ cong, e.data = đích. */
+    static final Effect beamFx = new Effect(48f, 900f, e -> {
+        if (!(e.data instanceof Position)) return;
+        Position t = (Position) e.data;
+        float x0 = e.x, y0 = e.y, x1 = t.getX(), y1 = t.getY();
+        float dx = x1 - x0, dy = y1 - y0, dist = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
+        float cx = (x0 + x1) / 2f - dy / dist * e.rotation * dist * 0.5f, cy = (y0 + y1) / 2f + dx / dist * e.rotation * dist * 0.5f;
+        float head = Mathf.clamp(e.fin() * 1.15f), fade = 1f - Mathf.clamp((e.fin() - 0.85f) / 0.15f);
+        int seg = 12; float px = 0, py = 0;
+        for (int k = 0; k <= seg; k++) {
+            float q = Math.max(0f, head - k * 0.03f), iq = 1f - q;
+            float bx = iq * iq * x0 + 2f * iq * q * cx + q * q * x1, by = iq * iq * y0 + 2f * iq * q * cy + q * q * y1;
+            if (k > 0) {
+                float w = (1f - k / (float) seg) * 3.2f;
+                Draw.color(e.color, fade * (1f - k / (float) seg));
+                Lines.stroke(w); Lines.line(px, py, bx, by);
+            }
+            if (k == 0) { Draw.color(e.color, fade); Fill.circle(bx, by, 3.6f); Draw.color(1f, 1f, 1f, fade); Fill.circle(bx, by, 1.8f); }
+            px = bx; py = by;
+        }
+        Draw.reset();
+    });
+    static void showFx(float x, float y, int rarity, float curve, Unit target) {
+        if (Vars.headless || target == null) return;
+        try { beamFx.at(x, y, curve, colorOf(rarity), target); } catch (Throwable ignored) {}
+    }
+    /** Máy chủ/host: phát tia ở máy mình và gửi cho mọi client để ai cũng thấy. */
+    static void playFx(Unit src, int pid, int rarity) {
+        try {
+            Unit tg = NewModePvp.plUnit(pid);
+            if (tg == null || !tg.isValid()) return;
+            float curve = (0.3f + (float) Math.random() * 0.5f) * (Math.random() < 0.5 ? -1f : 1f);
+            showFx(src.x, src.y, rarity, curve, tg);
+            if (Vars.net.server()) Call.clientPacketReliable(FX_KIND, pid + "|" + src.x + "|" + src.y + "|" + rarity + "|" + curve);
+        } catch (Throwable ignored) {}
+    }
+    static void onFxPacket(String content) {
+        if (!Vars.net.client()) return;   // host đã tự phát ở playFx
+        try {
+            String[] a = content.split("\\|");
+            Unit tg = NewModePvp.plUnit(Integer.parseInt(a[0]));
+            if (tg != null) showFx(Float.parseFloat(a[1]), Float.parseFloat(a[2]), Integer.parseInt(a[3]), Float.parseFloat(a[4]), tg);
+        } catch (Throwable ignored) {}
+    }
+
+    // ------------------------------------------------------------------ cửa hàng (giá theo tốc độ lên cấp/điểm của từng phe)
+    static final int[] BASE_PRICE = {2, 5, 12, 28, 60};
+    static Team teamOfId(int id) {
+        Player p = Groups.player.getByID(id);
+        if (p == null) { NewModePvp.BotCtx b = NewModePvp.botOf(id); if (b != null) p = b.botPl; }
+        return p != null ? p.team() : null;
+    }
+    /** Hệ số giá của phe: phe tăng điểm (cấp) nhanh hơn trung bình thì đắt hơn, chậm hơn thì rẻ hơn (0.7 - 1.5). */
+    static float priceMul(Team t) {
+        if (t == null) return 1f;
+        java.util.HashMap<Integer, Float> tot = new java.util.HashMap<>();
+        for (java.util.Map.Entry<Integer, NewModePvp.St> e : NewModePvp.byId.entrySet()) {
+            Team tm = teamOfId(e.getKey());
+            if (tm != null) tot.merge(tm.id, (float) e.getValue().lv, Float::sum);
+        }
+        if (tot.size() < 2) return 1f;
+        float sum = 0; for (float v : tot.values()) sum += v;
+        float avg = sum / tot.size(), mine = tot.getOrDefault(t.id, avg);
+        return avg <= 0f ? 1f : Mathf.clamp(mine / avg, 0.7f, 1.5f);
+    }
+    static int price(Def d, Team t) { return Math.max(1, Math.round(BASE_PRICE[d.rarity] * priceMul(t))); }
+    static int sellPrice(Def d, Team t) { return Math.max(1, Math.round(price(d, t) * 0.6f)); }
+
+    static mindustry.ui.dialogs.BaseDialog shopDialog = null;
+    static void openShop() {
+        if (Vars.headless || !war()) return;
+        if (shopDialog != null && shopDialog.isShown()) return;
+        final MachineUi.Panel p = MachineUi.panel(tr("Cửa hàng vật phẩm", "Item shop"));
+        p.onBuild(() -> buildShop(p));
+        final String[] last = {NewModePvp.curVer()};
+        p.onTick(() -> {
+            if (!NewModePvp.nearOwnCore()) { p.hide(); return; }
+            String cv = NewModePvp.curVer();
+            if (!cv.equals(last[0]) && !Core.input.isTouched()) { last[0] = cv; p.rebuild(); }
+        });
+        shopDialog = p.dialog;
+        p.show();
+    }
+    static void buildShop(MachineUi.Panel pnl) {
+        Table h = pnl.header(), c = pnl.content();
+        h.clear(); c.clear();
+        NewModePvp.St st = NewModePvp.localState();
+        if (st == null) { c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row(); return; }
+        final float W = pnl.innerW();
+        final boolean narrow = NewModePvp.narrowAt(W);
+        final Team t = Vars.player != null ? Vars.player.team() : null;
+        float m = priceMul(t);
+        Table head = new Table(Styles.black6);
+        head.margin(8);
+        head.add("[yellow]" + tr("Điểm: ", "Points: ") + st.pts + "[]").left().expandX();
+        head.add("[lightgray]" + tr("Hệ số giá: ", "Price x") + "[white]x" + arc.util.Strings.fixed(m, 2) + "[]").right();
+        head.row();
+        head.add("[lightgray]" + (m > 1.02f ? tr("Phe bạn tăng điểm nhanh hơn → giá đắt hơn.", "Your team gains points faster → higher prices.")
+            : m < 0.98f ? tr("Phe bạn tăng điểm chậm hơn → giá rẻ hơn.", "Your team gains points slower → lower prices.") : tr("Hai phe đang ngang nhau.", "Teams are even.")) + "[]").colspan(2).left().growX().wrap().minWidth(0).padTop(2);
+        h.add(head).growX().pad(4).row();
+        // bán
+        c.add("[accent]" + tr("Bán vật phẩm trong túi", "Sell bag items") + "[]").left().padLeft(6).padTop(4).row();
+        boolean any = false;
+        for (int id : new ArrayList<>(st.gInv)) {
+            final Def d = def(id);
+            if (d == null) continue;
+            any = true;
+            c.add(itemRow(d, W, narrow, tr("Bán +", "Sell +") + sellPrice(d, t), () -> NewModePvp.send(REQ_GEAR, "s|" + d.id), null, null, false)).width(W).pad(3).row();
+        }
+        if (!any) c.add("[lightgray]" + tr("Túi không có vật phẩm.", "No items in your bag.") + "[]").left().padLeft(6).row();
+        // mua: nhóm theo loại, hiếm nhất lên đầu
+        for (int ty = 0; ty < TYPES; ty++) {
+            c.add("[accent]" + tr("Mua - ", "Buy - ") + tr(SLOT_VI[ty], SLOT_EN[ty]) + "[]").left().padLeft(6).padTop(8).row();
+            ArrayList<Def> l = new ArrayList<>();
+            for (int i = 0; i < n; i++) if (DEFS[i].slot == ty) l.add(DEFS[i]);
+            l.sort((x, y) -> y.rarity - x.rarity);
+            for (final Def d : l) c.add(itemRow(d, W, narrow, tr("Mua ", "Buy ") + price(d, t), () -> NewModePvp.send(REQ_GEAR, "b|" + d.id), null, null, false)).width(W).pad(3).row();
         }
     }
 
@@ -282,13 +425,18 @@ final class GearItems {
                 int idx = st.gInv.indexOf(v);
                 Def d = def(v);
                 if (idx < 0 || d == null) return;
+                int ns = slots(), tgt = -1;
+                Integer want = a.length > 2 ? NewModePvp.leadInt(a[2]) : null;
+                if (want != null && want >= 0 && want < ns && want % TYPES == d.slot) tgt = want;
+                for (int k = d.slot; tgt < 0 && k < ns; k += TYPES) if (st.gEq[k] < 0) tgt = k;   // ô trống cùng loại
+                if (tgt < 0) tgt = d.slot;                                                      // hết ô trống: thay ô đầu tiên của loại
                 st.gInv.remove(idx);
-                int old = st.gEq[d.slot];
+                int old = st.gEq[tgt];
                 if (old >= 0) st.gInv.add(old);
-                st.gEq[d.slot] = d.id;
+                st.gEq[tgt] = d.id;
                 NewModePvp.toast(player, tr("[accent]Đã lắp ", "[accent]Equipped ") + col(d.rarity) + name(d) + "[]");
             } else if (op.equals("u")) {                  // tháo ô v
-                if (v < 0 || v >= SLOTS || st.gEq[v] < 0) return;
+                if (v < 0 || v >= MAXSLOTS || st.gEq[v] < 0) return;
                 if (st.gInv.size() >= INV_CAP) return;
                 st.gInv.add(st.gEq[v]);
                 st.gEq[v] = -1;
@@ -296,6 +444,17 @@ final class GearItems {
                 int idx = st.gInv.indexOf(v);
                 if (idx < 0) return;
                 st.gInv.remove(idx);
+            } else if (op.equals("b")) {                  // mua vật phẩm mẫu id=v bằng điểm
+                Def d = def(v);
+                if (d == null || st.gInv.size() >= INV_CAP) return;
+                int pr = price(d, player.team());
+                if (st.pts < pr) { NewModePvp.toast(player, tr("[scarlet]Không đủ điểm!", "[scarlet]Not enough points!")); return; }
+                st.pts -= pr; st.gInv.add(d.id);
+            } else if (op.equals("s")) {                  // bán vật phẩm id=v trong túi lấy điểm
+                int idx = st.gInv.indexOf(v);
+                Def d = def(v);
+                if (idx < 0 || d == null) return;
+                st.gInv.remove(idx); st.pts += sellPrice(d, player.team());
             } else return;
             NewModePvp.changed();
         });
@@ -354,7 +513,7 @@ final class GearItems {
             in.add(col(d.rarity) + name(d) + "[]").growX().wrap().minWidth(0).labelAlign(arc.util.Align.center).row();
             in.add("[lightgray]" + rarName(d.rarity) + "[]").row();
         } else {
-            Image im = new Image(slotIcon(slot));
+            Image im = new Image(slotIcon(slot % TYPES));
             im.setColor(1f, 1f, 1f, 0.28f);
             in.add(im).size(52).pad(4).row();
             in.add("[gray]" + tr("Trống - chạm để lắp", "Empty - tap to equip") + "[]").growX().wrap().minWidth(0).labelAlign(arc.util.Align.center).row();
@@ -373,11 +532,12 @@ final class GearItems {
         hd.add("[lightgray]" + tr("Hạ quái đợt để nhận vật phẩm rơi vào Túi đồ (càng hiếm càng khó rơi). Chạm một ô để mở Túi đồ rồi bấm Lắp. Vật phẩm cộng/trừ cấp cho các chỉ số.",
             "Kill wave monsters to get item drops in your Bag (rarer = lower chance). Tap a slot to open the Bag then press Equip. Items add/subtract stat levels.") + "[]").left().growX().wrap().minWidth(0).row();
         c.add(hd).width(W).pad(3).row();
+        c.button(tr("Cửa hàng", "Shop"), Styles.flatBordert, GearItems::openShop).width(W - 8f).height(NewModePvp.btnH() * 0.9f).pad(3).row();
 
         int cols = W < 440f ? 2 : 3;
         float cw = Math.max(110f, (W - 8f * cols - 8f) / cols);
         Table grid = new Table();
-        for (int s = 0; s < SLOTS; s++) {
+        for (int s = 0, ns = slots(); s < ns; s++) {
             grid.add(slotTile(st, s, cw)).width(cw).minHeight(cw * 0.85f).pad(4);
             if ((s + 1) % cols == 0) grid.row();
         }
@@ -414,7 +574,7 @@ final class GearItems {
         }
         // đang lắp
         boolean anyEq = false;
-        for (int s = 0; s < SLOTS; s++) {
+        for (int s = 0, ns = slots(); s < ns; s++) {
             final int slot = s;
             Def d = def(st.gEq[s]);
             if (d == null || (fs >= 0 && fs != s)) continue;
@@ -425,7 +585,7 @@ final class GearItems {
         ArrayList<Def> inv = new ArrayList<>();
         for (int id : st.gInv) { Def d = def(id); if (d != null) inv.add(d); }
         inv.sort((x, y) -> {
-            int fx = x.slot == fs ? 0 : 1, fy = y.slot == fs ? 0 : 1;
+            int fx = fs >= 0 && x.slot == fs % TYPES ? 0 : 1, fy = fs >= 0 && y.slot == fs % TYPES ? 0 : 1;
             if (fx != fy) return fx - fy;
             if (x.rarity != y.rarity) return y.rarity - x.rarity;
             return x.id - y.id;
@@ -436,8 +596,8 @@ final class GearItems {
         }
         c.add("[lightgray]" + tr("Trong túi", "In bag") + "[]").left().padLeft(6).padTop(4).row();
         for (final Def d : inv) {
-            boolean match = fs < 0 || d.slot == fs;
-            Table r = itemRow(d, W, narrow, tr("Lắp", "Equip"), () -> NewModePvp.send(REQ_GEAR, "e|" + d.id), tr("Bỏ", "Drop"), () -> NewModePvp.send(REQ_GEAR, "d|" + d.id), match && fs >= 0);
+            boolean match = fs < 0 || d.slot == fs % TYPES;
+            Table r = itemRow(d, W, narrow, tr("Lắp", "Equip"), () -> NewModePvp.send(REQ_GEAR, "e|" + d.id + (match && fs >= 0 ? "|" + fs : "")), tr("Bỏ", "Drop"), () -> NewModePvp.send(REQ_GEAR, "d|" + d.id), match && fs >= 0);
             c.add(r).width(W).pad(3).row();
         }
     }
