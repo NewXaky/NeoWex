@@ -17,6 +17,7 @@ import arc.scene.ui.Image;
 import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Table;
 import mindustry.Vars;
+import newex.MachineUi;
 import mindustry.ctype.Content;
 import mindustry.ctype.ContentType;
 import mindustry.ctype.UnlockableContent;
