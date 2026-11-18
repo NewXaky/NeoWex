@@ -262,7 +262,7 @@ public final class Flazerd {
                     currentPoints = 200f;
                     st.charge = 200f;
                     st.burstTimer = 25; // Kích hoạt trạng thái bắn 3 tia hội tụ
-                    Sounds.laser.at(centerX, centerY);
+                    Sounds.chargeLancer.at(centerX, centerY);
                     return;
                 }
                 st.charge = currentPoints;
