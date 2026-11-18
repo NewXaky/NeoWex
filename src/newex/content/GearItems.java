@@ -306,6 +306,11 @@ final class GearItems {
     /** Chạm vào một ô trang bị: mở Túi đồ, danh sách vật phẩm của ô đó lên đầu. */
     static void openBagFor(int slot) { pendingFilter = slot; NewModePvp.openBag(); }
 
+    /** Nền trắng nhuộm màu (Tex.whiteui khai báo kiểu Drawable nên phải ép sang TextureRegionDrawable mới có tint). */
+    static arc.scene.style.Drawable tinted(Color c) {
+        return ((arc.scene.style.TextureRegionDrawable) Tex.whiteui).tint(c);
+    }
+
     static String statText(int[] mods) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i + 1 < mods.length; i += 2) {
@@ -318,7 +323,7 @@ final class GearItems {
 
     /** Thẻ vật phẩm: icon + tên + độ hiếm + chỉ số; tối đa 2 nút. */
     static Table itemRow(Def d, float W, boolean narrow, String b1, Runnable r1, String b2, Runnable r2, boolean glow) {
-        Table border = new Table(Tex.whiteui.tint(colorOf(d.rarity).cpy().a(glow ? 0.95f : 0.55f)));
+        Table border = new Table(tinted(colorOf(d.rarity).cpy().a(glow ? 0.95f : 0.55f)));
         border.margin(2f);
         Table row = new Table(Styles.black8);
         row.margin(8);
@@ -339,7 +344,7 @@ final class GearItems {
     static Table slotTile(NewModePvp.St st, final int slot, float w) {
         Def d = def(st.gEq[slot]);
         Color c = d != null ? colorOf(d.rarity) : Color.valueOf("5b6070");
-        Table border = new Table(Tex.whiteui.tint(c.cpy().a(d != null ? 0.95f : 0.5f)));
+        Table border = new Table(tinted(c.cpy().a(d != null ? 0.95f : 0.5f)));
         border.margin(2f);
         Table in = new Table(Styles.black8);
         in.margin(6);
