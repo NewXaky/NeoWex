@@ -13,6 +13,7 @@ import arc.math.Angles;
 import arc.math.Interp;
 import arc.math.Mathf;
 import arc.struct.Seq;
+import arc.util.Log;
 import arc.util.Time;
 import arc.util.Tmp;
 import mindustry.Vars;
@@ -397,6 +398,7 @@ public final class Zeralion {
         /** Viên đầu bắn ngay, các viên sau nối tiếp theo GAP[stage] tick, tất cả bắn thẳng theo nòng. */
         @Override
         protected void shoot(Unit unit, WeaponMount m, float shootX, float shootY, float rotation) {
+            if (!loggedShoot) { loggedShoot = true; Log.info("[Zeralion] shoot() duoc goi lan dau"); }
             ZeralionMount mount = (ZeralionMount) m;
             if (Time.time - mount.lastShot > RESET_AFTER) mount.stage = 0;
 
@@ -612,12 +614,15 @@ public final class Zeralion {
         }
     }
 
+    static boolean loggedAbility, loggedShoot;
+
     public static class BindLockAbility extends Ability {
         public Teamc target;
         public float progress, cooldown, phase;
 
         @Override
         public void update(Unit unit) {
+            if (!loggedAbility) { loggedAbility = true; Log.info("[Zeralion] noi tai dang chay tren unit " + unit.type.name); }
             phase += Time.delta;
             if (isBound(unit)) { progress = 0f; return; }
             if (cooldown > 0f) { cooldown -= Time.delta; target = null; progress = 0f; return; }

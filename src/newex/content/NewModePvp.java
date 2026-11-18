@@ -3110,6 +3110,7 @@ public class NewModePvp {
         nu.rotation = rot;
         try { nu.spawnedByCore = !isBotPl(pl); } catch (Throwable err) {}
         nu.add();
+        Log.info("[NexPvp] swapUnit: " + old.type.name + " -> " + want.name + " valid=" + nu.isValid());
         nu.health = nu.maxHealth * frac;
         pl.unit(nu);
         prevUnit.put(pl.id, nu);
@@ -5096,13 +5097,15 @@ public class NewModePvp {
         });
         onReq(REQ_UNIT, 400, (player, payload) -> {
             St st = reqState(player);
-            if (st == null || st.lv < FREE_SWITCH_LEVEL) return;
+            if (st == null) { Log.info("[NexPvp] doi unit: bi bo qua (khong co trang thai / dung xa loi)"); return; }
+            if (st.lv < FREE_SWITCH_LEVEL) { Log.info("[NexPvp] doi unit: bi bo qua (cap " + st.lv + " < " + FREE_SWITCH_LEVEL + ")"); return; }
             Integer k0 = leadInt(payload);
-            if (k0 == null || !(k0 >= 1 && k0 <= TIER_MAX)) return;
+            if (k0 == null || !(k0 >= 1 && k0 <= TIER_MAX)) { Log.info("[NexPvp] doi unit: payload sai: " + payload); return; }
             int k = k0, nu = (k == tierCap(st.lv)) ? 0 : k;
-            if (st.lv < tierMinLevel(k)) { toast(player, tr("[scarlet]Cần đạt cấp " + tierMinLevel(k) + " để chọn unit này.", "[scarlet]Reach level " + tierMinLevel(k) + " to select this unit.")); return; }
+            if (st.lv < tierMinLevel(k)) { Log.info("[NexPvp] doi unit: chua du cap " + st.lv + "/" + tierMinLevel(k)); toast(player, tr("[scarlet]Cần đạt cấp " + tierMinLevel(k) + " để chọn unit này.", "[scarlet]Reach level " + tierMinLevel(k) + " to select this unit.")); return; }
             if (st.u == nu) return;
             st.u = nu;
+            Log.info("[NexPvp] doi unit: cap=" + st.lv + " chon bac " + k + " (" + tierType(k).name + ") -> active=" + activeTier(st));
             toast(player, tr("[accent]Đã đổi sang unit: ", "[accent]Switched unit: ") + tierType(k).localizedName);
             changed();
         });
