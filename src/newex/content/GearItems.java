@@ -164,11 +164,11 @@ final class GearItems {
     static int slots() {
         try {
             arc.struct.StringMap tags = NewModePvp.getTags();
-            if (tags != null && tags.containsKey(TAG_SLOTS)) return clampI(Integer.parseInt(tags.get(TAG_SLOTS, "6")), TYPES, MAXSLOTS);
+            if (tags != null && tags.containsKey(TAG_SLOTS)) return clampI(Integer.parseInt(tags.get(TAG_SLOTS, String.valueOf(MAXSLOTS))), TYPES, MAXSLOTS);
         } catch (Throwable ignored) {}
-        return clampI(Core.settings.getInt(KEY_SLOTS, TYPES), TYPES, MAXSLOTS);
+        return clampI(Core.settings.getInt(KEY_SLOTS, MAXSLOTS), TYPES, MAXSLOTS);
     }
-    static void stampTag() { try { Vars.state.rules.tags.put(TAG_SLOTS, String.valueOf(clampI(Core.settings.getInt(KEY_SLOTS, TYPES), TYPES, MAXSLOTS))); } catch (Throwable ignored) {} }
+    static void stampTag() { try { Vars.state.rules.tags.put(TAG_SLOTS, String.valueOf(clampI(Core.settings.getInt(KEY_SLOTS, MAXSLOTS), TYPES, MAXSLOTS))); } catch (Throwable ignored) {} }
     static String rarName(int r) { return tr(RAR_VI[r], RAR_EN[r]); }
     static Def def(int id) { return id >= 0 && id < n ? DEFS[id] : null; }
 
@@ -866,6 +866,7 @@ final class GearItems {
         return border;
     }
 
+    static int ns() { return slots(); }
     static final boolean[] roleOpen = {true, true, true, true, true, true};
     /** Một vai trò: nút mở rộng/thu gọn + toàn bộ ô trang bị của vai trò đó (slot % 6 == vai trò). */
     static Table roleBlock(final NewModePvp.St st, final int role, final float cw) {
@@ -878,7 +879,13 @@ final class GearItems {
             box.button((roleOpen[role] ? "^  " : "v  ") + tr(SLOT_VI[role], SLOT_EN[role]) + "  " + used + "/" + tot, Styles.flatBordert, () -> { roleOpen[role] = !roleOpen[role]; fill[0].run(); })
                 .width(cw).height(NewModePvp.btnH() * 0.9f).row();
             if (!roleOpen[role]) return;
-            for (int s = role, ns = slots(); s < ns; s += TYPES) box.add(slotTile(st, s, cw)).width(cw).minHeight(cw * 0.85f).padTop(4).row();
+            final float tw = cw / 2f - 3f;
+            Table g = new Table();
+            for (int k = 0, s = role; s < ns(); k++, s += TYPES) {      // mỗi vai trò chia thành 4 ô (2x2)
+                g.add(slotTile(st, s, tw)).width(tw).minHeight(tw * 1.05f).pad(1.5f);
+                if (k % 2 == 1) g.row();
+            }
+            box.add(g).padTop(4).row();
         };
         fill[0].run();
         return box;
@@ -892,16 +899,16 @@ final class GearItems {
         border.margin(2f);
         Table in = new Table(Styles.black8);
         in.margin(6);
-        in.add("[lightgray]" + slotName(slot) + "[]").top().row();
+        in.add("[lightgray]" + "#" + (slot / TYPES + 1) + "[]").top().row();
         if (d != null) {
-            in.add(new Image(icon(d))).size(52).pad(4).row();
+            in.add(new Image(icon(d))).size(Math.min(52f, w * 0.6f)).pad(2).row();
             in.add(col(d.rarity) + name(d) + "[]").growX().wrap().minWidth(0).labelAlign(arc.util.Align.center).row();
             in.add("[lightgray]" + rarName(d.rarity) + "[]").row();
         } else {
             Image im = new Image(slotIcon(slot % TYPES));
             im.setColor(1f, 1f, 1f, 0.28f);
-            in.add(im).size(52).pad(4).row();
-            in.add("[gray]" + tr("Trống - chạm để lắp", "Empty - tap to equip") + "[]").growX().wrap().minWidth(0).labelAlign(arc.util.Align.center).row();
+            in.add(im).size(Math.min(52f, w * 0.6f)).pad(2).row();
+            in.add("[gray]" + (w < 100f ? tr("Trống", "Empty") : tr("Trống - chạm để lắp", "Empty - tap to equip")) + "[]").growX().wrap().minWidth(0).labelAlign(arc.util.Align.center).row();
         }
         border.add(in).grow();
         border.touchable = Touchable.enabled;
