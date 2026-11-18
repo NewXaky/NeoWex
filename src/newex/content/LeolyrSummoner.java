@@ -25,13 +25,14 @@ import mindustry.gen.Icon;
 import mindustry.gen.Unit;
 import mindustry.graphics.Layer;
 import mindustry.type.Item;
+import mindustry.type.ItemStack;
 import mindustry.type.UnitType;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
 import mindustry.world.Block;
 import newex.NexNet;
 
-/** Kén triệu hồi Tank-15 (đặt sẵn trong content hjson). */
+/** Kén triệu hồi: Tank-15, Archueng, Honivery, Aureon, Zeralion (khối newex-spawner đặt sẵn trong content hjson). */
 public final class LeolyrSummoner {
     private LeolyrSummoner() {}
 
@@ -43,6 +44,61 @@ public final class LeolyrSummoner {
     }
 
     private static String t(String enText, String viText) { return en() ? enText : viText; }
+
+    // ------------------------------------------------------------------ danh sách unit triệu hồi được
+    private static final class Entry {
+        final String id, color, viName, enName, viDesc, enDesc;
+        final ItemStack[] cost;
+        Entry(String id, String color, String viName, String enName, String viDesc, String enDesc, ItemStack... cost) {
+            this.id = id; this.color = color; this.viName = viName; this.enName = enName; this.viDesc = viDesc; this.enDesc = enDesc; this.cost = cost;
+        }
+        String name() { return t(enName, viName); }
+    }
+
+    private static Entry[] entries;
+
+    /** Bảng giá: muốn chỉnh giá / thêm unit thì sửa ở đây (tạo trễ để chắc chắn Items đã nạp xong). */
+    private static Entry[] entries() {
+        if (entries != null) return entries;
+        entries = new Entry[]{
+            new Entry("newex-tank-15", "ff9f43", "TANK-15", "TANK-15",
+                "Súng Rail Laser: bắn cặp tia laser xuyên giáp, tốc độ nạp tăng tới x5 khi bắn liên tục.",
+                "Rail Laser: fires piercing laser pairs; reload speeds up to x5 while firing.",
+                new ItemStack(Items.copper, 4000), new ItemStack(Items.silicon, 500)),
+            new Entry("newex-archueng", "ff6b6b", "ARCHUENG", "ARCHUENG",
+                "Unit chân nhện hạng nặng, giáp dày, có kĩ năng chủ động riêng.",
+                "Heavy legged unit with thick armor and its own active skill.",
+                new ItemStack(Items.copper, 5000), new ItemStack(Items.silicon, 2000), new ItemStack(Items.titanium, 1500), new ItemStack(Items.thorium, 800)),
+            new Entry("newex-honivery", "7df9ff", "HONIVERY", "HONIVERY",
+                "Unit chiến tranh tầm cao: súng Gatling cùng kiếm, có khiên Aegis và kĩ năng riêng.",
+                "High-tier war unit: Gatling weapon plus sword, Aegis shield and its own skill.",
+                new ItemStack(Items.copper, 6000), new ItemStack(Items.silicon, 3000), new ItemStack(Items.titanium, 2500), new ItemStack(Items.plastanium, 1000), new ItemStack(Items.thorium, 1500)),
+            new Entry("newex-aureon", "ffd34d", "AUREON", "AUREON",
+                "Unit chân vàng kim, khóa mục tiêu và giáng sét.",
+                "Gold legged unit that locks onto targets and calls lightning.",
+                new ItemStack(Items.silicon, 4000), new ItemStack(Items.titanium, 3000), new ItemStack(Items.thorium, 2500), new ItemStack(Items.plastanium, 1500), new ItemStack(Items.surgeAlloy, 1000)),
+            new Entry("newex-zeralion", "ffb300", "ZERALION", "ZERALION",
+                "Unit chiến tranh tối thượng: bắn từng viên thẳng hàng, laser vàng khóa mục tiêu.",
+                "Ultimate war unit: single-file shots and a gold laser that locks onto targets.",
+                new ItemStack(Items.silicon, 5000), new ItemStack(Items.thorium, 4000), new ItemStack(Items.plastanium, 2500), new ItemStack(Items.surgeAlloy, 2000), new ItemStack(Items.phaseFabric, 1500))
+        };
+        return entries;
+    }
+
+    private static UnitType unitOf(String id) {
+        UnitType ut = Vars.content.getByName(ContentType.unit, id);
+        if (ut == null && id.startsWith("newex-")) ut = Vars.content.getByName(ContentType.unit, id.substring(6));
+        return ut;
+    }
+
+    private static String costText(ItemStack[] cost) {
+        StringBuilder sb = new StringBuilder();
+        for (ItemStack s : cost) {
+            if (sb.length() > 0) sb.append(" + ");
+            sb.append("[white]").append(s.amount).append(' ').append(s.item.localizedName).append("[]");
+        }
+        return sb.toString();
+    }
 
     private static void drawEllipseWave(float cx, float cy, float rx, float ry, float rotDeg) {
         int points = 24;
@@ -142,21 +198,23 @@ public final class LeolyrSummoner {
     public static class SummonerBuild extends Building {
         boolean summoning = false;
         float summonTimer = 0f;
-        String selectedUnit = "newex-tank-15";
+        int selected = 0;        // vị trí unit đang chọn trong entries()
+        int summonIdx = 0;       // unit đang được triệu hồi (chốt lúc bắt đầu)
 
         @Override
         public boolean acceptItem(Building source, Item item) {
             return items.get(item) < block.itemCapacity;
         }
 
-        /** {copper, silicon} */
-        int[] getRequirements() {
-            return new int[]{4000, 500};
+        private Entry sel() {
+            Entry[] es = entries();
+            return es[Mathf.clamp(selected, 0, es.length - 1)];
         }
 
         private void startSummon() {
             summoning = true;
             summonTimer = 300f;
+            summonIdx = Mathf.clamp(selected, 0, entries().length - 1);
         }
 
         @Override
@@ -171,15 +229,14 @@ public final class LeolyrSummoner {
                     Vars.ui.showInfo(t("[scarlet]Core not found![]", "[scarlet]Không tìm thấy nhà chính (Core)![]"));
                     return;
                 }
-                int[] req = getRequirements();
-                if (!core.items.has(Items.copper, req[0]) || !core.items.has(Items.silicon, req[1])) {
+                Entry en = sel();
+                if (!core.items.has(en.cost)) {
                     Vars.ui.showInfo(t(
-                        "[scarlet]Not enough resources in Core![]\nRequired: [accent]" + req[0] + " Copper[] and [accent]" + req[1] + " Silicon[] in Core.",
-                        "[scarlet]Không đủ tài nguyên trong Lõi![]\nCần có: [accent]" + req[0] + " Copper[] và [accent]" + req[1] + " Silicon[] trong Core."));
+                        "[scarlet]Not enough resources in Core![]\nRequired for " + en.name() + ": " + costText(en.cost),
+                        "[scarlet]Không đủ tài nguyên trong Lõi![]\nCần cho " + en.name() + ": " + costText(en.cost)));
                     return;
                 }
-                NexNet.take(core, Items.copper, req[0]);
-                NexNet.take(core, Items.silicon, req[1]);
+                for (ItemStack s : en.cost) NexNet.take(core, s.item, s.amount);
                 startSummon();
                 NexNet.fx(Fx.shieldApply, x, y, 0f, purple());
                 deselect();
@@ -200,29 +257,37 @@ public final class LeolyrSummoner {
             card.background(Styles.black6);
             card.margin(10f);
 
-            unitEntry(card, dialog,
-                t("[orange]⚡ SELECT SUMMON: TANK-15[]", "[orange]⚡ CHỌN TRIỆU HỒI: TANK-15[]"), "newex-tank-15",
-                t("[orange]Target set: Tank-15[]", "[orange]Đã cài đặt mục tiêu: Tank-15[]"),
-                t("[gold]📊 TANK-15 ANALYSIS DATA:[]\n• [accent]Summon Cost:[] [white]4000 Copper[] + [white]500 Silicon[]\n• [pink]Rail Laser:[] Fires piercing laser pairs; reload speeds up to x5 while firing.",
-                  "[gold]📊 DỮ LIỆU PHÂN TÍCH TANK-15:[]\n• [accent]Chi phí triệu hồi:[] [white]4000 Copper[] + [white]500 Silicon[]\n• [pink]Súng Rail Laser:[] Bắn cặp tia laser xuyên giáp, tốc độ nạp tăng tới x5 khi bắn liên tục."));
+            Entry[] es = entries();
+            for (int i = 0; i < es.length; i++) unitEntry(card, dialog, i, es[i]);
 
             ScrollPane scroll = new ScrollPane(card);
             scroll.setScrollingDisabled(true, false);
-            dialog.cont.add(scroll).maxHeight(400f).width(340f);
+            scroll.setFlickScroll(true);
+            scroll.setOverscroll(true, true);
+            dialog.cont.add(scroll).maxHeight(Math.max(150f, Math.min(420f, Core.scene.getHeight() - 170f))).width(340f);
             dialog.addCloseButton();
             dialog.show();
         }
 
-        private void unitEntry(Table card, BaseDialog dialog, String btn, String unitId, String toast, String desc) {
-            card.button(btn, () -> {
-                selectedUnit = unitId;
-                Vars.ui.showInfo(toast);
+        private void unitEntry(Table card, BaseDialog dialog, final int idx, final Entry en) {
+            card.button("[#" + en.color + "]⚡ " + t("SELECT SUMMON: ", "CHỌN TRIỆU HỒI: ") + en.name() + "[]", () -> {
+                selected = idx;
+                Vars.ui.showInfo(t("[orange]Target set: " + en.name() + "[]", "[orange]Đã cài đặt mục tiêu: " + en.name() + "[]"));
                 dialog.hide();
             }).size(300f, 42f).row();
             card.add().height(6f).row();
+
+            String stats = "";
+            UnitType ut = unitOf(en.id);
+            if (ut != null) {
+                stats = "\n• [accent]" + t("Stats:", "Thông số:") + "[] " + t("HP ", "Máu ") + "[white]" + (int) ut.health + "[]  " + t("Armor ", "Giáp ") + "[white]" + (int) ut.armor + "[]";
+            }
+            String desc = "[gold]📊 " + t("ANALYSIS: ", "PHÂN TÍCH: ") + en.name() + "[]\n• [accent]" + t("Summon Cost:", "Chi phí triệu hồi:") + "[] " + costText(en.cost)
+                + stats + "\n• [pink]" + t("Info:", "Mô tả:") + "[] " + t(en.enDesc, en.viDesc);
             card.add(desc).width(320f).get().setWrap(true);
             ((arc.scene.ui.Label) card.getCells().peek().get()).setAlignment(Align.left);
             card.row();
+            card.add().height(12f).row();
         }
 
         @Override
@@ -230,10 +295,9 @@ public final class LeolyrSummoner {
             super.updateTile();
 
             if (!summoning) {
-                int[] req = getRequirements();
-                if (items.has(Items.copper, req[0]) && items.has(Items.silicon, req[1])) {
-                    items.remove(Items.copper, req[0]);
-                    items.remove(Items.silicon, req[1]);
+                Entry en = sel();
+                if (items.has(en.cost)) {
+                    items.remove(en.cost);
                     startSummon();
                     Fx.shieldApply.at(x, y, 0f, purple());
                 }
@@ -248,10 +312,7 @@ public final class LeolyrSummoner {
                 if (summonTimer <= 0f) {
                     summoning = false;
 
-                    UnitType ut = Vars.content.getByName(ContentType.unit, selectedUnit);
-                    if (ut == null && selectedUnit.startsWith("newex-")) {
-                        ut = Vars.content.getByName(ContentType.unit, selectedUnit.replace("newex-", ""));
-                    }
+                    UnitType ut = unitOf(entries()[Mathf.clamp(summonIdx, 0, entries().length - 1)].id);
                     if (ut != null) {
                         Unit unit = ut.create(team);
                         unit.set(x, y);

@@ -104,7 +104,7 @@ final class ChaosMode {
             "Chỉ số \"Tầm bắn & đạn của lính\" bị vô hiệu hóa (cả hai phe).", "The \"Soldier range & bullet life\" stat is disabled (both teams)."),
         new Card("spore-pod", "silicon", "b388ff", "Pilot thức tỉnh", "Pilot awakening",
             "Mọi chỉ số và hiệu ứng của pilot đang chiêu mộ tăng gấp đôi (cả hai phe).", "All stats and effects of recruited pilots are doubled (both teams).",
-            "Bản đồ rơi vào sương mù chiến tranh.", "The map is plunged into fog of war.")
+            "Bản đồ phủ sương mù đen: ngoài tầm nhìn là đen kịt, vùng đã đi qua cũng không được lưu lại.", "The map is covered in black fog: everything outside your vision is pitch black, explored areas are not remembered.")
     };
 
     static String tr(String vi, String en) { return NewModePvp.tr(vi, en); }
@@ -125,12 +125,14 @@ final class ChaosMode {
     static int lvGranted = 0;              // số lần thẻ "Bước nhảy cấp độ" đã được thưởng
     static float minT = 0, shieldT = 0, lvAcc = 0;
     static Boolean fogOrig = null;         // giá trị rules.fog trước khi thẻ "Pilot thức tỉnh" bật sương mù
+    static boolean staticOrig = true;      // rules.staticFog trước đó
+    static Color dynOrig = null;           // rules.dynamicColor trước đó
     static final HashMap<Integer, Integer> lives = new HashMap<>();
     static final HashMap<Integer, Float> coreOrig = new HashMap<>();
     static final java.util.HashSet<Integer> touchedBuilds = new java.util.HashSet<>();
 
     static void reset() {
-        round = 0; hideFlag = false; lvGranted = 0; minT = 0; shieldT = 0; lvAcc = 0; fogOrig = null;
+        round = 0; hideFlag = false; lvGranted = 0; minT = 0; shieldT = 0; lvAcc = 0; fogOrig = null; staticOrig = true; dynOrig = null;
         lives.clear(); coreOrig.clear(); touchedBuilds.clear(); act = new boolean[CARDS]; cnt = new int[CARDS]; actAt = -1000; actVer = -1;
     }
 
@@ -193,6 +195,210 @@ final class ChaosMode {
     static float stackMul(int n) { return n <= 1 ? 1f : (float) (2.0 - Math.pow(0.5, n - 1)); }
     /** Hệ số nhân chỉ số pilot của thẻ "Pilot thức tỉnh": 1 khi không có, 2 / 2.5 / 2.75... khi cộng dồn. */
     static float pilotK() { int n = stack(C_PILOT2); return n <= 0 ? 1f : 1f + stackMul(n); }
+    /** Thẻ "Hư vô nuốt quái": vô hiệu chỉ số Tầm bắn & đạn của lính. */
+    static boolean soldierRangeOff() { return has(C_VANISH); }
+
+    // ------------------------------------------------------------------ móc vào NewModePvp
+    static boolean unlimited() { return on(); }
+    static int statBonus() { int n = stack(C_STAT10); return n > 0 ? Math.round(10f * stackMul(n)) : 0; }
+    static boolean noArmor() { return has(C_STAT10); }
+    /** EXP còn 10%; cộng dồn thẻ nặng thêm: 10% / n. */
+    static float expMul() { int n = Math.max(stack(C_LV50), stack(C_LVMIN)); return n > 0 ? 0.1f / n : 1f; }
+    static float hpMul() { int n = stack(C_HP250); return n > 0 ? 1f + 2.5f * stackMul(n) : 1f; }
+    /** Hồi chiêu pilot: 1 giây; cộng dồn: 1/n giây (tối thiểu 0.25 giây). */
+    static int cd(int base) { int n = stack(C_NOCD); return n > 0 ? Math.min(base, Math.max(15, 60 / n)) : base; }
+    static boolean slowTurrets() { return has(C_NOCD); }
+    /** Chu kỳ làm chậm pháo -80%: chỉ cho chạy 1 trên 5 khung hình. */
+    static boolean skipFrame() { int n = stack(C_NOCD); return n > 0 && ((int) Time.time) % (5 * n) != 0; }
+    static boolean noMount() { return has(C_BDMG); }
+    static boolean noBuild() { return has(C_LIVES); }
+    static float barrackMul() { int n = stack(C_CORE1); return n > 0 ? 1f + 5f * stackMul(n) : 1f; }
+    static float builtDmgMul() { int n = stack(C_BDMG); return n > 0 ? 1f + 5f * stackMul(n) : 1f; }
+    static boolean silenced(String turretId) {
+        if (!has(C_HP250) || turretId == null) return false;
+        String role = NewModePvp.TURRET_ROLES.get(turretId);
+        return NewModePvp.ROLE_ATTACK.equals(role) || NewModePvp.ROLE_DEALER.equals(role);
+    }
+    static float capRole(float cap, float v) { return on() ? v : Math.min(cap, v); }
+    static float capCut(float cap, float v) { return on() ? Math.min(99f, v) : Math.min(cap, v); }
+    static float armorCutCap(float v, float normalCap) { return on() ? Math.min(99f, v) : Math.min(normalCap, v); }
+    /** % máu tối đa (đơn vị %): tối đa 99% khi Hỗn loạn. */
+    static float pctMaxHp(int lvl, float perLevel) { float v = lvl * perLevel; return on() ? Math.min(99f, v) : v; }
+    /** Hệ số bạo kích; Hỗn loạn: tỉ lệ vượt 100% đổi thành sát thương bạo kích. */
+    static float critMul(int s5, int s6) {
+        if (s5 <= 0) return 1f;
+        float ch = s5 * 0.02f, extra = 0f;
+        if (on() && ch > 1f) { extra = ch - 1f; ch = 1f; }
+        return Math.random() < ch ? 1.5f + s6 * 0.12f + extra : 1f;
+    }
+    static float critChanceShown(int s5) { float v = s5 * 2f; return on() ? Math.min(100f, v) : v; }
+    static float critDmgShown(int s5, int s6) { float v = 150f + s6 * 12f; if (on() && s5 * 2f > 100f) v += s5 * 2f - 100f; return v; }
+
+    /** Trả về mảng chỉ số hiệu dụng sau khi cộng thẻ +10 (mảng cache theo từng người). */
+    static int[] adjustStats(NewModePvp.St st, int[] base) {
+        int b = statBonus();
+        if (b == 0 || base == null) return base;
+        int[] out = (st.chs != null && st.chs.length == base.length) ? st.chs : (st.chs = new int[base.length]);
+        for (int i = 0; i < base.length; i++) out[i] = base[i] + b;
+        return out;
+    }
+
+    /** Lõi sắp chết: nếu có thẻ "Năm mạng" thì trừ 1 mạng và hồi sinh đầy máu. true = đã chặn cái chết. */
+    static boolean coreExtraLife(CoreBlock.CoreBuild cb) {
+        if (!has(C_LIVES) || cb == null) return false;
+        Integer left = lives.get(cb.id);
+        int l = left == null ? Math.round(5f * stackMul(stack(C_LIVES))) : left;
+        l--;
+        lives.put(cb.id, l);
+        if (l <= 0) return false;
+        cb.health = cb.maxHealth;
+        NewModePvp.toastAll(tr("[scarlet]Một lõi vừa mất 1 mạng! Còn " + l + " mạng.", "[scarlet]A core just lost a life! " + l + " lives left."), 4f);
+        return true;
+    }
+
+    // ------------------------------------------------------------------ mã hóa trạng thái người chơi (lưu + đồng bộ)
+    static String enc(NewModePvp.St st) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(st.chRound).append(';').append(st.chPicks).append(';');
+        for (int i = 0; i < st.chHand.size(); i++) { if (i > 0) sb.append(','); sb.append(st.chHand.get(i)); }
+        sb.append(';');
+        for (int i = 0; i < st.chEq.size(); i++) { if (i > 0) sb.append(','); sb.append(st.chEq.get(i)[0]).append(':').append(st.chEq.get(i)[1]); }
+        return sb.toString();
+    }
+    static void dec(NewModePvp.St st, String s) {
+        st.chHand.clear(); st.chEq.clear(); st.chRound = 0; st.chPicks = 0;
+        if (s == null || s.isEmpty()) return;
+        try {
+            String[] p = s.split(";", -1);
+            st.chRound = Integer.parseInt(p[0]); st.chPicks = Integer.parseInt(p[1]);
+            if (p.length > 2 && !p[2].isEmpty()) for (String c : p[2].split(",")) st.chHand.add(Integer.parseInt(c));
+            if (p.length > 3 && !p[3].isEmpty()) for (String c : p[3].split(",")) { String[] q = c.split(":"); st.chEq.add(new int[]{Integer.parseInt(q[0]), Integer.parseInt(q[1])}); }
+        } catch (Throwable ignored) {}
+    }
+
+    // ------------------------------------------------------------------ yêu cầu từ client
+    static void define() {
+        NewModePvp.onReq(REQ_PICK, 200, (player, payload) -> {
+            if (!on() || !NewModePvp.isFull()) return;
+            NewModePvp.St st = NewModePvp.bind(player);
+            String[] a = payload.split("\\|");
+            Integer r = NewModePvp.leadInt(a[0]), c = a.length > 1 ? NewModePvp.leadInt(a[1]) : null;
+            if (r == null || c == null || c < 0 || c >= CARDS) return;
+            if (r != round || r < 1 || r > maxRounds() || st.chRound >= r || st.chPicks >= maxPicks()) return;
+            st.chHand.add(c); st.chRound = r; st.chPicks++;
+            NewModePvp.toast(player, tr("[accent]Đã nhận thẻ: ", "[accent]Card received: ") + name(c) + tr(" - vào trang Pilot để trang bị.", " - open the Pilot page to equip it."));
+            NewModePvp.changed();
+        });
+        NewModePvp.onReq(REQ_EQUIP, 200, (player, payload) -> {
+            if (!on() || !NewModePvp.isActive()) return;
+            NewModePvp.St st = NewModePvp.bind(player);
+            String[] a = payload.split("\\|");
+            Integer pi = NewModePvp.leadInt(a[0]), c = a.length > 1 ? NewModePvp.leadInt(a[1]) : null;
+            if (pi == null || c == null || pi == 0 || !NewModePvp.validPilot(pi)) return;
+            int idx = st.chHand.indexOf(c);
+            if (idx < 0) return;
+            st.chHand.remove(idx);
+            st.chEq.add(new int[]{pi, c});
+            NewModePvp.toast(player, tr("[accent]Đã trang bị thẻ ", "[accent]Equipped card ") + name(c) + tr(" cho ", " on ") + pilotName(pi) + tr(" (không thể tháo).", " (cannot be removed)."));
+            NewModePvp.changed();
+        });
+    }
+
+    static String name(int c) { return tr(DECK[c].viName, DECK[c].enName); }
+    static String pilotName(int pi) {
+        for (NewModePvp.PilotDef d : NewModePvp.pilotList()) if (d.pi == pi) return d.name;
+        return tr("Không có pilot", "No pilot");
+    }
+
+    // ------------------------------------------------------------------ máy chủ: mỗi khung hình
+    static void serverTick() {
+        if (Vars.net.client() || !NewModePvp.isFull() || Vars.state.gameOver || Vars.state.isPaused() || !on()) return;
+        float dt = Time.delta;
+        // vòng chọn thẻ
+        int due = Math.min(maxRounds(), (int) (NewModePvp.matchT / roundTicks()));
+        if (due > round) {
+            round = due;
+            NewModePvp.toastAll(tr("[accent]HỖN LOẠN! Chọn 1 thẻ bài (vòng " + round + "/" + maxRounds() + ")", "[accent]CHAOS! Pick a card (round " + round + "/" + maxRounds() + ")"), 5f);
+            botsPick();
+            NewModePvp.changed();
+        }
+        // thẻ Khiên hỗn loạn: cộng dồn -> ẩn chữ lâu hơn (n phút mỗi chu kỳ 5 phút, tối đa 4 phút)
+        int hideTicks = Math.min(HIDE_CYCLE - MIN_TICKS, HIDE_TICKS * Math.max(1, stack(C_SHIELD)));
+        boolean nh = has(C_SHIELD) && NewModePvp.matchT >= HIDE_CYCLE && (NewModePvp.matchT % HIDE_CYCLE) < hideTicks;
+        if (nh != hideFlag) { hideFlag = nh; NewModePvp.changed(); }
+
+        // +50 cấp một lần
+        // (cộng dồn: lần thứ k thưởng 50 x 0.5^(k-1) cấp, tối thiểu 10)
+        int lvN = stack(C_LV50);
+        while (lvGranted < lvN) {
+            lvGranted++;
+            final int give = Math.max(10, Math.round(50f * (float) Math.pow(0.5, lvGranted - 1)));
+            for (NewModePvp.St st : NewModePvp.byId.values()) if (st != null) { st.lv += give; st.pts += give; }
+            NewModePvp.toastAll(tr("[accent]Thẻ Bước nhảy cấp độ: mọi người chơi +" + give + " cấp!", "[accent]Level leap card: every player +" + give + " levels!"), 5f);
+            NewModePvp.changed();
+        }
+        // +1 cấp mỗi phút
+        if (has(C_LVMIN)) {
+            minT += dt;
+            if (minT >= MIN_TICKS) {
+                minT -= MIN_TICKS;
+                lvAcc += stackMul(stack(C_LVMIN));          // cộng dồn giảm dần: 1, 1.5, 1.75... cấp mỗi phút (phần lẻ dồn sang phút sau)
+                final int give = (int) lvAcc;
+                lvAcc -= give;
+                if (give > 0) { for (NewModePvp.St st : NewModePvp.byId.values()) if (st != null) { st.lv += give; st.pts += give; } NewModePvp.changed(); }
+            }
+        } else { minT = 0; lvAcc = 0; }
+        // khiên mỗi phút
+        if (has(C_SHIELD)) {
+            shieldT += dt;
+            if (shieldT >= MIN_TICKS) { shieldT -= MIN_TICKS; giveShields(); }
+        } else shieldT = 0;
+
+        // tháo pháo lắp trên unit khi có thẻ "Pháo hủy diệt"
+        if (has(C_BDMG)) {
+            boolean any = false;
+            for (NewModePvp.St st : NewModePvp.byId.values()) {
+                if (st == null || st.p.size() != st.d.size()) continue;
+                for (int i = 0; i < st.p.size(); i++) if (st.p.get(i) == NewModePvp.EQUIPPED) { st.p.set(i, NewModePvp.IN_BAG); any = true; }
+            }
+            if (any) NewModePvp.changed();
+        }
+        builtTurretsTick();
+        coreHpTick();
+        fogTick();
+    }
+
+    /**
+     * Thẻ "Pilot thức tỉnh": bật sương mù ĐEN khi thẻ có hiệu lực, trả lại như cũ khi hết hiệu lực.
+     * Tắt staticFog (không lưu vùng đã khám phá) và cho dynamicColor đen đặc (alpha 1)
+     * => mọi nơi ngoài tầm nhìn đều đen kịt, không còn lớp sương mù xám "đi tới đâu mở tới đó".
+     */
+    static void fogTick() {
+        try {
+            mindustry.game.Rules r = Vars.state.rules;
+            boolean want = has(C_PILOT2);
+            if (want) {
+                if (fogOrig == null) {
+                    fogOrig = r.fog; staticOrig = r.staticFog;
+                    dynOrig = r.dynamicColor == null ? null : r.dynamicColor.cpy();
+                }
+                boolean dark = r.dynamicColor != null && r.dynamicColor.r < 0.01f && r.dynamicColor.g < 0.01f && r.dynamicColor.b < 0.01f && r.dynamicColor.a > 0.99f;
+                if (!r.fog || r.staticFog || !dark) {
+                    r.fog = true;
+                    r.staticFog = false;
+                    r.dynamicColor = new Color(0f, 0f, 0f, 1f);
+                    NewModePvp.syncRules();
+                }
+            } else if (fogOrig != null) {
+                r.fog = fogOrig;
+                r.staticFog = staticOrig;
+                if (dynOrig != null) r.dynamicColor = dynOrig;
+                fogOrig = null; dynOrig = null;
+                NewModePvp.syncRules();
+            }
+        } catch (Throwable ignored) {}
+    }
+
     /** Thẻ "Hư vô nuốt quái": vô hiệu chỉ số Tầm bắn & đạn của lính. */
     static boolean soldierRangeOff() { return has(C_VANISH); }
 
@@ -508,6 +714,18 @@ final class ChaosMode {
         do { offer[2] = Mathf.random(0, CARDS - 1); } while (offer[2] == offer[0] || offer[2] == offer[1]);
     }
 
+    /** Ô cuộn kéo thả tự do cả hai chiều (dùng chung cho mọi bảng thẻ). */
+    static ScrollPane freeScroll(Table content) {
+        ScrollPane sp = new ScrollPane(content, Styles.noBarPane);
+        sp.setScrollingDisabled(false, false);
+        sp.setFlickScroll(true);
+        sp.setOverscroll(true, true);
+        return sp;
+    }
+    /** Kích thước tối đa của ô cuộn để không bao giờ tràn màn hình (reserve = phần dành cho tiêu đề, nút đóng...). */
+    static float viewW() { return Math.max(300f, Core.scene.getWidth() - 40f); }
+    static float viewH(float reserve) { return Math.max(150f, Core.scene.getHeight() - reserve); }
+
     static void openOffer(int r) {
         offerRound = r; rerolled = false; sent = false; pickOffer();
         final BaseDialog d = new BaseDialog(tr("HỖN LOẠN - Chọn 1 thẻ (vòng ", "CHAOS - Pick 1 card (round ") + r + "/" + maxRounds() + ")");
@@ -524,10 +742,7 @@ final class ChaosMode {
         Table row = new Table();
         row.top();
         for (int i = 0; i < 3; i++) row.add(cardView(d, i, cw)).width(cw).pad(6f).top();
-        ScrollPane sp = new ScrollPane(row, Styles.noBarPane);
-        sp.setScrollingDisabled(false, false);   // kéo thả tự do cả hai chiều
-        sp.setFlickScroll(true);
-        sp.setOverscroll(true, true);
+        ScrollPane sp = freeScroll(row);   // kéo thả tự do cả hai chiều
         d.cont.add(sp).grow().row();
         // Nút xem các thẻ đã kích hoạt trong trận (hiện dạng thẻ bài giống bảng chọn)
         d.cont.button(tr("Xem thẻ đang kích hoạt trong trận", "View active cards in the match"), Styles.flatBordert, ChaosMode::openActive).height(46f).growX().maxWidth(420f).pad(6f).row();
@@ -556,10 +771,9 @@ final class ChaosMode {
             if (++shown % cols == 0) grid.row();
         }
         if (shown == 0) grid.add("[lightgray]" + tr("Chưa có thẻ nào đang kích hoạt. Thẻ chỉ có hiệu lực khi người gắn thẻ đang chiêu mộ đúng pilot đó.", "No card is active yet. A card only works while its owner has the matching pilot recruited.") + "[]").width(Math.min(420f, sw - 60f)).wrap().pad(20f);
-        ScrollPane sp = new ScrollPane(grid, Styles.noBarPane);
-        sp.setScrollingDisabled(false, false);
-        sp.setFlickScroll(true);
-        d.cont.add(sp).grow();
+        ScrollPane sp = freeScroll(grid);
+        // giới hạn kích thước theo màn hình: tràn thì cuộn chứ không còn đẩy ra ngoài màn hình
+        d.cont.add(sp).maxHeight(viewH(170f)).maxWidth(viewW());
         d.show();
         try { d.toFront(); } catch (Throwable ignored) {}
     }
@@ -655,10 +869,8 @@ final class ChaosMode {
         body.add("[lightgray]" + tr("Mỗi " + roundMinutes() + " phút chọn 1 trong 3 thẻ (tối đa " + maxRounds() + " lần, mỗi người tối đa " + maxPicks() + " thẻ). Chọn lại thẻ đã có sẽ cộng dồn (giảm dần). Thẻ áp dụng cho cả hai phe khi pilot được gắn thẻ đang được chiêu mộ.",
             "Every " + roundMinutes() + " minutes pick 1 of 3 cards (max " + maxRounds() + " times, up to " + maxPicks() + " cards per player). Picking a card again stacks it (diminishing returns). Cards affect both teams while the pilot carrying them is recruited.") + "[]").left().growX().wrap().width(340f).padBottom(8f).row();
         for (int i = 0; i < CARDS; i++) body.add(cardRow(i, null)).growX().pad(4f).row();
-        ScrollPane sp = new ScrollPane(body, Styles.noBarPane);
-        sp.setScrollingDisabled(false, false);
-        sp.setFlickScroll(true);
-        d.cont.add(sp).grow().maxWidth(Math.max(320f, Core.scene.getWidth() - 40f));
+        ScrollPane sp = freeScroll(body);
+        d.cont.add(sp).maxHeight(viewH(170f)).maxWidth(viewW());
         d.show();
     }
 
@@ -696,10 +908,10 @@ final class ChaosMode {
         for (final int c : new ArrayList<>(st.chHand)) {
             body.add(cardRow(c, () -> { NewModePvp.send(REQ_EQUIP, pi + "|" + c); d.hide(); })).growX().pad(4f).row();
         }
-        ScrollPane sp = new ScrollPane(body, Styles.noBarPane);
-        sp.setScrollingDisabled(false, false);
-        sp.setFlickScroll(true);
-        d.cont.add(sp).grow().maxWidth(Math.max(320f, Core.scene.getWidth() - 40f));
+        ScrollPane sp = freeScroll(body);
+        d.cont.add(sp).maxHeight(viewH(230f)).maxWidth(viewW()).row();
+        // nút xem các thẻ đang kích hoạt trong trận (giống ở bảng chọn thẻ)
+        d.cont.button(tr("Xem thẻ đang kích hoạt trong trận", "View active cards in the match"), Styles.flatBordert, ChaosMode::openActive).height(46f).growX().maxWidth(420f).pad(6f).row();
         d.show();
     }
 

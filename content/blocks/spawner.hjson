@@ -1,7 +1,7 @@
 
   type: Block
   name: Kén Triệu Hồi Leolyr
-  description: Đặt xuống mảnh đất kén tháp pháo sẽ tự tích năng lượng và vỡ ra giải phóng một Tank-15 sau 5 giây.
+  description: Đặt xuống mảnh đất kén tháp pháo sẽ tự tích năng lượng và vỡ ra giải phóng một unit sau 5 giây. Triệu hồi được Tank-15, Archueng, Honivery, Aureon và Zeralion (chọn trong menu, giá càng cao unit càng mạnh).
   category: turret
   size: 3
   health: 500
