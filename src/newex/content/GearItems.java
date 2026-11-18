@@ -976,7 +976,7 @@ final class GearItems {
         }
         // trong túi: vật phẩm của ô đang chọn lên đầu, rồi theo độ hiếm
         ArrayList<Def> inv = new ArrayList<>();
-        for (int id : st.gInv) { Def d = def(id); if (d != null) inv.add(d); }
+        for (int id : st.gInv) { Def d = def(id); if (d != null && (fs < 0 || d.slot == fs % TYPES)) inv.add(d); }   // chọn ô vai trò nào chỉ hiện item vai trò đó
         inv.sort((x, y) -> {
             int fx = fs >= 0 && x.slot == fs % TYPES ? 0 : 1, fy = fs >= 0 && y.slot == fs % TYPES ? 0 : 1;
             if (fx != fy) return fx - fy;
@@ -984,7 +984,7 @@ final class GearItems {
             return x.id - y.id;
         });
         if (inv.isEmpty()) {
-            c.add("[lightgray]" + tr("Chưa có vật phẩm nào trong túi. Hãy hạ quái đợt!", "No items in your bag yet. Kill wave monsters!") + "[]").left().padLeft(6).padTop(4).width(W - 12).wrap().row();
+            c.add("[lightgray]" + (fs >= 0 ? tr("Chưa có vật phẩm vai trò " + SLOT_VI[fs % TYPES] + " trong túi.", "No " + SLOT_EN[fs % TYPES] + " items in your bag.") : tr("Chưa có vật phẩm nào trong túi. Hãy hạ quái đợt!", "No items in your bag yet. Kill wave monsters!")) + "[]").left().padLeft(6).padTop(4).width(W - 12).wrap().row();
             return;
         }
         c.add("[lightgray]" + tr("Trong túi", "In bag") + "[]").left().padLeft(6).padTop(4).row();
