@@ -52,6 +52,7 @@ public final class Flazerd {
 
     static final float deadZone = 40f;
     static final Color laserColor = Color.valueOf("bf7fff");
+    static final int BURST_TICKS = 100; // tia cuối tồn tại ~1.7 giây
     static final Color burstBlue = Color.valueOf("4d7dff");
     static final Color particleColor = Color.valueOf("e8bfff");
     static final Color deepPurple = Color.valueOf("6a1b9a");
@@ -87,7 +88,7 @@ public final class Flazerd {
         // 2. Sóng xung kích hình elip + bụi trên mặt đất
         Draw.color(fireA, fireB, fin);
         Lines.stroke(fout * 3f);
-        float rw = fin * 70f, rh = rw * 0.4f;
+        float rw = fin * 70f, rh = rw;
         for (int i = 0; i < 36; i++) {
             float a1 = i * 10f, a2 = (i + 1) * 10f;
             Lines.line(e.x + Mathf.cosDeg(a1) * rw, e.y + Mathf.sinDeg(a1) * rh, e.x + Mathf.cosDeg(a2) * rw, e.y + Mathf.sinDeg(a2) * rh);
@@ -261,13 +262,13 @@ public final class Flazerd {
 
                 // Tốc độ tích sạc tăng thêm 120% (nhân 2.2f)
                 float chargeSpeedMultiplier = (float) (1 + Math.pow(currentPoints / 100f, 2));
-                float speedBonus = (tier == 2 ? 1.5f : 1.0f) * 2.2f;
+                float speedBonus = (tier == 2 ? 1.5f : 1.0f) * 13.2f;
                 currentPoints += (1f / 60f) * chargeSpeedMultiplier * speedBonus;
 
                 if (currentPoints >= 200f) {
                     currentPoints = 200f;
                     st.charge = 200f;
-                    st.burstTimer = 25; // Kích hoạt trạng thái bắn 3 tia hội tụ
+                    st.burstTimer = BURST_TICKS; // Kích hoạt trạng thái bắn 3 tia hội tụ
                     Sounds.chargeLancer.at(centerX, centerY);
                     return;
                 }
@@ -330,7 +331,7 @@ public final class Flazerd {
 
             // Hiệu ứng 3 tia hội tụ khi sạc đầy (giống video)
             if (st != null && st.burstTimer > 0) {
-                float progress = 1f - (st.burstTimer / 25f); // 0 -> 1
+                float progress = 1f - (st.burstTimer / (float) BURST_TICKS); // 0 -> 1
                 float spread = (1f - progress) * 28f; // 2 tia ngoài ép sát vào tia giữa
                 float beamAlpha = Mathf.clamp(progress * 2.5f);
 
@@ -348,7 +349,7 @@ public final class Flazerd {
                 Drawf.light(mx, my, 30f + progress * 40f, burstBlue, 0.8f);
 
                 // Tia mảnh sáng chói (lõi trắng, quầng xanh)
-                float ba = Mathf.clamp((progress - 0.15f) * 2.5f);
+                float ba = Mathf.clamp((progress - 0.05f) * 6f);
                 Draw.color(burstBlue); Draw.alpha(0.3f * ba); Lines.stroke(9f + progress * 5f); Lines.line(mx, my, endX, endY);
                 Draw.alpha(ba); Lines.stroke(3.2f); Lines.line(mx, my, endX, endY);
                 Draw.color(Color.white); Draw.alpha(ba); Lines.stroke(1.3f); Lines.line(mx, my, endX, endY);
