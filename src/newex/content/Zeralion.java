@@ -614,7 +614,7 @@ public final class Zeralion {
         }
     }
 
-    static boolean loggedAbility, loggedShoot;
+    static boolean loggedAbility, loggedShoot, loggedDraw;
 
     public static class BindLockAbility extends Ability {
         public Teamc target;
@@ -666,7 +666,11 @@ public final class Zeralion {
 
         @Override
         public void draw(Unit unit) {
-            final boolean mine = Vars.player != null && Vars.player.unit() == unit;
+            final boolean mine = Vars.player != null && (Vars.player.unit() == unit || (unit.isPlayer() && unit.getPlayer() == Vars.player));
+            if (!loggedDraw) {
+                loggedDraw = true;
+                Log.info("[Zeralion] ve noi tai: mine=" + mine + " playerUnit=" + (Vars.player != null && Vars.player.unit() != null ? Vars.player.unit().type.name : "null") + " range=" + RANGE);
+            }
             final Unit tu = target instanceof Unit ? (Unit) target : null;
             final float pr = progress, ph = phase;
             final boolean showLock = tu != null && pr > 0.02f;
