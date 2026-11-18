@@ -238,7 +238,7 @@ public final class Flazerd {
                 if (st.burstTimer == 0) {
                     float ex = data.lastX, ey = data.lastY;
                     purplePyroclasticExplosion.at(ex, ey);
-                    Sounds.explosionbig.at(ex, ey);
+                    Sounds.explosionBig.at(ex, ey);
                     Damage.damage(b.team, ex, ey, 56f, baseDamage * 4.5f);
                     st.charge = 0f;
                     st.cooldownTimer = 120; // Ngưng bắn 2 giây
@@ -262,7 +262,7 @@ public final class Flazerd {
                     currentPoints = 200f;
                     st.charge = 200f;
                     st.burstTimer = 25; // Kích hoạt trạng thái bắn 3 tia hội tụ
-                    Sounds.lasercharge2.at(centerX, centerY);
+                    Sounds.laserCharge2.at(centerX, centerY);
                     return;
                 }
                 st.charge = currentPoints;
