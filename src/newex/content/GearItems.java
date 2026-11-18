@@ -627,8 +627,8 @@ final class GearItems {
             if (kind == K_TP) { if (tpLeft() <= 0f) NewModePvp.send(REQ_GEAR, "t|" + d.id); }
             else NewModePvp.send(REQ_GEAR, "e|" + d.id);
         }
-        @Override public void act(float delta) { super.act(delta); layout(); }
-        boolean layout() {
+        @Override public void act(float delta) { super.act(delta); place(); }
+        boolean place() {
             Def d = heldDef(kind);
             touchable = d != null ? Touchable.enabled : Touchable.disabled;
             if (d == null) return false;
@@ -644,7 +644,7 @@ final class GearItems {
         }
         @Override public void draw() {
             Def d = heldDef(kind);
-            if (d == null || !layout()) return;
+            if (d == null || !place()) return;
             float u = NewModePvp.uiScale(), cx = x + width / 2f, cy = y + height / 2f;
             float left = kind == K_TP ? tpLeft() : 0f, frac = Mathf.clamp(left / PORT_CD);
             Draw.color();
