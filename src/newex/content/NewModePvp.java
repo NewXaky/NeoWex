@@ -107,6 +107,8 @@ public class NewModePvp {
     static final String TAG_STORE = "newex-pvp-store";
     static final String KEY_EXP = "newex-pvp-exp-percent";
     static final String KEY_MULTI = "newex-pvp-multi-turret";
+    /** Chế độ lắp nhiều pháo (0 = Dồn lực, 1 = Đa đạn, 2 = Hiệp đồng), chọn trong Cài đặt Newex. */
+    static final String KEY_TMODE = "newex-pvp-turret-mode";
     static final String KEY_PVB = "newex-pvp-player-vs-bot";
     static final String KEY_BVB = "newex-pvp-bot-vs-bot";
     static final String KEY_BUILT = "newex-pvp-max-built";
@@ -238,11 +240,10 @@ public class NewModePvp {
     static Table tmodeBox(final St st, float w) {
         Table t = new Table(Styles.black6);
         t.margin(6);
-        t.add("[accent]" + tr("Chế độ lắp nhiều pháo", "Multi-turret mode") + "[]").left().padRight(8);
-        bigBtn(t, tmName(st.tm), arc.graphics.Color.valueOf("ffb347"), () -> send(REQ_TMODE, String.valueOf((st.tm + 1) % 3)), 36f, 150f);
-        t.row();
-        t.add("[lightgray]" + tmDesc(st.tm) + "[]").colspan(2).width(Math.max(120f, w - 24f)).wrap().left().padTop(3).row();
-        t.add("[lightgray]" + tr("Nhấn nút để đổi: 1 → 2 → 3 → 1.", "Tap to cycle: 1 → 2 → 3 → 1.") + "[]").colspan(2).left().row();
+        int m = tmodeCfg();
+        t.add("[accent]" + tr("Chế độ lắp nhiều pháo: ", "Multi-turret mode: ") + "[]" + "[white]" + tmName(m) + "[]").left().row();
+        t.add("[lightgray]" + tmDesc(m) + "[]").width(Math.max(120f, w - 24f)).wrap().left().padTop(3).row();
+        t.add("[lightgray]" + tr("Đổi chế độ trong Cài đặt Newex (màn hình chính) > NewMode PvP.", "Change the mode in Newex Settings (main menu) > NewMode PvP.") + "[]").width(Math.max(120f, w - 24f)).wrap().left().row();
         return t;
     }
     static final int STAT_MAX = 20;
@@ -610,6 +611,11 @@ public class NewModePvp {
         return Math.min(LIMIT_BUILT, v);
     }
     static boolean multiTurretOn() { return setBool(KEY_MULTI, true); }
+    /** Chế độ lắp nhiều pháo hiện tại theo Cài đặt Newex (0..2). */
+    static int tmodeCfg() {
+        int v = getIntCached(KEY_TMODE, 0);
+        return (v >= 0 && v < 3) ? v : 0;
+    }
     static int shieldMinutes() {
         int v = getIntCached(KEY_SHIELD, DEFAULT_SHIELD_MIN);
         if (!(v >= 0)) v = DEFAULT_SHIELD_MIN;
@@ -1800,7 +1806,7 @@ public class NewModePvp {
         if (n == 0) return;
         if (Zeralion.isBound(u)) return; // bị Zeralion khóa: không bắn được
         St own = byId.get(pl.id);
-        int tm = own != null ? own.tm : -1;
+        int tm = own != null ? tmodeCfg() : -1;
         Aim ast = null;
         for (int k = 0; k < n; k++) {
             Def def = list.get(k);
@@ -5464,6 +5470,22 @@ public class NewModePvp {
         final String[] en = {"Allow multiple turrets of the same type (PvP)", "Build owned turrets only on core-zone floor", "Must stand on core-zone to return to core", "Open upgrade page without being near core", "Wave enemies spawn randomly across the map (off = center only)"};
         for (int i = 0; i < 4; i++) { final int k = i; content.check(tr(vi[k], en[k]), v[k], (Boolc) b -> v[k] = b).pad(5).left().row(); }
         content.check(tr(vi[4], en[4]), v[4], (Boolc) b -> v[4] = b).pad(5).left().row();
+        // Chế độ lắp nhiều pháo: bấm để đổi 1 -> 2 -> 3 -> 1 (lưu khi bấm Lưu)
+        final int[] tmSel = {tmodeCfg()};
+        final TextButton[] tmBtn = new TextButton[1];
+        final Label tmDescLbl = new Label("");
+        content.add(tr("Chế độ lắp nhiều pháo:", "Multi-turret mode:")).padTop(6).left().row();
+        tmBtn[0] = content.button("", Styles.flatBordert, () -> {
+            tmSel[0] = (tmSel[0] + 1) % 3;
+            tmBtn[0].setText(tmName(tmSel[0]));
+            tmDescLbl.setText(tmDesc(tmSel[0]));
+        }).width(300).height(48).pad(6).get();
+        tmBtn[0].setText(tmName(tmSel[0]));
+        content.row();
+        tmDescLbl.setText(tmDesc(tmSel[0]));
+        tmDescLbl.setWrap(true);
+        tmDescLbl.setColor(arc.graphics.Color.lightGray);
+        content.add(tmDescLbl).width(300).left().padBottom(4).row();
         final TextField tField = numField(content, tr("Địa bàn mỗi phe (ô quanh lõi, 0 = nửa map; tối đa " + LIMIT_TERR + "):", "Territory per team (tiles around core, 0 = half map; max " + LIMIT_TERR + "):"),
             Core.settings.getInt(KEY_TERR, 0), 3, tr("ô (map ngoài: 0 = " + EXT_BUILD_RANGE + ")", "tiles (other maps: 0 = " + EXT_BUILD_RANGE + ")"), false);
         content.check(tr("Dùng NewMode ở map khác (EXP diệt quái, biến về đổi unit, xây dựng)", "Use NewMode on other maps (kill EXP, return toggles unit, building)"), v[5], (Boolc) b -> v[5] = b).pad(5).left().row();
@@ -5499,7 +5521,7 @@ public class NewModePvp {
             Core.settings.put(KEY_BUILT, clampParse(drField, DEFAULT_BUILT, 0, LIMIT_BUILT));
             Core.settings.put(KEY_BZONE, v[1]); Core.settings.put(KEY_RZONE, v[2]); Core.settings.put(KEY_UPANY, v[3]); Core.settings.put(KEY_WRAND, v[4]);
             Core.settings.put(KEY_TERR, clampParse(tField, 0, 0, LIMIT_TERR));
-            Core.settings.put(KEY_EXT, v[5]); Core.settings.put(KEY_MULTI, v[0]); Core.settings.put(KEY_PVB, v[6]); Core.settings.put(KEY_BVB, v[7]);
+            Core.settings.put(KEY_TMODE, tmSel[0]); Core.settings.put(KEY_EXT, v[5]); Core.settings.put(KEY_MULTI, v[0]); Core.settings.put(KEY_PVB, v[6]); Core.settings.put(KEY_BVB, v[7]);
             invalidateCfgCache();
         };
     }
