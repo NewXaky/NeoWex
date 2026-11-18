@@ -666,25 +666,80 @@ public final class Zeralion {
 
         @Override
         public void draw(Unit unit) {
-            if (!(target instanceof Unit) || progress <= 0.02f) return;
-            final Unit tu = (Unit) target;
             final boolean mine = Vars.player != null && Vars.player.unit() == unit;
+            final Unit tu = target instanceof Unit ? (Unit) target : null;
             final float pr = progress, ph = phase;
+            final boolean showLock = tu != null && pr > 0.02f;
+            if (!mine && !showLock) return;
+            final float rangeA = cooldown > 0f ? 0.5f : 1f; // đang hồi: vòng phạm vi mờ đi
             Draw.draw(Layer.overlayUI, () -> {
-                float r = Math.max(tu.hitSize() * 0.7f, 14f), a = mine ? 1f : 0.6f;
-                Draw.color(pr >= 1f ? Color.white : GOLD, a);
-                Lines.stroke(1.6f);
-                Lines.circle(tu.x, tu.y, r * (1f + 1.2f * (1f - pr)));
-                Draw.color(GOLD_L, a);
-                for (int i = 0; i < 4; i++) {
-                    float ang = i * 90f + ph * 1.5f * (1f + pr);
-                    Drawf.tri(tu.x + Angles.trnsx(ang, r * 1.35f), tu.y + Angles.trnsy(ang, r * 1.35f), 3.5f, 6f, ang + 180f);
-                }
-                Draw.color(GOLD, a * 0.9f);
-                Lines.stroke(2f);
-                Lines.arc(tu.x, tu.y, r * 1.6f, pr, 90f);
-                Draw.reset();
+                if (mine) drawRange(unit, ph, rangeA);
+                if (showLock) drawReticle(tu, pr, ph, mine ? 1f : 0.6f);
             });
+        }
+
+        /** Vòng phạm vi nội tại quanh unit (chỉ người đang điều khiển thấy), kiểu Aureon. */
+        private static void drawRange(Unit unit, float ph, float a) {
+            float x = unit.x, y = unit.y;
+            Draw.color(GOLD, 0.16f * a);
+            Lines.stroke(3f);
+            Lines.circle(x, y, RANGE);
+
+            Draw.color(GOLD_L, 0.55f * a);
+            Lines.stroke(1.3f);
+            Lines.dashCircle(x, y, RANGE);
+
+            Draw.color(GOLD, 0.9f * a);
+            for (int i = 0; i < 4; i++) {
+                float ang = i * 90f + ph * 0.15f;
+                Drawf.tri(x + Angles.trnsx(ang, RANGE), y + Angles.trnsy(ang, RANGE), 5f, 7f, ang + 180f);
+            }
+            Draw.reset();
+        }
+
+        /** Khung khoanh mục tiêu kiểu Aureon: ô vuông + 4 mũi tên + hình thoi thu nhỏ + ngoặc + thanh tiến độ khóa. */
+        private static void drawReticle(Unit tu, float progress, float ph, float a) {
+            float tx = tu.x, ty = tu.y;
+            boolean locked = progress >= 1f;
+
+            float baseRadius = Math.max(tu.hitSize() * 0.65f, 14f);
+            float expand = (1f - progress) * 22f;
+            float pulse = locked ? Mathf.absin(ph, 3f, 1.5f) : 0f;
+            float sqSize = baseRadius + pulse;
+            float diamondSize = (baseRadius + 5f) + expand;
+            Color mainCol = locked ? Color.white : GOLD_L;
+
+            Draw.color(GOLD, (locked ? 0.95f : 0.75f) * a);
+            Lines.stroke(locked ? 2.0f : 1.5f);
+            Lines.square(tx, ty, sqSize, 0f);
+
+            float triSize = 4.2f;
+            Drawf.tri(tx, ty + sqSize + 2f, triSize, triSize, 270f);
+            Drawf.tri(tx, ty - sqSize - 2f, triSize, triSize, 90f);
+            Drawf.tri(tx - sqSize - 2f, ty, triSize, triSize, 0f);
+            Drawf.tri(tx + sqSize + 2f, ty, triSize, triSize, 180f);
+
+            Draw.color(mainCol, 0.85f * a);
+            Lines.stroke(1.6f);
+            Lines.square(tx, ty, diamondSize, 45f);
+
+            float bo = sqSize + 9f + expand * 1.2f;
+            float bh = 7f;
+            Lines.line(tx - bo, ty + bh, tx - bo - 5f, ty);
+            Lines.line(tx - bo - 5f, ty, tx - bo, ty - bh);
+            Lines.line(tx + bo, ty + bh, tx + bo + 5f, ty);
+            Lines.line(tx + bo + 5f, ty, tx + bo, ty - bh);
+
+            float barX = tx + sqSize + 15f;
+            float barH = sqSize * 1.8f;
+            float barW = 3f;
+            Draw.color(Color.black, 0.55f * a);
+            Fill.rect(barX, ty, barW + 1.5f, barH + 1.5f);
+            Draw.color(mainCol, 0.95f * a);
+            float fillH = barH * progress;
+            Fill.rect(barX, ty - (barH - fillH) * 0.5f, barW, fillH);
+
+            Draw.reset();
         }
     }
 
