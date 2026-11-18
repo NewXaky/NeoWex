@@ -78,6 +78,7 @@ import arc.scene.ui.layout.Table;
 import mindustry.gen.Icon;
 import mindustry.ui.dialogs.BaseDialog;
 import newex.MachineUi;
+import newex.NexNet;
 import arc.scene.ui.Image;
 import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Scl;
@@ -860,6 +861,8 @@ public class NewModePvp {
             Vars.netClient.addPacketHandler(SHIELD_KIND, content -> onShieldSync(content));
             Vars.netClient.addPacketHandler(GearItems.FX_KIND, content -> GearItems.onFxPacket(content));
             Vars.netClient.addPacketHandler(GearItems.RING_KIND, content -> GearItems.onRingPacket(content));
+            Vars.netClient.addPacketHandler(GearItems.PORT_KIND, content -> GearItems.onPortPacket(content));
+            NexNet.onClient("newex-gear-tp", GearItems::onTpMsg);
             Vars.netClient.addPacketHandler(PFX_KIND, content -> {
                 try {
                     Integer id = leadInt(content);
@@ -2383,6 +2386,7 @@ public class NewModePvp {
                     pilotOverlay.setSize(screenW(), screenH());
                     Vars.ui.hudGroup.addChild(pilotOverlay);
                     pilotOverlay.toFront();
+                    GearItems.addHud();
                 } catch (Throwable err) { Log.err("[NexPvp] cannot add pilot overlay: " + err); }
             });
             Events.run(Trigger.postDraw, () -> {
@@ -3035,6 +3039,7 @@ public class NewModePvp {
         buffStatus = new StatusEffect("pvp-buff") {
             @Override public void update(Unit unit, StatusEntry entry) { super.update(unit, entry); applyStats(unit); }
         };
+        GearItems.hasteStatus = new StatusEffect("pvp-gear-haste") {{ speedMultiplier = 2.5f; permanent = false; show = true; color = Color.valueOf("2ee6c8"); }};
         buffStatus.permanent = true; buffStatus.show = false;
         equipStatus = new StatusEffect("pvp-equip");
         equipStatus.permanent = true; equipStatus.show = false;
