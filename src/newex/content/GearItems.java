@@ -136,9 +136,9 @@ final class GearItems {
         d(S_CHARM, 4, "Bùa Pha Lê Hư Vô", "Void Crystal Charm", "newex-obsidis,newex-starlight", 13, 18, 12, 10, 9, 8, 7, 8, 1, -4, 3, -4);
         // ---- Vật phẩm cửa hàng (chỉ mua, không rơi từ quái đợt)
         shop("Bùa Dịch Chuyển", "Recall Charm", "phase-fabric,phase-conveyor", K_TP, 1,
-            "Kỹ năng: đứng yên 3s để dịch chuyển về căn cứ (hồi 30s). Nút ở góc dưới bên phải khi đã lắp.", "Skill: stand still 3s to teleport to base (30s cooldown). Button at bottom-right once equipped.");
+            "Kỹ năng: đứng yên 3s để dịch chuyển về căn cứ (hồi 30s). Nút hiện ở góc dưới bên phải khi có trong túi hoặc đã lắp.", "Skill: stand still 3s to teleport to base (30s cooldown). Button at bottom-right while in bag or equipped.");
         shop("Bùa May Mắn", "Lucky Charm", "surge-alloy,plastanium", K_LUCK, 3,
-            "Nội tại: +10% tỉ lệ kích hoạt rơi vật phẩm từ quái đợt.", "Passive: +10% item drop chance from wave monsters.");
+            "Nội tại (cần lắp): +10% tỉ lệ kích hoạt rơi vật phẩm từ quái đợt.", "Passive (equip): +10% item drop chance from wave monsters.");
         shop("Nước Tăng Tốc", "Haste Potion", "pyratite,overdrive-projector", K_HASTE, 1,
             "Tiêu hao: +150% tốc độ di chuyển trong 10s. Nút ở góc dưới bên phải khi có trong túi.", "Consumable: +150% move speed for 10s. Button at bottom-right while in bag.");
     }
@@ -612,8 +612,8 @@ final class GearItems {
     static Def heldDef(int kind) {
         NewModePvp.St st = NewModePvp.localState();
         if (st == null || !war()) return null;
-        if (kind == K_TP) { for (int i = 0, ns = slots(); i < ns; i++) { Def d = def(st.gEq[i]); if (d != null && d.kind == kind) return d; } return null; }
         for (int id : st.gInv) { Def d = def(id); if (d != null && d.kind == kind) return d; }
+        if (kind == K_TP) for (int i = 0, ns = slots(); i < ns; i++) { Def d = def(st.gEq[i]); if (d != null && d.kind == kind) return d; }
         return null;
     }
     static int bagCount(int kind) { NewModePvp.St st = NewModePvp.localState(); int c = 0; if (st != null) for (int id : st.gInv) { Def d = def(id); if (d != null && d.kind == kind) c++; } return c; }
@@ -627,11 +627,11 @@ final class GearItems {
             if (kind == K_TP) { if (tpLeft() <= 0f) NewModePvp.send(REQ_GEAR, "t|" + d.id); }
             else NewModePvp.send(REQ_GEAR, "e|" + d.id);
         }
-        @Override public void act(float delta) {
-            super.act(delta);
+        @Override public void act(float delta) { super.act(delta); layout(); }
+        boolean layout() {
             Def d = heldDef(kind);
-            visible = d != null && Vars.state.isGame() && !Vars.headless;
-            if (d == null) return;
+            touchable = d != null ? Touchable.enabled : Touchable.disabled;
+            if (d == null) return false;
             float u = NewModePvp.uiScale(), sz = (Vars.mobile ? 56 : 44) * u, mg = 16 * u;
             NewModePvp.St st = NewModePvp.localState();
             int shift = 0;
@@ -640,10 +640,11 @@ final class GearItems {
             if (pu != null && Zeralion.zeralion != null && pu.type == Zeralion.zeralion) shift++;
             if (kind == K_HASTE && heldDef(K_TP) != null) shift++;
             setBounds(NewModePvp.screenW() - mg - sz - shift * (sz + mg * 0.5f), mg, sz, sz);
+            return true;
         }
         @Override public void draw() {
             Def d = heldDef(kind);
-            if (d == null) return;
+            if (d == null || !layout()) return;
             float u = NewModePvp.uiScale(), cx = x + width / 2f, cy = y + height / 2f;
             float left = kind == K_TP ? tpLeft() : 0f, frac = Mathf.clamp(left / PORT_CD);
             Draw.color();
@@ -725,12 +726,21 @@ final class GearItems {
         head.add("[lightgray]" + (m > 1.02f ? tr("Phe bạn tăng điểm nhanh hơn → giá đắt hơn.", "Your team gains points faster → higher prices.")
             : m < 0.98f ? tr("Phe bạn tăng điểm chậm hơn → giá rẻ hơn.", "Your team gains points slower → lower prices.") : tr("Hai phe đang ngang nhau.", "Teams are even.")) + "[]").colspan(2).left().growX().wrap().minWidth(0).padTop(2);
         h.add(head).growX().pad(4).row();
+        // vật phẩm cửa hàng (chỉ mua 1 lần) ở đầu trang
+        c.add("[#2ee6c8]" + tr("Vật phẩm cửa hàng (mua 1 lần)", "Shop items (one-time)") + "[]").left().padLeft(6).padTop(4).row();
+        for (int i = 0; i < n; i++) {
+            final Def d = DEFS[i];
+            if (d.kind <= 0) continue;
+            boolean owned = st.gInv.contains(d.id);
+            for (int k = 0, ns = slots(); k < ns && !owned; k++) if (st.gEq[k] == d.id) owned = true;
+            c.add(itemRow(d, W, narrow, owned ? tr("Đã có", "Owned") : tr("Mua ", "Buy ") + price(d, t), owned ? () -> {} : () -> NewModePvp.send(REQ_GEAR, "b|" + d.id), null, null, false)).width(W).pad(3).row();
+        }
         // bán
         c.add("[accent]" + tr("Bán vật phẩm trong túi", "Sell bag items") + "[]").left().padLeft(6).padTop(4).row();
         boolean any = false;
         for (int id : new ArrayList<>(st.gInv)) {
             final Def d = def(id);
-            if (d == null) continue;
+            if (d == null || d.kind > 0) continue;
             any = true;
             c.add(itemRow(d, W, narrow, tr("Bán +", "Sell +") + sellPrice(d, t), () -> NewModePvp.send(REQ_GEAR, "s|" + d.id), null, null, false)).width(W).pad(3).row();
         }
@@ -739,7 +749,7 @@ final class GearItems {
         for (int ty = 0; ty < TYPES; ty++) {
             c.add("[accent]" + tr("Mua - ", "Buy - ") + tr(SLOT_VI[ty], SLOT_EN[ty]) + "[]").left().padLeft(6).padTop(8).row();
             ArrayList<Def> l = new ArrayList<>();
-            for (int i = 0; i < n; i++) if (DEFS[i].slot == ty) l.add(DEFS[i]);
+            for (int i = 0; i < n; i++) if (DEFS[i].slot == ty && DEFS[i].kind <= 0) l.add(DEFS[i]);
             l.sort((x, y) -> y.rarity - x.rarity);
             for (final Def d : l) c.add(itemRow(d, W, narrow, tr("Mua ", "Buy ") + price(d, t), () -> NewModePvp.send(REQ_GEAR, "b|" + d.id), null, null, false)).width(W).pad(3).row();
         }
@@ -775,7 +785,8 @@ final class GearItems {
                 NewModePvp.toast(player, tr("[accent]Đã lắp ", "[accent]Equipped ") + col(d.rarity) + name(d) + "[]");
             } else if (op.equals("t")) {                  // bắt đầu dịch chuyển về căn cứ (cần đang lắp Bùa Dịch Chuyển)
                 boolean has = false;
-                for (int k = 0, ns = slots(); k < ns; k++) { Def q = def(st.gEq[k]); if (q != null && q.kind == K_TP) has = true; }
+                for (int id : st.gInv) { Def q = def(id); if (q != null && q.kind == K_TP) has = true; }
+                for (int k = 0, ns = slots(); k < ns && !has; k++) { Def q = def(st.gEq[k]); if (q != null && q.kind == K_TP) has = true; }
                 Unit u = player.unit();
                 if (!has || u == null || u.dead() || port.containsKey(player.id) || player.team().core() == null) return;
                 Float cd = portCd.get(player.id);
@@ -793,20 +804,23 @@ final class GearItems {
                 int idx = st.gInv.indexOf(v);
                 Def dd = def(v);
                 if (idx < 0 || dd == null) return;
-                if (spawnCarrier(dd)) {
+                if (dd.kind > 0) { st.gInv.remove(idx); NewModePvp.toast(player, tr("[accent]Đã bỏ vật phẩm cửa hàng (không hóa quái).", "[accent]Shop item discarded (no monster).")); }
+                else if (spawnCarrier(dd)) {
                     st.gInv.remove(idx);
                     NewModePvp.toast(player, tr("[accent]Vật phẩm hóa thành quái trên bản đồ - hạ nó để nhận!", "[accent]The item became a monster on the map - kill it to claim!"));
                 } else NewModePvp.toast(player, tr("[scarlet]Không tìm được chỗ spawn, giữ lại vật phẩm.", "[scarlet]No spawn spot found, item kept."));
             } else if (op.equals("b")) {                  // mua vật phẩm mẫu id=v bằng điểm
                 Def d = def(v);
                 if (d == null || st.gInv.size() >= INV_CAP) return;
+                if (d.kind > 0 && st.gBought.contains(d.id)) { NewModePvp.toast(player, tr("[scarlet]Vật phẩm cửa hàng chỉ mua được 1 lần!", "[scarlet]Shop items can only be bought once!")); return; }
                 int pr = price(d, player.team());
                 if (st.pts < pr) { NewModePvp.toast(player, tr("[scarlet]Không đủ điểm!", "[scarlet]Not enough points!")); return; }
                 st.pts -= pr; st.gInv.add(d.id);
+                if (d.kind > 0) st.gBought.add(d.id);
             } else if (op.equals("s")) {                  // bán vật phẩm id=v trong túi lấy điểm
                 int idx = st.gInv.indexOf(v);
                 Def d = def(v);
-                if (idx < 0 || d == null) return;
+                if (idx < 0 || d == null || d.kind > 0) return;
                 st.gInv.remove(idx); st.pts += sellPrice(d, player.team());
             } else return;
             NewModePvp.changed();
@@ -852,6 +866,24 @@ final class GearItems {
         return border;
     }
 
+    static final boolean[] roleOpen = {true, true, true, true, true, true};
+    /** Một vai trò: nút mở rộng/thu gọn + toàn bộ ô trang bị của vai trò đó (slot % 6 == vai trò). */
+    static Table roleBlock(final NewModePvp.St st, final int role, final float cw) {
+        final Table box = new Table();
+        final Runnable[] fill = {null};
+        fill[0] = () -> {
+            box.clear();
+            int tot = 0, used = 0;
+            for (int s = role, ns = slots(); s < ns; s += TYPES) { tot++; if (st.gEq[s] >= 0) used++; }
+            box.button((roleOpen[role] ? "^  " : "v  ") + tr(SLOT_VI[role], SLOT_EN[role]) + "  " + used + "/" + tot, Styles.flatBordert, () -> { roleOpen[role] = !roleOpen[role]; fill[0].run(); })
+                .width(cw).height(NewModePvp.btnH() * 0.9f).row();
+            if (!roleOpen[role]) return;
+            for (int s = role, ns = slots(); s < ns; s += TYPES) box.add(slotTile(st, s, cw)).width(cw).minHeight(cw * 0.85f).padTop(4).row();
+        };
+        fill[0].run();
+        return box;
+    }
+
     /** Một ô trang bị trên trang chính. */
     static Table slotTile(NewModePvp.St st, final int slot, float w) {
         Def d = def(st.gEq[slot]);
@@ -891,9 +923,9 @@ final class GearItems {
         int cols = W < 440f ? 2 : 3;
         float cw = Math.max(110f, (W - 8f * cols - 8f) / cols);
         Table grid = new Table();
-        for (int s = 0, ns = slots(); s < ns; s++) {
-            grid.add(slotTile(st, s, cw)).width(cw).minHeight(cw * 0.85f).pad(4);
-            if ((s + 1) % cols == 0) grid.row();
+        for (int r = 0; r < TYPES; r++) {
+            grid.add(roleBlock(st, r, cw)).width(cw).top().pad(4);
+            if ((r + 1) % cols == 0) grid.row();
         }
         c.add(grid).width(W).row();
 
