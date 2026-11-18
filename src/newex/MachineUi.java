@@ -1082,7 +1082,8 @@ public final class MachineUi {
         final Label l = t.add(text).grow().padLeft(padX).padRight(padX).get();
         l.setFontScale(0.82f);
         l.setAlignment(Align.center);
-        l.setEllipsis(true);
+        // tab trên thanh tiêu đề (fill = false) có bề rộng = chữ, nên không cắt "..."; tab chia đều (fill) mới cần cắt
+        l.setEllipsis(fill);
         t.row();
         final Image bar = t.image(Tex.whiteui).growX().height(3f).get();
         t.update(() -> {
@@ -1105,7 +1106,7 @@ public final class MachineUi {
         final Label badge = new Label("");
         badge.setFontScale(0.85f);
         Table top = new Table();
-        top.add(l).minWidth(0f);
+        top.add(l).growX().minWidth(0f);
         top.add(badge).padLeft(4f);
         t.add(top).growX().minWidth(0f).row();
         final Label cl = new Label(p.tabCaps != null && idx < p.tabCaps.length ? p.tabCaps[idx] : "");
