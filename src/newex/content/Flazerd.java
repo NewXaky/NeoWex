@@ -53,7 +53,7 @@ public final class Flazerd {
     static final float deadZone = 40f;
     static final Color laserColor = Color.valueOf("bf7fff");
     static final int BURST_TICKS = 100; // tia cuối tồn tại ~1.7 giây
-    static final Color burstBlue = Color.valueOf("4d7dff");
+    static final Color burstBlue = Color.valueOf("a64dff");
     static final Color particleColor = Color.valueOf("e8bfff");
     static final Color deepPurple = Color.valueOf("6a1b9a");
     static final Color greenLaserColor = Color.valueOf("33ff55");
@@ -345,7 +345,6 @@ public final class Flazerd {
 
             // Tia cuối điện ảnh (theo video): sạc cầu + mảnh tinh thể -> tia thon chói -> vòng sóng/bong bóng/mảnh vỡ
             if (st != null && st.burstTimer > 0) {
-                if (Vars.state.isPaused()) return; // tạm dừng thì không vẽ gì cả
                 float p = 1f - (st.burstTimer / (float) BURST_TICKS); // 0 -> 1
                 float tm = Time.time;
                 float mx = startX + Angles.trnsx(laserAngle, 14f), my = startY + Angles.trnsy(laserAngle, 14f);
