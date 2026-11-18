@@ -71,6 +71,9 @@ public final class Zeralion {
     /** Chờ sau khi nhịp đó bắt đầu tới nhịp kế (tick); lớn hơn thời gian bắn hết các viên. */
     static final float[] RELOAD = {30f, 34f, 100f};
     static final float RESET_AFTER = 150f;
+    /** Bán kính sát thương phạm vi = vòng sóng xung kích ngoài cùng của hiệu ứng nổ (sprite 128px, x PX, nửa, x BOOM_K). Chỉnh BOOM_K để đổi phạm vi. */
+    static final float BOOM_K = 1.7f;
+    static float splashR(int stage) { return 128f * 0.25f * (1f + 0.5f * stage) * 0.5f * BOOM_K; }
     /** Thời gian tụ lực trước đòn 3 (tick). */
     static final float CHARGE = 48f;
     static Effect chargeFx;
@@ -269,6 +272,9 @@ public final class Zeralion {
         @Override
         public void hit(Bullet b, float x, float y) {
             super.hit(b, x, y);
+            // đạn không gây sát thương trực tiếp (damage = 0): sát thương phạm vi nằm trong b.data
+            float d = b.data instanceof Float ? (Float) b.data : 0f;
+            if (d > 0f) mindustry.entities.Damage.damage(b.team, x, y, splashR(stage), d * b.damageMultiplier(), false, true, true, false, b);
             if (!Vars.headless && stage > 0) Effect.shake(SHAKE_I[stage] * 0.5f, SHAKE_T[stage] * 0.6f, x, y);
         }
     }
@@ -460,7 +466,7 @@ public final class Zeralion {
 
             BulletType type = BULLETS[stage];
             float ang = rotation + Mathf.range(inaccuracy);
-            type.create(unit, unit.team, bx, by, ang, dmg, 1f, 1f, null, null, mount.aimX, mount.aimY);
+            type.create(unit, unit.team, bx, by, ang, 0f, 1f, 1f, Float.valueOf(dmg), null, mount.aimX, mount.aimY);
             type.shootEffect.at(bx, by, rotation, GOLD, unit);
 
             mount.recoil = 0.45f + 0.275f * stage;
@@ -484,6 +490,13 @@ public final class Zeralion {
     public static final float LOCK_TICKS = 90f;       // 1.5s khóa như Aureon
     public static final float BIND_TICKS = 54f;       // 0.9s cấm hành động
     public static final float BIND_COOLDOWN = 480f;   // 8s nghỉ giữa 2 lần khóa
+
+    /** Hồi chiêu còn lại (tick) của nội tại trên unit này; -1 nếu unit không có nội tại Zeralion (dùng cho HUD). */
+    public static float lockCooldown(Unit u) {
+        if (u == null) return -1f;
+        for (Ability a : u.abilities) if (a instanceof BindLockAbility) return ((BindLockAbility) a).cooldown;
+        return -1f;
+    }
 
     static StatusEffect bindStatus;
     static Effect laserFx, bindHitFx, bindSparkFx;
@@ -763,7 +776,7 @@ public final class Zeralion {
             localizedName = "Zeralion";
             description = "Cơ giáp sư tử vàng 4 chân, 2 pháo vai bắn chu kỳ 3 nhịp, nhịp sau mạnh hơn nhịp trước.";
             details = "Mỗi khe pháo bắn lần lượt (rồi lặp lại): 3 viên 50% Tấn công -> 2 viên 125% Tấn công + 10% máu hiện tại "
-                + "-> 1 viên 270% Tấn công + 30% máu hiện tại. Các viên bắn thẳng hàng nối tiếp nhau; "
+                + "-> 1 viên 270% Tấn công + 30% máu hiện tại. Đạn không gây sát thương trực tiếp mà nổ gây sát thương phạm vi (bán kính bằng hiệu ứng vụ nổ, giảm dần ra rìa). Các viên bắn thẳng hàng nối tiếp nhau; "
                 + "nhịp càng nặng đạn càng nhanh, màn hình rung nhẹ. Đòn 3 tụ lực gần 1 giây trước khi bắn. "
                 + "Nội tại: tự khóa mục tiêu 1.5 giây rồi bắn tia laser vàng kim, cấm mục tiêu hành động 0.9 giây "
                 + "(không bắn, không di chuyển, không quay, không dùng kỹ năng; pilot vẫn hoạt động), hồi 8 giây.";
@@ -774,7 +787,7 @@ public final class Zeralion {
             drawCell = false;
 
             hitSize = 30f;
-            health = 6500f;
+            health = 7800f; // 6500 +20%
             armor = 12f;
             speed = 0.52f;
             rotateSpeed = 2.6f;

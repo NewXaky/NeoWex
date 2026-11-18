@@ -15,6 +15,7 @@ import mindustry.ui.dialogs.BaseDialog;
 import newex.content.ArchuengPvp;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
+import newex.content.Zeralion;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -132,9 +133,29 @@ public final class UnitSkillInfo {
         ));
     }
 
+    public static void registerZeralion() {
+        register(new SkillProfile(
+            "Zeralion",
+            () -> Zeralion.zeralion,
+            "PHÁO VAI 3 NHỊP & PHONG ẤN KHÓA MỤC TIÊU",
+            DamageKind.BASIC_ATTACK,
+            Color.valueOf("FFC933"),
+            "Nội tại: khóa 1.5 giây rồi bắn laser, hồi 8.0 giây",
+            "Nhịp 1: 3 viên, mỗi viên 50% Tấn Công\n"
+                + "Nhịp 2: 2 viên, mỗi viên 125% Tấn Công + 10% Máu Hiện Tại\n"
+                + "Nhịp 3: 1 viên, 270% Tấn Công + 30% Máu Hiện Tại (tụ lực gần 1 giây)\n"
+                + "Đạn KHÔNG gây sát thương trực tiếp: nổ gây sát thương phạm vi, bán kính bằng hiệu ứng vụ nổ (khoảng 3.4 / 5.1 / 6.8 ô theo từng nhịp), càng xa tâm nổ sát thương càng giảm (còn 40% ở rìa).",
+            "Hai pháo vai bắn lần lượt chu kỳ 3 nhịp, nhịp sau mạnh hơn nhịp trước. Các viên bắn thẳng hàng nối tiếp nhau, mỗi viên chạm mục tiêu hoặc vật cản sẽ phát nổ vàng kim gây sát thương lan trong vùng. Được tính là Đòn Đánh Thường.",
+            "Phong Ấn Khóa Mục Tiêu: tự khóa mục tiêu gần nhất trong tầm 1.5 giây (người chơi có thể rê chuột để chọn mục tiêu), khóa xong bắn tia laser vàng kim cấm mục tiêu hành động 0.9 giây: không bắn, không di chuyển, không quay, không dùng kỹ năng (pilot vẫn hoạt động). Sau mỗi lần bắn phải hồi 8 giây; thời gian hồi hiện ở góc dưới bên phải màn hình.",
+            null,
+            null
+        ));
+    }
+
     public static void init() {
         registerHonivery();
         registerArchueng();
+        registerZeralion();
     }
 
     /** Có hồ sơ kỹ năng cho unit này không (dùng để hiện nút "i"). */

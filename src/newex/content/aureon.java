@@ -130,9 +130,9 @@ public final class aureon {
 
             localizedName = "Aureon";
             description = "Robot xung kích 4 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
-            details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa. Mỗi tia điện gây 60% Tấn công + 60% Giáp mỗi giây.";
+            details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa. Mỗi tia điện gây 60% Tấn công + 60% Giáp mỗi giây. Nếu đã khóa 100% mục tiêu và tiêu diệt nó, mục tiêu kế tiếp trong tầm được khóa ngay lập tức (bỏ qua thời gian khóa).";
 
-            health = 66000f; // 22000 + 200% = x3
+            health = 52800f; // 66000 -20%
             armor = 22f;
             hitSize = 38f;
             speed = 0.78f;
@@ -404,6 +404,14 @@ public final class aureon {
         public float lockProgress = 0f;
         /** Đồng hồ hiệu ứng, chỉ tăng khi game đang chạy (đứng yên khi tạm dừng). */
         public float phase = 0f;
+        /** Đã khóa 100% rồi mục tiêu chết -> mục tiêu kế tiếp bỏ qua thời gian khóa. */
+        private boolean chain = false;
+
+        private float takeChain() {
+            if (!chain) return 0f;
+            chain = false;
+            return 1f;
+        }
 
         public boolean isLocked() {
             return lockedTarget != null && isValidTarget(lockedTarget) && lockProgress >= 1f;
@@ -428,6 +436,7 @@ public final class aureon {
             phase += Time.delta;
             if (lockedTarget != null) {
                 if (!isValidTarget(lockedTarget) || unit.dst(lockedTarget) > RANGE) {
+                    if (lockProgress >= 1f && !isValidTarget(lockedTarget)) chain = true;   // chết khi đã khóa đủ (không phải ra khỏi tầm)
                     lockedTarget = null;
                     lockProgress = 0f;
                 }
@@ -440,7 +449,7 @@ public final class aureon {
                 );
                 if (hovered != null && hovered != lockedTarget) {
                     lockedTarget = hovered;
-                    lockProgress = 0f;
+                    lockProgress = takeChain();
                 }
             }
 
@@ -449,7 +458,7 @@ public final class aureon {
                     u -> u.checkTarget(true, true),
                     b -> true
                 );
-                lockProgress = 0f;
+                lockProgress = lockedTarget != null ? takeChain() : 0f;
             }
 
             if (lockedTarget != null) {

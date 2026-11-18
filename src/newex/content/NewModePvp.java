@@ -2040,6 +2040,34 @@ public class NewModePvp {
         Draw.reset();
         if (frac > 0) drawTxt(fmtCd(left), cx, cy + 6 * uiScale(), 0.45f * uiScale() * (Vars.mobile ? 1.2f : 1f), Color.white);
     }
+    /** HUD hồi chiêu nội tại Zeralion (góc dưới bên phải, giống HUD hồi chiêu pilot; dịch sang trái nếu pilot cũng có HUD). */
+    static void drawZeralionCdHud() {
+        if (Vars.player == null) return;
+        Unit u = Vars.player.unit();
+        if (u == null || Zeralion.zeralion == null || u.type != Zeralion.zeralion) return;
+        float left = Zeralion.lockCooldown(u);
+        if (left < 0f) return;
+        TextureRegion reg = u.type.uiIcon;
+        if (reg == null) return;
+        float frac = Math.max(0f, Math.min(1f, left / Zeralion.BIND_COOLDOWN));
+        float sz = (Vars.mobile ? 56 : 44) * uiScale(), margin = 16 * uiScale();
+        St st = localState();
+        boolean shift = st != null && st.pi > 0 && pilotCdFor(st.pi) != null;
+        float cx = screenW() - margin - sz / 2 - (shift ? sz + margin * 0.5f : 0f), cy = margin + sz / 2;
+        Draw.color();
+        Draw.alpha(frac > 0 ? 0.45f : 1f);
+        Draw.rect(reg, cx, cy, sz, sz);
+        if (frac > 0) {
+            Draw.color(Color.black, 0.65f);
+            float h = sz * frac;
+            Fill.rect(cx, cy + sz / 2 - h / 2, sz, h);
+        }
+        Draw.color(frac > 0 ? Color.lightGray : Pal.accent, 1f);
+        Lines.stroke(2 * uiScale());
+        Lines.rect(cx - sz / 2, cy - sz / 2, sz, sz);
+        Draw.reset();
+        if (frac > 0) drawTxt(fmtCd(left), cx, cy + 6 * uiScale(), 0.45f * uiScale() * (Vars.mobile ? 1.2f : 1f), Color.white);
+    }
     static Element pilotOverlay = null;
     static void drawVanhauFields() {
         java.util.Iterator<Map.Entry<Integer, VanhauField>> it = vanhauField.entrySet().iterator();
@@ -2337,6 +2365,7 @@ public class NewModePvp {
                             if (!isActive()) return;
                             try { drawPilotUI(); } catch (Throwable err) { logOnce("pilotui", "pilot ui failed: " + err, false); }
                             try { drawPilotCdHud(); } catch (Throwable err) { logOnce("pilotcdhud", "pilot cd hud failed: " + err, false); }
+                            try { drawZeralionCdHud(); } catch (Throwable err) { logOnce("zeralioncdhud", "zeralion cd hud failed: " + err, false); }
                             Draw.reset();
                         }
                     };
@@ -5641,7 +5670,7 @@ public class NewModePvp {
         col.add("[white]" + ut.localizedName + "[]").left().row();
         col.add("[lightgray]" + (isWarTier(t) ? tr("Unit mới chiến tranh · yêu cầu cấp " + tierMinLevel(t), "New war unit · requires Lv " + tierMinLevel(t)) : isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t)) + "[]").left().wrap().growX();
         row.add(col).growX().left().minWidth(0);
-        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : null;
+        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 10 ? "Zeralion" : null;
         if (t == cur) row.add("[accent]" + tr("Đang dùng", "In use") + "[]").width(selW).center();
         else if (st.lv < tierMinLevel(t)) row.add("[scarlet]" + tr("Cần cấp ", "Need Lv ") + tierMinLevel(t) + "[]").width(selW).center();
         else row.button(tr("Chọn", "Select"), () -> send(REQ_UNIT, String.valueOf(t))).size(selW, btnH());
