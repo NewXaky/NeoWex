@@ -150,6 +150,20 @@ public final class Flazerd {
         Draw.reset();
     }
 
+    /** Tia hình thon (dày ở nòng, mảnh dần về mục tiêu). */
+    static void taperBeam(float x1, float y1, float x2, float y2, float w1, float w2) {
+        float a = Angles.angle(x1, y1, x2, y2) + 90f;
+        float ax = Angles.trnsx(a, w1), ay = Angles.trnsy(a, w1), bx = Angles.trnsx(a, w2), by = Angles.trnsy(a, w2);
+        Fill.quad(x1 - ax, y1 - ay, x1 + ax, y1 + ay, x2 + bx, y2 + by, x2 - bx, y2 - by);
+    }
+
+    /** Mảnh tinh thể nhọn xoay. */
+    static void shard(float x, float y, float size, float rot) {
+        Fill.tri(x + Angles.trnsx(rot, size * 1.7f), y + Angles.trnsy(rot, size * 1.7f),
+                 x + Angles.trnsx(rot + 130f, size * 0.7f), y + Angles.trnsy(rot + 130f, size * 0.7f),
+                 x + Angles.trnsx(rot - 130f, size * 0.7f), y + Angles.trnsy(rot - 130f, size * 0.7f));
+    }
+
     static void drawLaserRing(float cx, float cy, float radiusX, float radiusY, float laserAngle, float strokeWidth, Color color) {
         Draw.color(color); Lines.stroke(strokeWidth);
         int steps = 16; float lastX = 0f, lastY = 0f;
@@ -329,52 +343,81 @@ public final class Flazerd {
             float laserAngle = Angles.angle(startX, startY, endX, endY);
             float currentPoints = st != null ? st.charge : 0f;
 
-            // Hiệu ứng 3 tia hội tụ khi sạc đầy (giống video)
+            // Tia cuối điện ảnh (theo video): sạc cầu + mảnh tinh thể -> tia thon chói -> vòng sóng/bong bóng/mảnh vỡ
             if (st != null && st.burstTimer > 0) {
-                float progress = 1f - (st.burstTimer / (float) BURST_TICKS); // 0 -> 1
-                float spread = (1f - progress) * 28f; // 2 tia ngoài ép sát vào tia giữa
-                float beamAlpha = Mathf.clamp(progress * 2.5f);
-
+                if (Vars.state.isPaused()) return; // tạm dừng thì không vẽ gì cả
+                float p = 1f - (st.burstTimer / (float) BURST_TICKS); // 0 -> 1
+                float tm = Time.time;
                 float mx = startX + Angles.trnsx(laserAngle, 14f), my = startY + Angles.trnsy(laserAngle, 14f);
+                float len = Math.max(10f, dist - 14f);
+                float charge = Mathf.clamp(p / 0.3f);
+                float fire = Mathf.clamp((p - 0.3f) / 0.1f);
+                float fade = 1f - Mathf.clamp((p - 0.9f) / 0.1f);
+                float pulse = 1f + Mathf.sin(tm, 3f, 0.15f);
+                float px = Angles.trnsx(laserAngle + 90f, 1f), py = Angles.trnsy(laserAngle + 90f, 1f);
+                float ax = Angles.trnsx(laserAngle, 1f), ay = Angles.trnsy(laserAngle, 1f);
 
-                // Quả cầu năng lượng + vòng tụ ở đầu nòng
-                Draw.color(burstBlue);
-                Draw.alpha(0.5f + progress * 0.5f);
-                Fill.circle(mx, my, 3f + progress * 4f);
-                Draw.color(Color.white);
-                Fill.circle(mx, my, 1.5f + progress * 2.5f);
-                Draw.color(burstBlue);
-                Lines.stroke(1.5f);
-                Lines.circle(mx, my, 6f + (1f - progress) * 16f);
-                Drawf.light(mx, my, 30f + progress * 40f, burstBlue, 0.8f);
+                // Quả cầu năng lượng ở nòng
+                Draw.color(burstBlue); Draw.alpha(0.3f * fade);
+                Fill.circle(mx, my, (8f + charge * 10f) * pulse);
+                Draw.alpha(0.9f * fade);
+                Fill.circle(mx, my, (3f + charge * 4f) * pulse);
+                Draw.color(Color.white); Draw.alpha(fade);
+                Fill.circle(mx, my, (1.5f + charge * 2.5f) * pulse);
+                Drawf.light(mx, my, 40f + charge * 60f + fire * 40f, burstBlue, 0.9f * fade);
 
-                // Tia mảnh sáng chói (lõi trắng, quầng xanh)
-                float ba = Mathf.clamp((progress - 0.05f) * 6f);
-                Draw.color(burstBlue); Draw.alpha(0.3f * ba); Lines.stroke(9f + progress * 5f); Lines.line(mx, my, endX, endY);
-                Draw.alpha(ba); Lines.stroke(3.2f); Lines.line(mx, my, endX, endY);
-                Draw.color(Color.white); Draw.alpha(ba); Lines.stroke(1.3f); Lines.line(mx, my, endX, endY);
-
-                // Các vòng xoáy chạy dọc tia
-                for (int r = 0; r < 5; r++) {
-                    float rt = ((Time.time * 0.05f) + r / 5f) % 1f;
-                    Draw.color(burstBlue); Draw.alpha(ba);
-                    drawLaserRing(Mathf.lerp(mx, endX, rt), Mathf.lerp(my, endY, rt), 2.5f, 8f * (1f - rt * 0.4f), laserAngle, 1f, burstBlue);
+                // Tia mảnh dẫn hướng lúc sạc
+                if (fire < 1f) {
+                    Draw.color(Color.white); Draw.alpha(charge * 0.8f * fade); Lines.stroke(1f);
+                    Lines.line(mx, my, mx + ax * len * charge, my + ay * len * charge);
                 }
 
-                // Chớp + tia sét tại điểm chạm
-                Draw.color(Color.white); Draw.alpha(ba);
-                Fill.circle(endX, endY, 4f + progress * 9f);
-                Draw.color(burstBlue); Lines.stroke(1.2f);
-                for (int i = 0; i < 5; i++) {
-                    Mathf.randomSeed((long) (Time.time / 2f) * 31L + i);
-                    float cx = endX, cy = endY, ang = Mathf.random(360f);
-                    for (int sg = 0; sg < 4; sg++) {
-                        float nx = cx + Angles.trnsx(ang, 7f), ny = cy + Angles.trnsy(ang, 7f);
-                        Lines.line(cx, cy, nx, ny);
-                        cx = nx; cy = ny; ang += Mathf.range(55f);
+                // Cụm mảnh tinh thể xoay quanh trục, tụ dần vào
+                for (int i = 0; i < 10; i++) {
+                    float t = i / 10f, ph = tm * 0.12f + i * 1.7f;
+                    float d = (10f + t * 40f) * (0.5f + charge * 0.5f);
+                    float r = (18f - charge * 8f) * (1f - fire * 0.4f);
+                    float sx = mx + ax * d + px * Mathf.sin(ph) * r, sy = my + ay * d + py * Mathf.sin(ph) * r;
+                    Draw.color(i % 2 == 0 ? Color.white : burstBlue);
+                    Draw.alpha(charge * fade * (1f - fire * 0.5f));
+                    shard(sx, sy, 2.2f, tm * 4f + i * 40f);
+                }
+
+                if (fire > 0f) {
+                    float w = fire * (1f + Mathf.sin(tm, 2f, 0.08f));
+                    // Tia thon nhiều lớp: quầng xanh -> xanh đậm -> lõi trắng
+                    Draw.color(burstBlue); Draw.alpha(0.25f * fade); taperBeam(mx, my, endX, endY, 12f * w, 3f * w);
+                    Draw.alpha(0.55f * fade); taperBeam(mx, my, endX, endY, 7f * w, 1.8f * w);
+                    Draw.color(Color.white); Draw.alpha(0.95f * fade); taperBeam(mx, my, endX, endY, 3f * w, 0.9f * w);
+
+                    // Vòng tròn lớn lan tỏa quanh nòng
+                    for (int k = 0; k < 3; k++) {
+                        float rt = ((tm * 0.02f) + k / 3f) % 1f;
+                        Draw.color(burstBlue); Draw.alpha((1f - rt) * fire * fade); Lines.stroke(1.2f);
+                        Lines.circle(mx + ax * rt * 18f, my + ay * rt * 18f, 6f + rt * 34f);
+                    }
+                    // Vòng xoáy chạy dọc tia
+                    for (int r = 0; r < 5; r++) {
+                        float rt = ((tm * 0.05f) + r / 5f) % 1f;
+                        Draw.color(burstBlue); Draw.alpha(fire * fade);
+                        drawLaserRing(Mathf.lerp(mx, endX, rt), Mathf.lerp(my, endY, rt), 2.5f, 8f * (1f - rt * 0.4f), laserAngle, 1f, burstBlue);
+                    }
+                    // Bong bóng nhỏ trôi quanh tia
+                    Draw.color(Color.white); Lines.stroke(0.8f);
+                    for (int i = 0; i < 12; i++) {
+                        float t = (tm * 0.015f + i * 0.37f) % 1f;
+                        float off = Mathf.sin(i * 7.3f) * (5f + t * 16f);
+                        Draw.alpha(0.7f * fire * fade * (1f - t));
+                        Lines.circle(mx + ax * len * t + px * off, my + ay * len * t + py * off, 1.2f + (i % 3) * 0.5f);
+                    }
+                    // Mảnh vỡ bay dọc tia
+                    for (int i = 0; i < 8; i++) {
+                        float t = (tm * 0.03f + i * 0.21f) % 1f;
+                        float off = Mathf.sin(i * 3.1f + 1f) * (8f + t * 14f);
+                        Draw.color(i % 2 == 0 ? Color.white : burstBlue); Draw.alpha(fire * fade * (1f - t * 0.6f));
+                        shard(mx + ax * len * t + px * off, my + ay * len * t + py * off, 1.8f, tm * 6f + i * 55f);
                     }
                 }
-                Drawf.light(endX, endY, 40f + progress * 50f, burstBlue, 0.9f);
                 Draw.reset();
                 return;
             }
