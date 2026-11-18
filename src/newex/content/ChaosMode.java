@@ -237,9 +237,13 @@ final class ChaosMode {
     /** Trả về mảng chỉ số hiệu dụng sau khi cộng thẻ +10 (mảng cache theo từng người). */
     static int[] adjustStats(NewModePvp.St st, int[] base) {
         int b = statBonus();
-        if (b == 0 || base == null) return base;
+        int[] g = GearItems.delta(st);   // vật phẩm (chỉ chế độ Chiến tranh)
+        if ((b == 0 && g == null) || base == null) return base;
         int[] out = (st.chs != null && st.chs.length == base.length) ? st.chs : (st.chs = new int[base.length]);
-        for (int i = 0; i < base.length; i++) out[i] = base[i] + b;
+        for (int i = 0; i < base.length; i++) {
+            int v = base[i] + b + (g != null && i < g.length ? g[i] : 0);
+            out[i] = g != null ? Math.max(GearItems.floorOf(i), v) : v;
+        }
         return out;
     }
 
