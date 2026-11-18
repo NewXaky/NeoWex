@@ -630,7 +630,7 @@ final class GearItems {
         @Override public void act(float delta) {
             super.act(delta);
             Def d = heldDef(kind);
-            setVisible(d != null && Vars.state.isGame() && !Vars.headless);
+            visible = d != null && Vars.state.isGame() && !Vars.headless;
             if (d == null) return;
             float u = NewModePvp.uiScale(), sz = (Vars.mobile ? 56 : 44) * u, mg = 16 * u;
             NewModePvp.St st = NewModePvp.localState();
@@ -665,7 +665,6 @@ final class GearItems {
             for (int k : new int[]{K_TP, K_HASTE}) {
                 SkillBtn b = new SkillBtn(k);
                 b.name = "newex-gear-skill-" + k;
-                b.setVisible(false);
                 Vars.ui.hudGroup.addChild(b);
             }
         } catch (Throwable err) {}
