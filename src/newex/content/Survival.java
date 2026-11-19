@@ -36,6 +36,7 @@ import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 import newex.MatchTimer;
 import newex.NexNet;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -49,6 +50,10 @@ public final class Survival {
     static final int DEFAULT_SAFE_TILES = 50;
     static final int EDGE_MARGIN_TILES = 3;
     static final int MAX_TRIES = 80;
+    static final int SPAWNS_PER_TICK = 6;      // rải việc spawn qua nhiều frame, tránh giật ở đợt đông
+    static final int MAX_QUEUE = 1200;
+    static final int SPAWN_RETRIES = 4;
+    static final int DEFAULT_MAX_ALIVE = 250;  // trần số địch còn sống (chỉnh bằng setting newex-survival-max-enemies)
 
     static final String TAG_ACTIVE = "newex-survival";
     static final String TAG_KILLS = "newex-survival-kills";
@@ -122,6 +127,8 @@ public final class Survival {
     }
 
     private static boolean isSpawnable(int tx, int ty, UnitType type, int clear) {
+        Tile c0 = Vars.world.tile(tx, ty);
+        if (c0 == null || c0.solid() || c0.build != null) return false;
         for (int dx = -clear; dx <= clear; dx++) {
             for (int dy = -clear; dy <= clear; dy++) {
                 Tile t = Vars.world.tile(tx + dx, ty + dy);
@@ -134,6 +141,53 @@ public final class Survival {
         if (type.naval) return center.floor().isLiquid;
         if (!type.flying && center.floor().isDeep()) return false;
         return true;
+    }
+
+    // ---- Vùng đi bộ tới được từ lõi (flood-fill) để lính bộ không rơi vào ô bị tường bao kín ----
+    private static boolean[] reach = null;
+    private static int reachW = 0, reachH = 0;
+
+    private static boolean walkable(Tile t) {
+        return t != null && !t.block().isStatic() && !t.floor().isDeep();
+    }
+
+    private static void computeReach(List<float[]> cores) {
+        reach = null;
+        if (cores.isEmpty()) return;
+        int w = Vars.world.width(), h = Vars.world.height();
+        boolean[] seen = new boolean[w * h];
+        int[] queue = new int[w * h];
+        int qh = 0, qt = 0;
+        for (float[] c : cores) {
+            int cx = Math.round(c[0] / Vars.tilesize), cy = Math.round(c[1] / Vars.tilesize);
+            if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+            int i = cy * w + cx;
+            if (!seen[i]) { seen[i] = true; queue[qt++] = i; }
+        }
+        final int[] dxs = {1, -1, 0, 0}, dys = {0, 0, 1, -1};
+        while (qh < qt) {
+            int i = queue[qh++];
+            int x = i % w, y = i / w;
+            for (int d = 0; d < 4; d++) {
+                int nx = x + dxs[d], ny = y + dys[d];
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                int ni = ny * w + nx;
+                if (seen[ni] || !walkable(Vars.world.tile(nx, ny))) continue;
+                seen[ni] = true;
+                queue[qt++] = ni;
+            }
+        }
+        reach = seen; reachW = w; reachH = h;
+    }
+
+    /** Loại cần đường bộ: không bay, không thủy, không bước qua tường (chân nhện), không tự bay. */
+    private static boolean needsGroundPath(UnitType t) {
+        return !t.flying && !t.naval && !t.allowLegStep && !t.canBoost;
+    }
+
+    private static boolean reachable(int tx, int ty) {
+        if (reach == null || reachW != Vars.world.width() || reachH != Vars.world.height()) return true;
+        return reach[ty * reachW + tx];
     }
 
     private static float[] pickSpawnPos(UnitType type, List<float[]> cores, float minDist) {
@@ -149,6 +203,7 @@ public final class Survival {
                 int tx = m + (int) Math.floor(Math.random() * (w - 2 * m));
                 int ty = m + (int) Math.floor(Math.random() * (h - 2 * m));
                 float wx = tx * ts, wy = ty * ts;
+                if (needsGroundPath(type) && !reachable(tx, ty)) continue;
                 if (tooCloseToCore(wx, wy, cores, minDist)) continue;
                 if (!isSpawnable(tx, ty, type, cr)) continue;
                 return new float[]{wx, wy};
@@ -188,16 +243,48 @@ public final class Survival {
         return true;
     }
 
+    private static final class Pending {
+        final SpawnGroup g; final int wave; int tries;
+        Pending(SpawnGroup g, int wave) { this.g = g; this.wave = wave; }
+    }
+    private static final ArrayDeque<Pending> pending = new ArrayDeque<>();
+
+    private static int maxAlive() {
+        int v;
+        try { v = Core.settings.getInt("newex-survival-max-enemies", DEFAULT_MAX_ALIVE); } catch (Throwable e) { v = DEFAULT_MAX_ALIVE; }
+        return Math.max(20, v);
+    }
+
+    private static int aliveEnemies() {
+        try { return Vars.state.rules.waveTeam.data().units.size; } catch (Throwable e) { return 0; }
+    }
+
+    /** Chỉ xếp hàng; việc đặt địch thật diễn ra dần mỗi frame trong {@link #processSpawns()}. */
     private static void spawnWave(int waveIndex) {
         Rules rules = Vars.state.rules;
-        Team team = rules.waveTeam;
-        List<float[]> cores = getCorePositions();
-        float minDist = safeRadiusWorld();
+        try { computeReach(getCorePositions()); } catch (Throwable err) { reach = null; }
         rules.spawns.each(g -> {
             if (g == null || g.type == null) return;
             int n = g.getSpawned(waveIndex);
-            for (int i = 0; i < n; i++) spawnOne(g, waveIndex, team, cores, minDist);
+            for (int i = 0; i < n && pending.size() < MAX_QUEUE; i++) pending.add(new Pending(g, waveIndex));
         });
+    }
+
+    private static void processSpawns() {
+        if (pending.isEmpty()) return;
+        Rules rules = Vars.state.rules;
+        int cap = maxAlive(), alive = aliveEnemies();
+        List<float[]> cores = getCorePositions();
+        float minDist = safeRadiusWorld();
+        int budget = Math.min(SPAWNS_PER_TICK, pending.size());
+        for (int i = 0; i < budget && alive < cap; i++) {
+            Pending p = pending.poll();
+            if (p == null) break;
+            boolean ok = false;
+            try { ok = spawnOne(p.g, p.wave, rules.waveTeam, cores, minDist); } catch (Throwable err) { ok = false; }
+            if (ok) alive++;
+            else if (++p.tries < SPAWN_RETRIES) pending.add(p);   // không tìm được chỗ: thử lại sau thay vì mất địch
+        }
     }
 
     private static void win() {
@@ -324,6 +411,7 @@ public final class Survival {
         public void onBegin() {
             winning = false;
             lastResult = null;
+            pending.clear();
             Rules r = Vars.state.rules;
             r.tags.put(TAG_ACTIVE, "1");
             setKills(0);
@@ -334,7 +422,11 @@ public final class Survival {
         }
 
         @Override
+        public void persistStore() { SurvivorSkills.persistAll(); }
+
+        @Override
         public void onResume() {
+            pending.clear();
             winning = false;
             lastResult = null;
             Vars.ui.showInfoToast((en() ? "Survival: " : "Survival: đã diệt ") + getKills() + "/" + KILL_GOAL, 3f);
@@ -377,7 +469,12 @@ public final class Survival {
             if (k >= KILL_GOAL) win();
         });
 
-        Events.on(WorldLoadEvent.class, e -> winning = false);
+        Events.on(WorldLoadEvent.class, e -> { winning = false; pending.clear(); reach = null; });
+
+        Events.run(Trigger.update, () -> {
+            if (Vars.net.client() || !isActive() || Vars.state.gameOver || Vars.state.isPaused()) return;
+            processSpawns();
+        });
 
         Events.on(ClientLoadEvent.class, e -> buildHud());
     }

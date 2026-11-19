@@ -307,6 +307,8 @@ public class NewModePvp {
     static final int ATK_PCT = 8;
     static final float ATK_FLAT = 0.3f;
     static final int SPD_PCT = 4;
+    /** speed của unit tính bằng đơn vị/tick -> ô/giây: 60 tick / 8 đơn vị mỗi ô. */
+    static final float TILES_PER_SPEED = 60f / 8f;
     static final float SPD_FLAT = 0.01f;
     static final float REGEN_PCT = 0.25f;
     static final float REGEN_THRESHOLD = 0.99f;
@@ -405,7 +407,7 @@ public class NewModePvp {
         new Stat("Máu", "Health", l -> "+" + (l * HP_PCT) + "%  +" + (l * HP_FLAT) + " " + tr("máu", "HP")),
         new Stat("Giáp", "Armor", l -> "+" + (l * ARM_FLAT) + " " + tr("giáp", "armor") + "  -" + Strings.fixed(armorCut(l), 1) + "% " + tr("sát thương nhận", "damage taken")),
         new Stat("Tấn công", "Attack", l -> "+" + (l * ATK_PCT) + "%  +" + Strings.fixed(l * ATK_FLAT, 1) + " " + tr("sát thương/phát", "dmg/hit")),
-        new Stat("Tốc độ di chuyển", "Move speed", l -> "+" + (l * SPD_PCT) + "%  +" + Strings.fixed(l * SPD_FLAT, 2) + " " + tr("tốc", "speed")),
+        new Stat("Tốc độ di chuyển", "Move speed", l -> "+" + (l * SPD_PCT) + "%  +" + Strings.fixed(l * SPD_FLAT * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s")),
         new Stat("Tốc độ bắn", "Fire rate", l -> "+" + (l * 6) + "%"),
         new Stat("Tỉ lệ bạo kích", "Crit chance", l -> (l * 2) + "%"),
         new Stat("Sát thương bạo kích", "Crit damage", l -> (150 + l * 12) + "%"),
@@ -6340,7 +6342,7 @@ public class NewModePvp {
         float hm = u.healthMultiplier > 0 ? u.healthMultiplier : 1f;
         out.add(new String[]{tr("Giáp", "Armor"), numStr(u.armor) + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.armor) + ")[]  " + tr("giảm sát thương nhận ", "damage taken reduced ") + numStr((1 - 1 / hm) * 100) + "%"});
         out.add(new String[]{tr("Tấn công", "Attack"), numStr((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + tr(" sát thương/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(baseAttack(ut)) + ")  x" + numStr(u.damageMultiplier) + "[]"});
-        out.add(new String[]{tr("Tốc độ di chuyển", "Move speed"), numStr(ut.speed * u.speedMultiplier) + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.speed) + ")  x" + numStr(u.speedMultiplier) + "[]"});
+        out.add(new String[]{tr("Tốc độ di chuyển", "Move speed"), Strings.fixed(ut.speed * u.speedMultiplier * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s") + "  [lightgray]" + tr("(gốc ", "(base ") + Strings.fixed(ut.speed * TILES_PER_SPEED, 2) + ")  x" + numStr(u.speedMultiplier) + "[]"});
         out.add(new String[]{tr("Tốc độ bắn", "Fire rate"), "x" + numStr(u.reloadMultiplier)});
         out.add(new String[]{tr("Tỉ lệ bạo kích", "Crit chance"), numStr(ChaosMode.critChanceShown(s[5])) + "%"});
         out.add(new String[]{tr("Sát thương bạo kích", "Crit damage"), numStr(ChaosMode.critDmgShown(s[5], s[6])) + "%"});

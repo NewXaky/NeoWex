@@ -737,6 +737,7 @@ public final class SurvivorSkills {
         final List<Skill> skills = new ArrayList<>();
         float maxRange = 0; int rerollPts = 0;
         final Map<String, Float> stats = new HashMap<>();
+        float overflow = 0; // EXP dư sau khi đạt cấp tối đa -> đổi thành chỉ số
         float baseMaxHealth = 0, baseArmor = -1;
         boolean baseArmorSet = false;
         int pending = 0;
@@ -777,7 +778,7 @@ public final class SurvivorSkills {
             if (!Vars.net.client()) {
                 String u = uuidOf(player);
                 s = savedByUuid.get(u);
-                if (s == null) { s = newState(); savedByUuid.put(u, s); }
+                if (s == null) { s = loadFromTags(u); if (s == null) s = newState(); savedByUuid.put(u, s); }
                 s.offerOut = false;
                 s.dirty = true;
             } else {
@@ -1034,11 +1035,73 @@ public final class SurvivorSkills {
         if (!state.offerOut) serveOffer(player, state);
     }
 
+    // ------------------------------------------------------------ lưu / nạp tiến trình qua rules.tags (đi theo file save)
+    static final String PS_TAG = "newex-survival-ps-";
+    static final float OVERFLOW_COST = 150f;   // EXP dư sau cấp tối đa cho 1 chỉ số ngẫu nhiên
+    static final float CRIT_CAP = 0.8f;        // trần tỉ lệ bạo kích
+    static String psKey(String uuid) { return PS_TAG + uuid.replaceAll("[^A-Za-z0-9]", ""); }
+
+    static String encodeState(PlayerState st) {
+        StringBuilder sv = new StringBuilder();
+        for (int i = 0; i < STAT_KEYS.length; i++) { if (i > 0) sv.append(','); sv.append(trimNum(st.stats.getOrDefault(STAT_KEYS[i], 0f))); }
+        StringBuilder sk = new StringBuilder();
+        for (Skill k : st.skills) { if (sk.length() > 0) sk.append(','); sk.append(k.name).append(':').append(k.tier); }
+        return st.level + "|" + (int) st.exp + "|" + st.rerollPts + "|" + st.pending + "|" + (int) st.overflow + "|" + sv + "|" + sk;
+    }
+
+    static PlayerState loadFromTags(String uuid) {
+        try {
+            ObjectMap<String, String> tg = Vars.state.rules.tags;
+            String v = tg != null ? tg.get(psKey(uuid)) : null;
+            if (v == null || v.isEmpty()) return null;
+            String[] a = v.split("\\|", -1);
+            if (a.length < 7) return null;
+            PlayerState st = newState();
+            st.level = parseIntSafe(a, 0); st.exp = parseIntSafe(a, 1); st.rerollPts = parseIntSafe(a, 2);
+            st.pending = parseIntSafe(a, 3); st.overflow = parseIntSafe(a, 4);
+            String[] sv = a[5].split(",");
+            for (int k = 0; k < STAT_KEYS.length && k < sv.length; k++) {
+                try { st.stats.put(STAT_KEYS[k], Float.parseFloat(sv[k])); } catch (Throwable ignored) {}
+            }
+            if (!a[6].isEmpty()) {
+                for (String part : a[6].split(",")) {
+                    int c = part.lastIndexOf(':');
+                    String name = c > 0 ? part.substring(0, c) : part;
+                    int tier = 1;
+                    if (c > 0) { try { tier = Math.max(1, Integer.parseInt(part.substring(c + 1))); } catch (Throwable ignored) {} }
+                    Object d = resolvePickById(name);
+                    if (d instanceof SkillDef) { addSkill(st, (SkillDef) d); st.skills.get(st.skills.size() - 1).tier = tier; }
+                }
+            }
+            return st;
+        } catch (Throwable err) { return null; }
+    }
+
+    static float persistT = 0;
+    static void persistAll() {
+        if (Vars.net.client()) return;
+        ObjectMap<String, String> tg = Vars.state.rules.tags;
+        if (tg == null) return;
+        for (Map.Entry<String, PlayerState> e : savedByUuid.entrySet()) {
+            String val = encodeState(e.getValue());
+            String key = psKey(e.getKey());
+            if (!val.equals(tg.get(key))) tg.put(key, val);
+        }
+    }
+
     static void grantExp(Player player, float amount) {
         if (player == null) return;
         PlayerState state = getState(player);
         int maxLv = getMaxLevel();
-        if (state.level >= maxLv) return;
+        if (state.level >= maxLv) {
+            // đã max cấp: EXP dư đổi thành chỉ số ngẫu nhiên để vẫn còn tiến trình
+            state.overflow += amount;
+            while (state.overflow >= OVERFLOW_COST) {
+                state.overflow -= OVERFLOW_COST;
+                applySkill(player, state, randomStatPick());
+            }
+            return;
+        }
         state.exp += amount;
         while (state.level < maxLv && state.exp >= levelCost(state.level + 1)) {
             state.exp -= levelCost(state.level + 1);
@@ -1163,7 +1226,8 @@ public final class SurvivorSkills {
     static void applyPlayerStats(Player pl, Unit unit, PlayerState state) {
         if (state == null) return;
         try {
-            if (state.baseMaxHealth <= 0) state.baseMaxHealth = unit.maxHealth;
+            // luôn tính từ chỉ số gốc của loại unit hiện tại (đổi unit khi nâng lõi/hồi sinh vẫn đúng)
+            state.baseMaxHealth = unit.type.health;
             float hpMult = statMult(state, "hp");
             float newMax = state.baseMaxHealth * hpMult;
             if (unit.maxHealth < newMax) {
@@ -1175,10 +1239,19 @@ public final class SurvivorSkills {
             }
         } catch (Throwable ignored) {}
         try {
-            if (!state.baseArmorSet) { state.baseArmor = unit.armor; state.baseArmorSet = true; }
+            state.baseArmor = unit.type.armor; state.baseArmorSet = true;
             unit.armor = state.baseArmor + state.stats.getOrDefault("armor", 0f) * STAT_PER_POINT.get("armor");
         } catch (Throwable ignored) {}
         try { unit.buildSpeedMultiplier = statMult(state, "build"); } catch (Throwable ignored) {}
+    }
+
+    /** Giảm giáp KHÔNG cộng dồn: giáp mục tiêu = giáp gốc - shred (trước đây trừ dồn mỗi phát tới 0). */
+    static final Map<Integer, Float> shredBase = new HashMap<>();
+    static void applyShred(Unit t, float shred) {
+        if (t == null || t.dead) return;
+        Float b = shredBase.get(t.id);
+        if (b == null) { b = t.armor; shredBase.put(t.id, b); if (shredBase.size() > 3000) shredBase.clear(); }
+        t.armor = Math.max(0f, b - shred);
     }
 
     static BulletType pickBullet(SkillDef def, Skill sk) {
@@ -1194,7 +1267,7 @@ public final class SurvivorSkills {
         int count = Math.min(MAX_BULLETS_PER_VOLLEY, (int) (def.pellets * tier));
         PlayerState state = sk.ownerState;
         float dmgMult = statMult(state, "dmg");
-        float critChance = state != null ? state.stats.getOrDefault("critChance", 0f) * STAT_PER_POINT.get("critChance") : 0;
+        float critChance = state != null ? Math.min(CRIT_CAP, state.stats.getOrDefault("critChance", 0f) * STAT_PER_POINT.get("critChance")) : 0;
         float critMult = 1 + (state != null ? state.stats.getOrDefault("critDmg", 0f) * STAT_PER_POINT.get("critDmg") : 0);
         float shred = state != null ? state.stats.getOrDefault("shred", 0f) * STAT_PER_POINT.get("shred") : 0;
         try {
@@ -1207,7 +1280,7 @@ public final class SurvivorSkills {
                 } catch (Throwable ignored) {}
             }
             if (shred > 0 && target != null) {
-                try { target.armor = Math.max(0, target.armor - shred); } catch (Throwable ignored) {}
+                try { applyShred(target, shred); } catch (Throwable ignored) {}
             }
             sk.shot++;
         } catch (Throwable err) {
@@ -1417,11 +1490,11 @@ public final class SurvivorSkills {
                 try {
                     float dm = statMult(st, "dmg");
                     if (dm != 1) bu.damage *= dm;
-                    float cc = st.stats.getOrDefault("critChance", 0f) * STAT_PER_POINT.get("critChance");
+                    float cc = Math.min(CRIT_CAP, st.stats.getOrDefault("critChance", 0f) * STAT_PER_POINT.get("critChance"));
                     if (cc > 0 && Mathf.chance(cc)) bu.damage *= 1 + st.stats.getOrDefault("critDmg", 0f) * STAT_PER_POINT.get("critDmg");
                     float shred = st.stats.getOrDefault("shred", 0f) * STAT_PER_POINT.get("shred");
                     Object tgRaw = r.b instanceof Turret.TurretBuild ? ((Turret.TurretBuild) r.b).target : null;
-                    if (shred > 0 && tgRaw instanceof Unit) ((Unit) tgRaw).armor = Math.max(0, ((Unit) tgRaw).armor - shred);
+                    if (shred > 0 && tgRaw instanceof Unit) applyShred((Unit) tgRaw, shred);
                 } catch (Throwable ignored) {}
                 break;
             }
@@ -1582,6 +1655,7 @@ public final class SurvivorSkills {
             disposeAll(playerStates);
             playerStates.clear();
             savedByUuid.clear();
+            shredBase.clear();
             meInfo = null;
             currentOffer = null;
             rosterT = 0; serveT = 0;
@@ -1603,7 +1677,11 @@ public final class SurvivorSkills {
                 for (Skill sk : state.skills) if (sk.mode == Mode.REAL && sk.virt != null) virts.add(new VirtRef(sk.virt, state));
             });
             scaleRealBullets(virts);
-            if (server) serverTick();
+            if (server) {
+                serverTick();
+                persistT -= Time.delta;
+                if (persistT <= 0) { persistT = 180; persistAll(); }
+            }
             purgeT -= Time.delta;
             if (purgeT <= 0) { purgeT = 120; purgeStates(); }
         });

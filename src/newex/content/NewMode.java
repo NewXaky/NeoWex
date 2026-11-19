@@ -64,6 +64,8 @@ public final class NewMode {
     private static boolean isPlayingNewMode = false;
     private static int pendingGachaReward = 0;
     private static boolean hasWonPending = false;
+    /** Người chơi vào host của bạn (không tự bắt đầu trận): vẫn nhận thưởng thắng nhưng không đụng tới save của mình. */
+    private static boolean guest = false;
 
     private static final String[][] MAPS = {
         {"Newbie", "Newbie"},
@@ -189,6 +191,7 @@ public final class NewMode {
 
     private static void startNewModeMap(String mapName) {
         isPlayingNewMode = true;
+        guest = false;
         activeMapName = mapName;
         hasWonPending = false;
         pendingGachaReward = 0;
@@ -266,8 +269,11 @@ public final class NewMode {
     }
 
     private static void saveNewModeGame() {
-        if (!isPlayingNewMode || activeMapName == null || !Vars.state.isGame()) return;
+        if (guest || !isPlayingNewMode || activeMapName == null || !Vars.state.isGame()) return;
         try {
+            if (activeMapName.equals(SURVIVAL_ID) && survival != null) {
+                try { survival.persistStore(); } catch (Throwable ignored) {}
+            }
             // Ghi tiến trình PvP vào rules.tags trước khi lưu
             if (activeMapName.equals(PVP_ID) && pvp != null) {
                 try { pvp.persistStore(); } catch (Throwable ignored) {}
@@ -290,6 +296,10 @@ public final class NewMode {
 
     public static void init() {
         Events.on(GameOverEvent.class, event -> {
+            if (!isPlayingNewMode && Vars.net.client() && survival != null && Survival.isActive()
+                && event.winner != null && event.winner == Vars.state.rules.defaultTeam) {
+                isPlayingNewMode = true; guest = true; activeMapName = SURVIVAL_ID;
+            }
             if (!isPlayingNewMode) return;
             boolean isPvp = PVP_ID.equals(activeMapName) && pvp != null;
             boolean wonNow = isPvp
@@ -302,7 +312,7 @@ public final class NewMode {
                 else if (SURVIVAL_ID.equals(activeMapName) && survival != null) pendingGachaReward = survival.rewardPoints();
                 else pendingGachaReward = 50;
             }
-            deleteNewModeSave();
+            if (!guest) deleteNewModeSave();
         });
 
         Events.on(StateChangeEvent.class, event -> {
@@ -321,6 +331,7 @@ public final class NewMode {
                         saveNewModeGame();
                     }
                     isPlayingNewMode = false;
+                    guest = false;
                     activeMapName = null;
                     hasWonPending = false;
                     pendingGachaReward = 0;
