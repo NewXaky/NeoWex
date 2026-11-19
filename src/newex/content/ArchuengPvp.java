@@ -210,6 +210,7 @@ public final class ArchuengPvp {
         Float end = cdEndSrv.get(player.id);
         if (end != null && Time.time < end) return;
         cdEndSrv.put(player.id, Time.time + CD_T);
+        try { GearItems.onUnitSkillCast(u); } catch (Throwable ignored) {}
         float ang;
         try { ang = Float.parseFloat(String.valueOf(payload)); } catch (Throwable e) { ang = u.rotation; }
         if (Float.isNaN(ang)) ang = u.rotation;

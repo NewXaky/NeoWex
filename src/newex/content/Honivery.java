@@ -444,6 +444,7 @@ public final class Honivery {
         Float end = cdEndSrv.get(player.id);
         if (end != null && Time.time < end) return;
         cdEndSrv.put(player.id, Time.time + SKILL_CD);
+        try { GearItems.onUnitSkillCast(u); } catch (Throwable ignored) {}
 
         float ang;
         try {
@@ -627,7 +628,7 @@ public final class Honivery {
                 float maxHp = e.maxHealth;
                 UnitSkillInfo.markLastDamageSkill(e.id);
                 e.damage(zf.dmg);
-                if (e.dead || e.health <= 0f) addKillPassive(zf.uid, caster, maxHp, e.x, e.y);
+                if (e.dead || e.health <= 0f) { addKillPassive(zf.uid, caster, maxHp, e.x, e.y); try { GearItems.onUnitSkillKill(caster); } catch (Throwable ignored) {} }
             });
             Units.nearbyBuildings(z.x, z.y, ZONE_RADIUS, b -> {
                 if (b.team == team || Mathf.dst(zf.x, zf.y, b.x, b.y) > ZONE_RADIUS) return;

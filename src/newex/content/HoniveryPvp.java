@@ -336,6 +336,7 @@ public final class HoniveryPvp {
         Float end = cdEndSrv.get(player.id);
         if (end != null && Time.time < end) return;
         cdEndSrv.put(player.id, Time.time + CD_TOTAL);
+        try { GearItems.onUnitSkillCast(u); } catch (Throwable ignored) {}
         combos.put(player.id, new Combo(player));
 
         // Khi nhan skill: ti le 2% phong ngay nhat chem dac biet

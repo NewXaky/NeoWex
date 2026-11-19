@@ -6,9 +6,13 @@ import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
+import arc.math.Angles;
 import arc.math.Mathf;
 import arc.math.geom.Position;
+import arc.struct.Seq;
+import mindustry.content.Fx;
 import mindustry.entities.Effect;
+import mindustry.entities.Units;
 import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
@@ -57,11 +61,14 @@ final class GearItems {
     static final int R_COMMON = 0, R_RARE = 1, R_EPIC = 2, R_LEGEND = 3, R_MYTHIC = 4, RARITIES = 5, R_SHOP = 5;
     static final int K_TP = 1, K_LUCK = 2, K_HASTE = 3;                 // loại vật phẩm cửa hàng: dịch chuyển / may mắn / tăng tốc (tiêu hao)
     static final int SK_MOVE_ATK = 1, SK_KILL_SPD = 2, SK_KILL_SKILL_ATK = 3, SK_MIN_PT = 4, SK_DEATH_CDR = 5;
+    static final int SK_EXEC50 = 6, SK_SLOW_ALL1 = 7, SK_LOWHP_SHIELD = 8, SK_SKILL_EXP = 9, SK_CORE_LASER = 10, SK_TEAM_BUFF = 11;
     static final int PORT_TICKS = 180, PORT_CD = 1800, HASTE_TICKS = 600;
     static final int MOVE_ATK_STEP = 300, MOVE_ATK_MAX = 15, KILL_SPD_TICKS = 360, SKILL_ATK_MAX = 500;
-    static final float MIN_PT_TICKS = 3600f;
+    static final int LOWHP_SHIELD_CD = 45 * 60, SKILL_EXP_TICKS = 600, RESONANCE_MAX = 100, RESONANCE_TICKS = 20 * 60;
+    static final float MIN_PT_TICKS = 3600f, SLOW_SPEED_LIMIT = 6.9f, CORE_LASER_DPS = 1000f, CORE_LASER_RANGE = 480f;
     static final float DROP_BONUS = 0.10f;                              // +10% (điểm phần trăm) tỉ lệ rơi mỗi Bùa May Mắn
     static StatusEffect hasteStatus, killSpeedStatus;                   // tạo trong NewModePvp.loadStatuses()
+    static int teamBuffDefId = -1;                                      // ID của vật phẩm SK_TEAM_BUFF để vẽ icon nhảy lên khi đồng minh nhận buff
 
     static final String[] SLOT_VI = {"Vũ khí", "Mũ", "Giáp", "Giày", "Nhẫn", "Bùa"};
     static final String[] SLOT_EN = {"Weapon", "Helm", "Armor", "Boots", "Ring", "Charm"};
@@ -160,6 +167,25 @@ final class GearItems {
         sk(S_ARMOR, R_LEGEND, "Giáp Phục Hận", "Vengeance Armor", "surge-wall-large,thorium-wall-large", SK_DEATH_CDR,
             "Kỹ năng: Khi bị kẻ địch là player tiêu diệt, giảm 50% thời gian hồi sinh và hồi chiêu kỹ năng pilot.",
             "Skill: When killed by an enemy player, -50% respawn time and pilot skill cooldown.", 0, 5, 1, 6);
+        sk(S_WEAPON, R_EPIC, "Kiếm Kết Liễu", "Executioner Blade", "swordoder,thorium", SK_EXEC50,
+            "Kỹ năng: Gây thêm 15% sát thương lên mục tiêu dưới 50% máu.",
+            "Skill: Deal +15% bonus damage to targets below 50% HP.", 2, 5, 5, 3);
+        sk(S_ARMOR, R_LEGEND, "Giáp Trọng Lực", "Gravity Plate", "raykstone,plastanium-wall-large", SK_SLOW_ALL1,
+            "Kỹ năng: Khi tốc độ di chuyển dưới 6,9 ô/giây, tất cả chỉ số tăng +1 cấp.",
+            "Skill: While move speed is below 6.9 tiles/s, all stats gain +1 level.", 0, 4, 1, 5, 3, -2);
+        sk(S_HELM, R_LEGEND, "Khiên Sinh Mệnh", "Lifeline Aegis", "force-projector,phase-fabric", SK_LOWHP_SHIELD,
+            "Kỹ năng: Khi máu dưới 50%, nhận 1 lớp khiên bằng 50% máu tối đa (hồi chiêu 45s).",
+            "Skill: Below 50% HP, gain a shield equal to 50% max HP (45s cooldown).", 0, 5, 8, 3);
+        sk(S_CHARM, R_EPIC, "Ngọc Tinh Thông", "Mastery Orb", "starlight,silicon", SK_SKILL_EXP,
+            "Kỹ năng: Tiêu diệt mục tiêu bằng kỹ năng của unit nhận +150 EXP; khi nhấn dùng kỹ năng nhận +50% EXP trong 10s (không cộng dồn).",
+            "Skill: Killing a target with a unit skill grants +150 EXP; casting a skill grants +50% EXP for 10s (non-stacking).", 4, 3, 6, 3);
+        sk(S_RING, R_MYTHIC, "Lõi Quang Tuyến", "Prism Core", "newex-starlight,lancer", SK_CORE_LASER,
+            "Kỹ năng: Giảm mọi chỉ số -1 cấp; đổi lại Lõi bắn 1 tia laser gây 1000 ST/giây (+1% máu tối đa lên unit player, giảm 20% lên unit lính).",
+            "Skill: -1 to all stats; in exchange your Core fires a laser dealing 1000 dmg/s (+1% max HP vs player units, -20% vs soldiers).", 2, 1);
+        teamBuffDefId = n;
+        sk(S_CHARM, R_MYTHIC, "Ấn Quang Huy", "Radiant Crest", "newex-berrybyr,surge-alloy", SK_TEAM_BUFF,
+            "Kỹ năng: Đánh trúng mục tiêu tích 1 tầng Tinh Quang Cộng Hưởng; đủ 100 tầng giúp cả phe nhận +10% Tấn công & +10% Giáp trong 20s.",
+            "Skill: On hit, gain 1 stack of Astral Resonance; at 100 stacks, grants the whole team +10% ATK & +10% Armor for 20s.", 2, 4, 1, 4);
     }
     static void shop(String vi, String en, String icons, int kind, int price, String dvi, String den) {
         Def x = new Def(n, S_CHARM, R_SHOP, vi, en, icons);
@@ -231,7 +257,8 @@ final class GearItems {
 
     // ------------------------------------------------------------------ chỉ số cộng thêm
     static void refreshDelta(NewModePvp.St st) {
-        int key = Arrays.hashCode(st.gEq) * 31 + slots();
+        int giftHash = st.pgift == null ? 0 : st.pgift.hashCode();
+        int key = ((Arrays.hashCode(st.gEq) * 31 + slots()) * 31 + st.pi) * 31 + giftHash;
         if (key == st.gKey) return;
         st.gKey = key;
         Arrays.fill(st.gDelta, 0);
@@ -244,6 +271,24 @@ final class GearItems {
             for (int i = 0; i + 1 < d.mods.length; i += 2) {
                 if (d.mods[i] >= 0 && d.mods[i] < st.gDelta.length) { st.gDelta[d.mods[i]] += d.mods[i + 1]; any = true; }
             }
+        }
+        // Quà đã tặng cho pilot đang chiêu mộ: chỉ lấy chỉ số buff dương, bỏ toàn bộ debuff âm!
+        if (st.pi > 0 && st.pgift != null) {
+            for (int i = 0; i < st.pgift.size(); i++) {
+                int code = st.pgift.get(i);
+                if ((code >> 8) != st.pi) continue;
+                Def gd = def(code & 0xFF);
+                if (gd == null) continue;
+                for (int j = 0; j + 1 < gd.mods.length; j += 2) {
+                    int idx = gd.mods[j], val = gd.mods[j + 1];
+                    if (idx >= 0 && idx < st.gDelta.length && val > 0) { st.gDelta[idx] += val; any = true; }
+                }
+            }
+        }
+        // Lõi Quang Tuyến: giảm mọi chỉ số -1 cấp
+        if ((mask & (1 << SK_CORE_LASER)) != 0) {
+            for (int i = 0; i < st.gDelta.length; i++) st.gDelta[i] -= 1;
+            any = true;
         }
         st.gAny = any;
         st.gSkills = mask;
@@ -279,10 +324,11 @@ final class GearItems {
     static int[] eff(NewModePvp.St st) {
         if (st == null) return null;
         int[] g = delta(st);
-        if (g == null) return st.s;
+        int slowAdd = (st.gSlowBonus && hasSkill(st, SK_SLOW_ALL1)) ? 1 : 0;
+        if (g == null && slowAdd == 0) return st.s;
         int[] out = st.gEff;
         for (int i = 0; i < out.length; i++) {
-            int v = (i < st.s.length ? st.s[i] : 0) + (i < g.length ? g[i] : 0);
+            int v = (i < st.s.length ? st.s[i] : 0) + (g != null && i < g.length ? g[i] : 0) + slowAdd;
             out[i] = Math.max(FLOOR[Math.min(i, FLOOR.length - 1)], v);
         }
         return out;
@@ -358,6 +404,7 @@ final class GearItems {
             if (cp != null) {
                 if (NewModePvp.isBotPl(cp)) botAutoEquip(st);
                 else NewModePvp.toast(cp, tr("[accent]Nhận vật phẩm từ quái: ", "[accent]Item from monster: ") + col(cd.rarity) + name(cd) + " [" + rarName(cd.rarity) + "][]");
+                announcePickup(cp, cd);
             }
             playFx(u, pid, cd.rarity);
             NewModePvp.changed();
@@ -371,6 +418,7 @@ final class GearItems {
         if (pl != null) {
             if (NewModePvp.isBotPl(pl)) botAutoEquip(st);
             else NewModePvp.toast(pl, tr("[accent]Nhận vật phẩm: ", "[accent]Item received: ") + col(d.rarity) + name(d) + " [" + rarName(d.rarity) + "][]" + tr(" - xem trong Túi đồ", " - see your Bag"));
+            announcePickup(pl, d);
         }
         playFx(u, pid, d.rarity);
         NewModePvp.changed();
@@ -672,25 +720,78 @@ final class GearItems {
     static final HashMap<Integer, Float> minPtAcc = new HashMap<>();                  // pid -> tích lũy tick tới 60s
     static final java.util.HashSet<Integer> pilotHalfNext = new java.util.HashSet<>(); // pid -> giảm 50% CD cho lần kích hoạt pilot tiếp theo
 
+    static final HashMap<Integer, Float> lowHpShieldAt = new HashMap<>();
+    static final HashMap<Integer, Float> skillExpUntil = new HashMap<>();
+    static final HashMap<Integer, Integer> resonanceStacks = new HashMap<>();
+    static final HashMap<Integer, Float> teamResonanceUntil = new HashMap<>();
+    static float coreLaserAcc = 0f;
+
+    /** Thông báo lên thanh tin nhắn toàn server/host khi player nhặt được vật phẩm. */
+    static void announcePickup(Player pl, Def d) {
+        if (Vars.net.client() || pl == null || d == null) return;
+        try {
+            String pname = pl.name != null ? pl.name : "Player";
+            Call.sendMessage(tr("[gold]★ [white]", "[gold]★ [white]") + pname + "[] "
+                + tr("đã nhặt được vật phẩm ", "picked up ")
+                + col(d.rarity) + name(d) + " [" + rarName(d.rarity) + "][]!");
+        } catch (Throwable ignored) {}
+    }
+
+    /** Hiệu ứng tia laser từ Lõi (Lõi Quang Tuyến): e.x/y = tâm lõi, e.rotation = góc, e.data = Float khoảng cách. */
+    static final Effect coreLaserFx = new Effect(18f, 600f, e -> {
+        float len = e.data instanceof Float ? (Float) e.data : 160f;
+        float ex = e.x + Angles.trnsx(e.rotation, len), ey = e.y + Angles.trnsy(e.rotation, len);
+        Draw.z(Layer.bullet + 1f);
+        Lines.stroke(8f * e.fout());
+        Draw.color(Color.valueOf("ff6b9d"), 0.55f * e.fout());
+        Lines.line(e.x, e.y, ex, ey);
+        Lines.stroke(3.2f * e.fout());
+        Draw.color(Color.white, 0.95f * e.fout());
+        Lines.line(e.x, e.y, ex, ey);
+        Fill.circle(ex, ey, 6f * e.fout());
+        Draw.reset();
+    });
+
+    /** Hiệu ứng icon vật phẩm Ấn Quang Huy nhảy lên trên đầu đồng minh nhận buff Tinh Quang Cộng Hưởng. */
+    static final Effect resonanceIconFx = new Effect(68f, e -> {
+        float fin = e.fin(), fout = e.fout();
+        float jump = Mathf.sin(Math.min(1f, fin * 1.6f) * Mathf.PI) * 18f + fin * 16f;
+        float alpha = fin < 0.15f ? fin / 0.15f : fout;
+        float sz = 18f + 4f * Mathf.sin(fin * Mathf.PI);
+        Draw.z(Layer.flyingUnit + 2f);
+        Draw.color(Color.valueOf("ffd86b"), 0.45f * alpha);
+        Fill.circle(e.x, e.y + 12f + jump, sz * 0.72f);
+        Def bd = def(teamBuffDefId);
+        TextureRegion r = bd != null ? iconOf(bd) : null;
+        if (r != null) {
+            Draw.color(Color.white, alpha);
+            Draw.rect(r, e.x, e.y + 12f + jump, sz, sz);
+        }
+        Draw.reset();
+    });
+
     static void reset() {
         carry.clear(); port.clear(); portCd.clear(); tpCdAt = -1e9f;
         moveSt.clear(); minPtAcc.clear(); pilotHalfNext.clear();
+        lowHpShieldAt.clear(); skillExpUntil.clear(); resonanceStacks.clear(); teamResonanceUntil.clear();
+        coreLaserAcc = 0f;
     }
     static void tickUpdate() {
         tickPort();
         tickPassives();
     }
-    /** Máy chủ: cập nhật kỹ năng di chuyển (+1% tấn công/5s, tối đa 15%) và kỹ năng mỗi phút +1 điểm. */
+    /** Máy chủ: cập nhật các kỹ năng nội tại của vật phẩm. */
     static void tickPassives() {
         if (Vars.net.client() || !NewModePvp.isFull() || !war() || Vars.state.gameOver || Vars.state.isPaused()) return;
         final float dt = Time.delta;
         if (dt <= 0f) return;
+        final java.util.HashSet<Integer> coreLaserTeams = new java.util.HashSet<>();
         NewModePvp.eachPl(pl -> {
             if (pl == null) return;
             NewModePvp.St st = NewModePvp.byId.get(pl.id);
             if (st == null) return;
+            Unit u = pl.unit();
             if (hasSkill(st, SK_MOVE_ATK)) {
-                Unit u = pl.unit();
                 if (u != null && u.isValid() && !u.dead()) {
                     float[] ms = moveSt.get(pl.id);
                     if (ms == null) {
@@ -727,7 +828,114 @@ final class GearItems {
             } else {
                 minPtAcc.remove(pl.id);
             }
+            // Khiên Sinh Mệnh: máu < 50% -> nhận khiên = 50% máu tối đa (hồi chiêu 45s)
+            if (hasSkill(st, SK_LOWHP_SHIELD) && u != null && u.isValid() && !u.dead() && u.maxHealth > 0 && u.health / u.maxHealth < 0.5f) {
+                Float last = lowHpShieldAt.get(pl.id);
+                if (last == null || Time.time - last >= LOWHP_SHIELD_CD || Time.time < last) {
+                    lowHpShieldAt.put(pl.id, Time.time);
+                    u.shield += u.maxHealth * 0.5f;
+                    try { Call.effect(Fx.healWaveMend, u.x, u.y, u.hitSize, Color.sky); } catch (Throwable ignored) {}
+                    if (!NewModePvp.isBotPl(pl)) NewModePvp.toast(pl, tr("[sky]Khiên Sinh Mệnh kích hoạt (+50% máu khiên)!", "[sky]Lifeline Aegis triggered (+50% max HP shield)!"));
+                }
+            }
+            if (hasSkill(st, SK_CORE_LASER) && pl.team() != null) coreLaserTeams.add(pl.team().id);
         });
+        // Lõi Quang Tuyến: mỗi 0.25s bắn 1 tia laser từ lõi gây 1000 ST/giây (+1% max HP lên unit player, -20% lên unit lính)
+        if (!coreLaserTeams.isEmpty()) {
+            coreLaserAcc += dt;
+            if (coreLaserAcc >= 15f) {
+                float sec = coreLaserAcc / 60f;
+                coreLaserAcc = 0f;
+                for (int tid : coreLaserTeams) {
+                    Team tm = Team.get(tid);
+                    Seq<mindustry.world.blocks.storage.CoreBlock.CoreBuild> cores = tm.cores();
+                    for (int ci = 0; ci < cores.size; ci++) {
+                        mindustry.world.blocks.storage.CoreBlock.CoreBuild c = cores.get(ci);
+                        if (c == null || !c.isValid()) continue;
+                        final Unit[] best = {null};
+                        final float[] bestD2 = {CORE_LASER_RANGE * CORE_LASER_RANGE};
+                        Units.nearbyEnemies(tm, c.x - CORE_LASER_RANGE, c.y - CORE_LASER_RANGE, CORE_LASER_RANGE * 2f, CORE_LASER_RANGE * 2f, e -> {
+                            if (e == null || e.dead || !e.isValid()) return;
+                            float d2 = Mathf.dst2(c.x, c.y, e.x, e.y);
+                            if (d2 < bestD2[0]) { bestD2[0] = d2; best[0] = e; }
+                        });
+                        Unit tgt = best[0];
+                        if (tgt != null) {
+                            float dmg = CORE_LASER_DPS * sec;
+                            boolean isPlayerUnit = tgt.isPlayer() || NewModePvp.botUnitOf(tgt) != null;
+                            boolean isSoldier = NewModePvp.soldierOwner.containsKey(tgt.id);
+                            if (isPlayerUnit && tgt.maxHealth > 0) dmg += tgt.maxHealth * 0.01f * sec;
+                            if (isSoldier) dmg *= 0.8f;
+                            try { tgt.damagePierce(dmg); } catch (Throwable err) { try { tgt.damage(dmg); } catch (Throwable ignored) {} }
+                            float ang = Angles.angle(c.x, c.y, tgt.x, tgt.y);
+                            float dst = Mathf.dst(c.x, c.y, tgt.x, tgt.y);
+                            try { Call.effect(coreLaserFx, c.x, c.y, ang, Color.white, Float.valueOf(dst)); } catch (Throwable ignored) {}
+                        }
+                    }
+                }
+            }
+        } else {
+            coreLaserAcc = 0f;
+        }
+    }
+    /** Gọi khi player gây sát thương lên mục tiêu: kích hoạt Kiếm Kết Liễu (+15% ST dưới 50% máu) & Ấn Quang Huy (tích 100 tầng Tinh Quang Cộng Hưởng). */
+    static void onDamage(int attackerPid, Unit tgt, float baseDmg) {
+        if (Vars.net.client() || tgt == null || tgt.dead || !tgt.isValid() || attackerPid < 0 || !war()) return;
+        NewModePvp.St st = NewModePvp.byId.get(attackerPid);
+        if (st == null) return;
+        if (hasSkill(st, SK_EXEC50) && baseDmg > 0f && tgt.maxHealth > 0f && tgt.health / tgt.maxHealth < 0.5f) {
+            try { tgt.damagePierce(baseDmg * 0.15f); } catch (Throwable err) { try { tgt.damage(baseDmg * 0.15f); } catch (Throwable ignored) {} }
+        }
+        if (hasSkill(st, SK_TEAM_BUFF)) {
+            int stk = resonanceStacks.getOrDefault(attackerPid, 0) + 1;
+            if (stk >= RESONANCE_MAX) {
+                resonanceStacks.put(attackerPid, 0);
+                Player ap = playerById(attackerPid);
+                if (ap != null && ap.team() != null) {
+                    final Team tm = ap.team();
+                    teamResonanceUntil.put(tm.id, Time.time + RESONANCE_TICKS);
+                    Groups.unit.each(u -> {
+                        if (u != null && u.isValid() && !u.dead && u.team == tm) {
+                            try { Call.effect(resonanceIconFx, u.x, u.y, 0f, Color.white); } catch (Throwable ignored) {}
+                        }
+                    });
+                    try {
+                        Call.sendMessage(tr("[gold]✦ Tinh Quang Cộng Hưởng[] kích hoạt cho phe [accent]", "[gold]✦ Astral Resonance[] activated for team [accent]")
+                            + (ap.name != null ? ap.name : tm.name) + "[]: [scarlet]+10% Tấn công[] & [sky]+10% Giáp[] (20s)!");
+                    } catch (Throwable ignored) {}
+                }
+            } else {
+                resonanceStacks.put(attackerPid, stk);
+            }
+        }
+    }
+    static boolean hasTeamResonance(Team team) {
+        if (team == null || !war()) return false;
+        Float until = teamResonanceUntil.get(team.id);
+        return until != null && Time.time < until;
+    }
+    /** Ngọc Tinh Thông: gọi khi unit player nhấn dùng kỹ năng -> +50% EXP trong 10s (không cộng dồn). */
+    public static void onUnitSkillCast(Unit owner) {
+        if (Vars.net.client() || owner == null || !war()) return;
+        Player op = NewModePvp.ownerPl(owner);
+        if (op == null) return;
+        NewModePvp.St st = NewModePvp.byId.get(op.id);
+        if (!hasSkill(st, SK_SKILL_EXP)) return;
+        skillExpUntil.put(op.id, Time.time + SKILL_EXP_TICKS);
+    }
+    /** Ngọc Tinh Thông: gọi khi tiêu diệt mục tiêu bằng kỹ năng của unit -> nhận ngay +150 EXP. */
+    public static void onUnitSkillKill(Unit owner) {
+        if (Vars.net.client() || owner == null || !war()) return;
+        Player op = NewModePvp.ownerPl(owner);
+        if (op == null) return;
+        NewModePvp.St st = NewModePvp.byId.get(op.id);
+        if (!hasSkill(st, SK_SKILL_EXP)) return;
+        NewModePvp.addExp(op, 150f);
+    }
+    static float expBonusMul(int pid) {
+        if (!war()) return 1f;
+        Float until = skillExpUntil.get(pid);
+        return (until != null && Time.time < until) ? 1.5f : 1f;
     }
     /** Máy chủ gọi khi bất kỳ unit địch nào bị killerPid hạ gục: kích hoạt tăng tốc 50%/6s và +1% tấn công kỹ năng unit player. */
     static void onAnyKill(Unit victim, int killerPid) {
