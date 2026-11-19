@@ -2826,6 +2826,7 @@ public class NewModePvp {
     }
     public static void initPilot() {
         Log.info("[NexPvp] neo fx v9 loaded");
+        Log.info("[NexPvp] build 1.0.7: tốc độ ô/s, giảm hồi máu, sync lính/neo, survival fix, honivery zone");
         Events.run(Trigger.update, () -> neoScan());
         if (!Vars.headless) Events.run(Trigger.draw, () -> neoDrawLive());
     }
