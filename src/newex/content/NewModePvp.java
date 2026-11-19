@@ -495,7 +495,7 @@ public class NewModePvp {
         /** Chiến tranh: túi vật phẩm (id mẫu), 6 ô trang bị (-1 = trống) và cache cấp cộng thêm (không lưu). */
         ArrayList<Integer> gInv = new ArrayList<>(); int[] gEq = GearItems.newEq();
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
-        int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE; boolean gAny = false;
+        int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false;
         void padStats() { if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length); }
     }
 
@@ -2551,6 +2551,7 @@ public class NewModePvp {
         pilotFxAt.put(id, Time.time);
         try { Call.effect(Fx.spawnShockwave, ox, oy, 0, Color.white); Call.effect(Fx.spawnShockwave, nx, ny, 0, Color.white); } catch (Throwable err) {}
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "x"); } catch (Throwable err) {}
+        GearItems.afterPilotCdStart(id, PILOT_XAKY);
     }
     static float xakyNeoRampPct(Unit unit, Player pl) {
         if (pl == null) pl = ownerPl(unit);
@@ -2881,6 +2882,7 @@ public class NewModePvp {
         pilotFxAt.put(id, Time.time);
         try { Call.effect(vanhauShieldFx, unit.x, unit.y, 0, Color.white); } catch (Throwable err) {}
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "v"); } catch (Throwable err) {}
+        GearItems.afterPilotCdStart(id, PILOT_VANHAU);
     }
 
     static void empixFx(int id, boolean cd) {
@@ -2940,6 +2942,7 @@ public class NewModePvp {
                 pl.unit(nu);
                 prevUnit.put(pl.id, nu);
                 empixFx(id, true);
+                GearItems.afterPilotCdStart(id, PILOT_EMPIX);
                 try { Fx.healWaveMend.at(x, y, nu.hitSize); } catch (Throwable err) {}
                 toast(pl, tr("[accent]Empixeand Pilot đã hồi sinh bạn khi chạm 0 máu! (hồi chiêu 5 phút)", "[accent]Empixeand Pilot revived you at 0 HP! (5 min cooldown)"));
             } catch (Throwable err) { logOnce("empixrevive", "empix revive failed: " + err, false); }
@@ -3021,6 +3024,7 @@ public class NewModePvp {
         if (empixOn) dm *= 1 + EMPIX_ATK_PCT * ChaosMode.pilotK();
         if (histOn) dm *= 1 + HIST_STAT_PCT;
         if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT * ChaosMode.pilotK() + xakyNeoRampPct(unit, pl);
+        dm *= GearItems.moveAtkMul(stOwn);
         unit.damageMultiplier *= dm;
         boolean isServer = !Vars.net.client();
         if (empixOn && isServer) empixHeal(unit);
@@ -3079,6 +3083,7 @@ public class NewModePvp {
             @Override public void update(Unit unit, StatusEntry entry) { super.update(unit, entry); applyStats(unit); }
         };
         GearItems.hasteStatus = new StatusEffect("pvp-gear-haste") {{ speedMultiplier = 2.5f; permanent = false; show = true; color = Color.valueOf("2ee6c8"); }};
+        GearItems.killSpeedStatus = new StatusEffect("pvp-gear-killspd") {{ speedMultiplier = 1.5f; permanent = false; show = true; color = Color.valueOf("7df9ff"); }};
         buffStatus.permanent = true; buffStatus.show = false;
         equipStatus = new StatusEffect("pvp-equip");
         equipStatus.permanent = true; equipStatus.show = false;
@@ -3395,14 +3400,16 @@ public class NewModePvp {
         }
         try { Unit u = pl.unit(); if (u != null && u.isValid()) { try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); } } } catch (Throwable err) {}
     }
-    static void startRespawnLock(Player pl) {
+    static void startRespawnLock(Player pl) { startRespawnLock(pl, false); }
+    static void startRespawnLock(Player pl, boolean killedByEnemyPl) {
         St st = bind(pl);
         int tier = activeTier(st);
         int sec = RESPAWN_SEC[Math.min(RESPAWN_SEC.length, Math.max(1, tier)) - 1];
+        boolean half = killedByEnemyPl && GearItems.hasDeathCdr(st);
+        if (half) sec = Math.max(1, Math.round(sec * 0.5f));
         int ticks = Math.max(0, sec * 60 - 60);
-        if (ticks <= 0) return;
-        respawnLock.put(pl.id, (float) ticks);
-        toast(pl, tr("[scarlet]Hồi sinh sau ", "[scarlet]Respawn in ") + sec + tr(" giây", " s"));
+        if (ticks > 0) respawnLock.put(pl.id, (float) ticks);
+        if (ticks > 0 || half) toast(pl, tr("[scarlet]Hồi sinh sau ", "[scarlet]Respawn in ") + sec + tr(" giây", " s") + (half ? tr(" [accent](-50%)[]", " [accent](-50%)[]") : ""));
     }
     /** Map ngoai: bam "bien ve" lan 1 -> drone vanilla (xay dung), lan 2 -> unit PvP, lap lai. */
     static void extSwap(Player pl, St st, Unit u) {
@@ -5130,9 +5137,15 @@ public class NewModePvp {
                 if (sk != null && sk.team() != u.team) { float skx = killExp(u) * KILL_EXP_PCT / 100f; if (skx > 0) addExp(sk, skx); }
             }
             Player dp = u.getPlayer();
+            BotCtx dBot = dp == null ? botUnitOf(u) : null;
+            Player gearKiller = (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) ? GearItems.playerById(krGear.pid) : null;
+            boolean killedByEnemyPl = gearKiller != null && gearKiller.team() != u.team && isPvpTeam(gearKiller.team());
             lastHitBy.remove(u.id);
             if (dp != null && isFull() && isPvpTeam(u.team)) {
-                startRespawnLock(dp);
+                startRespawnLock(dp, killedByEnemyPl);
+                if (killedByEnemyPl) {
+                    try { GearItems.onKilledByEnemyPlayer(dp, byId.get(dp.id)); } catch (Throwable err) {}
+                }
                 deadUnit.put(dp.id, u.id);
                 spawnBuff.remove(dp.id);
                 Player killer = pvpKiller(u);
@@ -5142,8 +5155,13 @@ public class NewModePvp {
                     float kx = killExp(u) * KILL_EXP_PCT / 100f;
                     if (kx > 0) addExp(killer, kx);
                 }
+            } else if (dBot != null && killedByEnemyPl && isFull() && isPvpTeam(u.team)) {
+                try { GearItems.onKilledByEnemyPlayer(dBot.botPl, byId.get(dBot.botPl.id)); } catch (Throwable err) {}
             }
         } catch (Throwable err) {}
+        if (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) {
+            try { GearItems.onAnyKill(u, krGear.pid); } catch (Throwable err) { logOnce("gear-kill", "gear kill skill failed: " + err, false); }
+        }
         if (u.team == Vars.state.rules.waveTeam) {
             try { GearItems.onWaveKill(u, krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS ? krGear.pid : -1); } catch (Throwable err) { logOnce("gear-drop", "gear drop failed: " + err, false); }
             final float gained = killExp(u);
@@ -5169,7 +5187,7 @@ public class NewModePvp {
         bonusWaveT = 0; matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldRecs.clear(); shieldEnded = false; shieldSyncT = 0;
         shieldView = new ShieldView(); shieldFlash.clear(); shieldSeenHit.clear();
         vanhauField.clear();
-        ChaosMode.reset();
+        ChaosMode.reset(); GearItems.reset();
         resetUiState();
         respawnLock.clear(); deadUnit.clear(); spawnBuff.clear(); swapPending.clear(); prevUnit.clear(); extPvp.clear();
         barrackT.clear(); rally.clear(); soldiers.clear(); soldierOwner.clear(); mountSt.clear(); lastHitBy.clear(); teamHit.clear();
@@ -5512,9 +5530,21 @@ public class NewModePvp {
         } catch (Throwable err) { return 0f; }
     }
 
+    /** Hệ số tăng tấn công cho kỹ năng unit player (từ vật phẩm chế độ Chiến tranh, tối đa +500%). */
+    public static float skillAtkMul(Unit owner) {
+        try { return GearItems.skillAtkMul(owner); } catch (Throwable err) { return 1f; }
+    }
+
     /** Skill gây sát thương lên unit địch: đã tính Xuyên giáp, % máu tối đa, bonus quái spawn ngẫu nhiên, Đẩy lùi. Gọi ở server/host. */
     public static void skillDamage(Unit owner, Unit tgt, float dmg, float fromX, float fromY) {
         if (tgt == null) return;
+        dmg *= skillAtkMul(owner);
+        if (owner != null && owner.team != tgt.team) {
+            try {
+                Player op = ownerPl(owner);
+                if (op != null) { Hit h = new Hit(); h.pid = op.id; h.t = Time.time; lastHitBy.put(tgt.id, h); }
+            } catch (Throwable err) {}
+        }
         skillDamageCore(owner, tgt, tgt.team, dmg);
         try { Honivery.reflectOnHit(tgt, owner, dmg); } catch (Throwable err) {} // khiên Tinh Quang của Honivery phản sát thương skill
         try {
@@ -5529,6 +5559,7 @@ public class NewModePvp {
     /** Skill gây sát thương lên công trình địch (không đẩy lùi). */
     public static void skillDamage(Unit owner, Building tgt, float dmg) {
         if (tgt == null) return;
+        dmg *= skillAtkMul(owner);
         skillDamageCore(owner, tgt, tgt.team, dmg);
     }
 
@@ -5556,7 +5587,7 @@ public class NewModePvp {
         winning = false; seenBoth = false; byId = new HashMap<>(); teamsCache = null;
         mindustry.game.Rules r = Vars.state.rules;
         r.tags.put(TAG_ACTIVE, "1");
-        ChaosMode.stampTag(); GearItems.stampTag(); ChaosMode.reset();
+        ChaosMode.stampTag(); GearItems.stampTag(); ChaosMode.reset(); GearItems.reset();
         store = new LinkedHashMap<>();
         r.tags.put(TAG_STORE, "{}");
         matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldEnded = false;
@@ -5860,8 +5891,8 @@ public class NewModePvp {
         St st = localState();
         if (st == null) { c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row(); return; }
         final float W = pnl.innerW();
-        h.add("[lightgray]" + tr("Chỉ số hiện tại (đã gồm cộng/trừ từ vật phẩm trang bị). Trang này chỉ để xem, không có nút nâng cấp.",
-            "Current stats (includes item bonuses/penalties). View only, no upgrade button here.") + "[]").growX().wrap().minWidth(0).pad(6).row();
+        h.add("[lightgray]" + tr("Chỉ số hiện tại (đã gồm cộng/trừ từ vật phẩm trang bị; xem kỹ năng vật phẩm ở tab Trang bị). Trang này chỉ để xem, không có nút nâng cấp.",
+            "Current stats (includes item bonuses/penalties; see item skills in the Gear tab). View only, no upgrade button here.") + "[]").growX().wrap().minWidth(0).pad(6).row();
         for (int i = 0; i < STATS.length; i++) {
             if (i == STAT_ARMY || !statVisible(i)) continue;
             statRowView(c, st, i, W);
@@ -6646,7 +6677,7 @@ public class NewModePvp {
         viewUp = new ArrayList[]{new ArrayList<Object>(recentUp[0]), new ArrayList<Object>(recentUp[1]), new ArrayList<Object>(recentUp[2]), new ArrayList<Object>(recentUp[3])};
         final boolean warUi = GearItems.war();   // Chiến tranh: tab 2 là TRANG BỊ vật phẩm; trang CHỈ SỐ chỉ có khi bật Hỗn loạn
         p.tabs(new String[]{tr("UNIT", "UNIT"), warUi ? tr("TRANG BỊ", "GEAR") : tr("CHỈ SỐ", "STATS"), tr("PHÁO", "TURRETS"), tr("LÍNH", "ARMY")}, upTab, ix -> upTab = ix);
-        p.bigTabs(new String[]{tr("Chọn unit điều khiển", "Pick your unit"), warUi ? tr("Lắp vật phẩm rơi từ quái", "Equip monster drops") : tr("Dùng điểm để mạnh hơn", "Spend points"), tr("Mua & lắp pháo", "Buy & mount turrets"), tr("Thuê lính giữ lõi", "Hire army")},
+        p.bigTabs(new String[]{tr("Chọn unit điều khiển", "Pick your unit"), warUi ? tr("Lắp vật phẩm & kỹ năng", "Equip items & skills") : tr("Dùng điểm để mạnh hơn", "Spend points"), tr("Mua & lắp pháo", "Buy & mount turrets"), tr("Thuê lính giữ lõi", "Hire army")},
             ix -> { St s = localState(); if (ix != 1 || s == null) return ""; if (warUi) return s.gInv.size() > 0 ? "[accent]" + s.gInv.size() + "[]" : ""; return s.pts > 0 ? "[scarlet]+" + s.pts + "[]" : ""; });
         p.onBuild(() -> buildDialog(p));
         final String[] lastVer = {curVer()};
