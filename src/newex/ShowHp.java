@@ -234,6 +234,9 @@ public final class ShowHp {
 
         int id = u.id;
         float curHp = u.health, maxHp = u.maxHealth, curShield = u.shield;
+        // Client (vào host người khác) có thể thấy máu > máu tối đa cục bộ -> không để thanh vượt khung
+        if (!(maxHp > 0f)) maxHp = Math.max(1f, curHp);
+        if (curHp > maxHp) maxHp = curHp;
 
         if (!lastHp.containsKey(id)) lastHp.put(id, curHp);
         if (Math.abs(curHp - lastHp.get(id)) > 0.1f) {
@@ -252,7 +255,7 @@ public final class ShowHp {
             smoothHpVal = Mathf.lerpDelta(smoothHpVal, curHp, 0.1f);
             smoothHp.put(id, smoothHpVal);
         }
-        float pct = Math.max(0f, smoothHpVal / maxHp * 100f);
+        float pct = Math.max(0f, Math.min(100f, smoothHpVal / maxHp * 100f));
 
         if (style.equals("show-hp")) {
             float sh = smoothShield.getOrDefault(id, curShield);

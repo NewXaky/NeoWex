@@ -69,7 +69,7 @@ final class GearItems {
     /** Trọng số rơi theo độ hiếm: càng hiếm càng thấp (tổng 1000 -> 60% / 25% / 10% / 4% / 1%). */
     static final int[] RAR_W = {600, 250, 100, 40, 10};
     /** Sàn cấp hiệu dụng của từng chỉ số (cho phép trừ ở Máu/Giáp/Tấn công/Tốc độ/Tốc độ bắn, tránh chỉ số âm vô nghĩa). */
-    static final int[] FLOOR = {-4, -6, -10, -8, -8, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static final int[] FLOOR = {-4, -6, -10, -8, -8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     static final class Def {
         final int id, slot, rarity; final String vi, en; final String[] icons; final int[] mods; // mods: cặp {chỉ số, cấp}
@@ -81,7 +81,7 @@ final class GearItems {
     }
 
     // chỉ số: 0 Máu, 1 Giáp, 2 Tấn công, 3 Tốc độ di chuyển, 4 Tốc độ bắn, 5 Tỉ lệ bạo kích, 6 ST bạo kích, 7 Xuyên giáp,
-    // 8 Hồi máu, 9 ST % máu tối đa, 10 ST theo giáp, 11 Đẩy lùi, 12 Tầm bắn lính, 13 ST quái spawn ngẫu nhiên
+    // 8 Hồi máu, 9 ST % máu tối đa, 10 ST theo giáp, 11 Đẩy lùi, 12 Tầm bắn lính, 13 ST quái spawn ngẫu nhiên, 14 Giảm hồi máu
     static final Def[] DEFS = new Def[48];
     static int n = 0;
     static void d(int slot, int rarity, String vi, String en, String icons, int... mods) { DEFS[n] = new Def(n, slot, rarity, vi, en, icons, mods); n++; }
@@ -89,11 +89,11 @@ final class GearItems {
         // ---- Vũ khí
         d(S_WEAPON, 0, "Súng đồng", "Copper Gun", "duo", 2, 3, 3, -1);
         d(S_WEAPON, 0, "Nỏ gỉ sét", "Rusty Crossbow", "hail", 4, 3, 5, 1);
-        d(S_WEAPON, 1, "Pháo tia lửa", "Spark Cannon", "arc,lancer", 2, 5, 4, 3);
-        d(S_WEAPON, 1, "Kiếm laser", "Laser Sword", "swordoder,lancer", 2, 4, 6, 3);
-        d(S_WEAPON, 2, "Búa Therdum", "Therdum Hammer", "therdum,salvo", 2, 7, 9, 4, 3, -2);
-        d(S_WEAPON, 3, "Pháo Xylaon", "Xylaon Cannon", "xylaon,ripple", 2, 10, 7, 6, 13, 6, 3, -3);
-        d(S_WEAPON, 4, "Thần kiếm Heliyron", "Heliyron Godblade", "heliyron,spectre", 2, 16, 4, 8, 6, 8, 9, 6, 3, -4, 1, -3);
+        d(S_WEAPON, 1, "Pháo tia lửa", "Spark Cannon", "arc,lancer", 2, 5, 4, 3, 14, 4);
+        d(S_WEAPON, 1, "Kiếm laser", "Laser Sword", "swordoder,lancer", 2, 4, 6, 3, 14, 4);
+        d(S_WEAPON, 2, "Búa Therdum", "Therdum Hammer", "therdum,salvo", 2, 7, 9, 4, 3, -2, 14, 8);
+        d(S_WEAPON, 3, "Pháo Xylaon", "Xylaon Cannon", "xylaon,ripple", 2, 10, 7, 6, 13, 6, 3, -3, 14, 14);
+        d(S_WEAPON, 4, "Thần kiếm Heliyron", "Heliyron Godblade", "heliyron,spectre", 2, 16, 4, 8, 6, 8, 9, 6, 3, -4, 1, -3, 14, 22);
         // ---- Mũ
         d(S_HELM, 0, "Mũ đồng", "Copper Cap", "copper-wall,mender", 0, 2, 7, 1);
         d(S_HELM, 0, "Kính ngắm vụn", "Scrap Scope", "scrap-wall,scrap", 5, 3, 12, 1);
@@ -132,7 +132,7 @@ final class GearItems {
         d(S_CHARM, 1, "Bùa plastanium", "Plastanium Charm", "plastanium", 12, 4, 13, 3, 3, -1);
         d(S_CHARM, 1, "Bùa kích thích", "Stimulant Charm", "pyratite,blast-compound", 4, 4, 13, 4);
         d(S_CHARM, 2, "Bùa Berrybyr", "Berrybyr Charm", "berrybyr,phase-fabric", 13, 8, 12, 4, 8, 3, 0, -2);
-        d(S_CHARM, 3, "Bùa Sallowyr", "Sallowyr Charm", "sallowyr,surge-alloy", 13, 12, 12, 6, 9, 5, 2, -3, 3, -3);
+        d(S_CHARM, 3, "Bùa Sallowyr", "Sallowyr Charm", "sallowyr,surge-alloy", 13, 12, 12, 6, 9, 5, 2, -3, 3, -3, 14, 10);
         d(S_CHARM, 4, "Bùa Pha Lê Hư Vô", "Void Crystal Charm", "newex-obsidis,newex-starlight", 13, 18, 12, 10, 9, 8, 7, 8, 1, -4, 3, -4);
         // ---- Vật phẩm cửa hàng (chỉ mua, không rơi từ quái đợt)
         shop("Bùa Dịch Chuyển", "Recall Charm", "phase-fabric,phase-conveyor", K_TP, 1,
@@ -761,13 +761,16 @@ final class GearItems {
         if (!hooked) { hooked = true; Events.run(mindustry.game.EventType.Trigger.update, GearItems::tickPort); }
         NewModePvp.onReq(REQ_GEAR, 120, (player, payload) -> {
             if (!war()) return;
-            NewModePvp.St st = NewModePvp.reqState(player);
-            if (st == null) return;
             String[] a = payload.split("\\|");
             if (a.length < 2) return;
             Integer v = NewModePvp.leadInt(a[1]);
             if (v == null) return;
             String op = a[0];
+            // Bùa Dịch Chuyển và Nước Tăng Tốc dùng được ở mọi khoảng cách (không cần gần lõi)
+            boolean anyDist = op.equals("t");
+            if (op.equals("e")) { Def dq = def(v); anyDist = dq != null && dq.kind == K_HASTE; }
+            NewModePvp.St st = NewModePvp.reqState(player, anyDist);
+            if (st == null) return;
             if (op.equals("e")) {                         // lắp vật phẩm id=v từ túi
                 int idx = st.gInv.indexOf(v);
                 Def d = def(v);

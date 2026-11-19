@@ -140,6 +140,9 @@ public class NewModePvp {
     static final String SHIELD_KIND = "newex-pvp-shield";
     static final String EXP_KIND = "newex-pvp-exp";
     static final String PFX_KIND = "newex-pvp-pfx";
+    static final String NEOFX_KIND = "newex-pvp-neofx";   // server -> client: hiệu ứng kết liễu của Neo (vị trí)
+    static final String SOLD_KIND = "newex-pvp-sold";     // server -> client: danh sách lính (uid:chủ) để client áp tầm bắn/tốc độ đạn
+
     static final String CORE_KIND = "newex-pvp-coredie";
     static final Color SHIELD_COLOR = Color.valueOf("#d000ff");
     static final Color SHIELD_GLOW = Color.valueOf("#00f0ff");
@@ -337,6 +340,9 @@ public class NewModePvp {
     static final String THERDUM_ID = "therdum";
     static final int THERDUM_PRICE = 10;
     static final int THERDUM_HIT_CAP = 100;
+    static final int STAT_HEAL = 14, HEAL_CUT_PCT = 1, HEAL_CUT_MAX = 90, HEAL_CUT_TICKS = 240;
+    /** Chỉ số Giảm hồi máu chỉ có ở chế độ Hỗn loạn và Chiến tranh. */
+    static boolean statVisible(int i) { return i != STAT_HEAL || ChaosMode.on() || GearItems.war(); }
 
 
     // ===== bang du lieu (JS object/array nhieu dong) =====
@@ -409,7 +415,8 @@ public class NewModePvp {
         new Stat("Sát thương theo giáp", "Armor-based damage", l -> "+" + Strings.fixed(l * DMG_PER_ARMOR * 10, 1) + "% " + tr("mỗi 10 giáp hiện tại", "per 10 current armor")),
         new Stat("Đẩy lùi", "Knockback", l -> "+" + Strings.fixed(l * KNOCK_PER, 2) + " " + tr("lực đẩy lùi", "knockback")),
         new Stat("Tầm bắn & đạn của lính", "Soldier range & bullet life", l -> "+" + (l * RANGE_PCT) + "% " + tr("tầm bắn & tốc độ bay đạn", "range & bullet speed") + "  +" + (l * LIFE_PCT) + "% " + tr("thời gian tồn tại đạn", "bullet lifetime")),
-        new Stat("Sát thương quái spawn ngẫu nhiên", "Random-spawn monster damage", l -> "+" + (l * WRAND_DMG_PCT) + "% " + tr("sát thương khi đánh trúng quái từ đợt spawn ngẫu nhiên", "damage when hitting monsters from random spawn waves"))
+        new Stat("Sát thương quái spawn ngẫu nhiên", "Random-spawn monster damage", l -> "+" + (l * WRAND_DMG_PCT) + "% " + tr("sát thương khi đánh trúng quái từ đợt spawn ngẫu nhiên", "damage when hitting monsters from random spawn waves")),
+        new Stat("Giảm hồi máu", "Heal reduction", l -> Math.min(HEAL_CUT_MAX, l * HEAL_CUT_PCT) + "% " + tr("giảm hồi máu của mục tiêu trong ", "healing reduction on target for ") + (HEAL_CUT_TICKS / 60) + tr("s khi đạn trúng (tối đa ", "s on hit (max ") + HEAL_CUT_MAX + "%)")
     };
     /** Hai chi so dau (Mau, Giap) khong gioi han; JS: STATS[i].mx khong ton tai nen cac chi so khac = STAT_MAX. */
     static boolean statUnlimited(int i) { return i == 0 || i == 1 || ChaosMode.unlimited(); }
@@ -872,6 +879,23 @@ public class NewModePvp {
                     if (content.indexOf("x") >= 0) xakyCdAt.put(id, Time.time);
                     else if (content.indexOf("v") >= 0) vanhauCdAt.put(id, Time.time);
                     else if (content.indexOf("n") < 0) empixCdAt.put(id, Time.time);
+                } catch (Throwable err) {}
+            });
+            Vars.netClient.addPacketHandler(NEOFX_KIND, content -> {
+                try {
+                    String[] a = content.split("\\|");
+                    float ex = pf(a[0]), ey = pf(a[1]);
+                    neoLocalFx(NEO_EXEC, 90, ex, ey, 0);
+                    neoLocalFx(NEO_STARS, 55, ex, ey, 0);
+                    neoLocalFx(NEO_LASER, 48, ex, ey, 0);
+                    if (a.length >= 5) neoLocalFx(NEO_MUZZLE, 12, pf(a[2]), pf(a[3]), pf(a[4]));
+                } catch (Throwable err) {}
+            });
+            Vars.netClient.addPacketHandler(SOLD_KIND, content -> {
+                try {
+                    soldierOwner.clear();
+                    if (content.isEmpty()) return;
+                    for (String t : content.split(",")) { int c = t.indexOf(':'); if (c > 0) soldierOwner.put(Integer.parseInt(t.substring(0, c)), Integer.parseInt(t.substring(c + 1))); }
                 } catch (Throwable err) {}
             });
             Vars.netClient.addPacketHandler(VHS_KIND, content -> {
@@ -2691,13 +2715,16 @@ public class NewModePvp {
         neoLocalFx(NEO_EXEC, 90, ex, ey, 0);
         neoLocalFx(NEO_STARS, 55, ex, ey, 0);
         neoLocalFx(NEO_LASER, 48, ex, ey, 0);
+        String neoPkt = Math.round(ex) + "|" + Math.round(ey);
         if (isUnitOwner && b != null && o != null) {
             try {
                 float mx = b.originX, my = b.originY, br = b.rotation();
                 if (mx == 0 && my == 0) { mx = o.x + Angles.trnsx(br, o.hitSize * 0.8f); my = o.y + Angles.trnsy(br, o.hitSize * 0.8f); }
                 neoLocalFx(NEO_MUZZLE, 12, mx, my, br + 90);
+                neoPkt += "|" + Math.round(mx) + "|" + Math.round(my) + "|" + Math.round(br + 90);
             } catch (Throwable err) {}
         }
+        try { if (Vars.net.server()) Call.clientPacketReliable(NEOFX_KIND, neoPkt); } catch (Throwable err) {}
         neoDiag(ex, ey);
         pilotFxAt.put(apid, Time.time);
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, apid + "n"); } catch (Throwable err) {}
@@ -3048,6 +3075,9 @@ public class NewModePvp {
         spawnGuardStatus.healthMultiplier = 1f / (1 - SPAWN_GUARD_DAMAGE_CUT / 100f);
         spawnGuardStatus.permanent = false; spawnGuardStatus.show = true;
         try { spawnGuardStatus.color = Color.valueOf("7fd8ff"); } catch (Throwable err) {}
+        healCutStatus = new StatusEffect("pvp-heal-cut");
+        healCutStatus.permanent = false; healCutStatus.show = true;
+        try { healCutStatus.color = Color.valueOf("b04a6e"); } catch (Throwable err) {}
         spawnRageStatus = new StatusEffect("pvp-spawn-rage");
         spawnRageStatus.permanent = false; spawnRageStatus.show = true;
         try { spawnRageStatus.color = Color.valueOf("ff5a5a"); } catch (Throwable err) {}
@@ -4822,6 +4852,32 @@ public class NewModePvp {
         return p != null ? p.unit() : null;
     }
 
+    // ===== Giảm hồi máu: đạn trúng -> mục tiêu bị giảm lượng máu hồi (mọi nguồn) trong HEAL_CUT_TICKS =====
+    static final class HealCut { int pct; float until, last; }
+    static final HashMap<Integer, HealCut> healCuts = new HashMap<>();
+    static StatusEffect healCutStatus;
+    static void applyHealCut(Unit tgt, int pct) {
+        if (tgt == null || pct <= 0 || tgt.dead || !tgt.isValid()) return;
+        HealCut h = healCuts.get(tgt.id);
+        if (h == null) { h = new HealCut(); h.last = tgt.health; healCuts.put(tgt.id, h); }
+        h.pct = Math.max(pct, Time.time < h.until ? h.pct : 0);
+        h.until = Time.time + HEAL_CUT_TICKS;
+        if (healCutStatus != null) { try { tgt.apply(healCutStatus, HEAL_CUT_TICKS); } catch (Throwable err) {} }
+    }
+    static void healCutTick() {
+        if (healCuts.isEmpty()) return;
+        for (java.util.Iterator<Map.Entry<Integer, HealCut>> it = healCuts.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Integer, HealCut> en = it.next();
+            HealCut h = en.getValue();
+            Unit u = Groups.unit.getByID(en.getKey());
+            if (u == null || !u.isValid() || u.dead || Time.time >= h.until) { it.remove(); continue; }
+            if (u.health > h.last) {
+                float gain = u.health - h.last;
+                u.health = Math.min(u.maxHealth, h.last + gain * (1f - h.pct / 100f));
+            }
+            h.last = u.health;
+        }
+    }
     static void damageEvent(UnitDamageEvent e) {
         if (Vars.net.client() || !isActive()) return;
         Bullet b = e.bullet; Unit tgt = e.unit;
@@ -4847,6 +4903,11 @@ public class NewModePvp {
             int[] os = ost != null ? GearItems.eff(ost) : null;
             if (os != null && os[9] > 0 && tgt.maxHealth > 0) { float ex = tgt.maxHealth * ChaosMode.pctMaxHp(os[9], DMG_PCT_MAXHP) / 100f; try { tgt.damagePierce(ex); } catch (Throwable err) { tgt.damage(ex); } }
             if (os != null && os[13] > 0 && tgt.team == Vars.state.rules.waveTeam) { float exw = b.damage * os[13] * WRAND_DMG_PCT / 100f; try { tgt.damagePierce(exw); } catch (Throwable err) { tgt.damage(exw); } }
+        } catch (Throwable err) {}
+        try {
+            St ast = byId.get(apid);
+            int[] as = ast != null ? GearItems.eff(ast) : null;
+            if (as != null && as.length > STAT_HEAL && as[STAT_HEAL] > 0 && statVisible(STAT_HEAL)) applyHealCut(tgt, Math.min(HEAL_CUT_MAX, as[STAT_HEAL] * HEAL_CUT_PCT));
         } catch (Throwable err) {}
         try {
             St hst = byId.get(apid);
@@ -4888,6 +4949,32 @@ public class NewModePvp {
     }
 
     /** Dang ky su kien phan 13. Phan UnitDestroyEvent (JS 5778+) o phan sau. */
+    static float soldSyncT = 0; static String soldLast = null; static int soldRepeat = 0;
+    /** Máy chủ: gửi danh sách lính->chủ cho client (chỉ khi đổi, hoặc nhắc lại mỗi ~5s). */
+    static void soldierSync() {
+        if (!Vars.net.server()) return;
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<Integer, Integer> e : soldierOwner.entrySet()) { if (sb.length() > 0) sb.append(','); sb.append(e.getKey()).append(':').append(e.getValue()); }
+        String cur = sb.toString();
+        if (cur.equals(soldLast) && ++soldRepeat < 5) return;
+        soldRepeat = 0; soldLast = cur;
+        try { Call.clientPacketReliable(SOLD_KIND, cur); } catch (Throwable err) {}
+    }
+    /** Client: áp tầm bắn & tốc độ bay đạn của lính lên đạn do client tự mô phỏng (khớp với đạn trên máy chủ). */
+    static void clientSoldierBullet(Bullet b) {
+        if (b.time > 3 || !(b.owner instanceof Unit) || rolled.get(b.id) != null) return;
+        Integer pid = soldierOwner.get(((Unit) b.owner).id);
+        if (pid == null) return;
+        St st = byId.get(pid);
+        int[] s = st != null ? GearItems.eff(st) : null;
+        if (s == null || s.length <= STAT_ARMY) return;
+        rolled.put(b.id, true);
+        if (++rolledN > 3000) { rolled.clear(); rolledN = 0; }
+        if (s[STAT_ARMY] > 0 && !ChaosMode.soldierRangeOff()) {
+            try { b.lifetime *= 1 + s[STAT_ARMY] * LIFE_PCT / 100f; } catch (Throwable err) {}
+            try { b.vel.scl(1 + s[STAT_ARMY] * RANGE_PCT / 100f); } catch (Throwable err) {}
+        }
+    }
     public static void initUpdate() {
         Events.run(Trigger.update, () -> {
             if (autoPauseFixed || Vars.net.client() || !isFull()) return;
@@ -4909,6 +4996,8 @@ public class NewModePvp {
                 if (full) lateExpCheck();
                 if (full) eachPl(NewModePvp::eachBarracks);
                 if (full) eachPl(NewModePvp::eachSoldierAI);
+                soldSyncT -= Time.delta;
+                if (full && soldSyncT <= 0) { soldSyncT = 60; soldierSync(); }
                 bulletStatT -= Time.delta;
                 if (bulletStatT <= 0) { bulletStatT = 30; bulletStatOn = anyBulletStat(); }
                 if (bulletStatOn) Groups.bullet.each(NewModePvp::eachBullet);
@@ -4928,6 +5017,7 @@ public class NewModePvp {
                 pruneT -= Time.delta;
                 if (pruneT <= 0) { pruneT = 300; prune(); }
             }
+            if (!auth && full && !soldierOwner.isEmpty()) Groups.bullet.each(NewModePvp::clientSoldierBullet);
             eachPl(NewModePvp::eachPlayerCommon);
             turretT -= Time.delta;
             eachPl(NewModePvp::eachTurretOwner);
@@ -4958,6 +5048,7 @@ public class NewModePvp {
             spawnWave(Vars.state.wave - 1);
         });
         Events.on(UnitDamageEvent.class, e -> damageEvent(e));
+        Events.run(Trigger.update, () -> { if (!Vars.net.client() && isActive() && !Vars.state.isPaused()) healCutTick(); });
     }
 
 
@@ -5129,7 +5220,7 @@ public class NewModePvp {
             St st = reqState(player); if (st == null) return;
             String[] parts = payload.split("\\|");
             Integer k = leadInt(parts[0]);
-            if (k == null || !(k >= 0 && k < STATS.length)) return;
+            if (k == null || !(k >= 0 && k < STATS.length) || !statVisible(k)) return;
             if (k != STAT_ARMY && GearItems.war()) return;   // Chiến tranh: không còn trang chỉ số (chỉ số đến từ vật phẩm); chỉ "Tầm bắn lính" ở trang Lính vẫn nâng được
             int want = 1;
             if (parts.length > 1) { Integer w = leadInt(parts[1]); if (w != null) want = Math.max(1, Math.min(w, 10)); }
@@ -5761,7 +5852,7 @@ public class NewModePvp {
         h.add("[lightgray]" + tr("Chỉ số hiện tại (đã gồm cộng/trừ từ vật phẩm trang bị). Trang này chỉ để xem, không có nút nâng cấp.",
             "Current stats (includes item bonuses/penalties). View only, no upgrade button here.") + "[]").growX().wrap().minWidth(0).pad(6).row();
         for (int i = 0; i < STATS.length; i++) {
-            if (i == STAT_ARMY) continue;
+            if (i == STAT_ARMY || !statVisible(i)) continue;
             statRowView(c, st, i, W);
         }
     }
@@ -6258,6 +6349,7 @@ public class NewModePvp {
         out.add(new String[]{tr("Sát thương % máu tối đa", "Max HP % damage"), "+" + numStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + tr("% máu tối đa mục tiêu/lần trúng", "% target max HP per hit")});
         out.add(new String[]{tr("Sát thương theo giáp", "Armor-based damage"), "+" + numStr(s[10] * DMG_PER_ARMOR * u.armor * 100) + "%"});
         out.add(new String[]{tr("Đẩy lùi", "Knockback"), "+" + numStr(s[11] * KNOCK_PER)});
+        if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{tr("Giảm hồi máu", "Heal reduction"), Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT) + "%"});
         out.add(new String[]{tr("Pháo gắn", "Mounted turrets"), "unit " + equipCount(st) + "/" + equipSlots(st) + tr(", xây ", ", built ") + builtCount(st) + "/" + maxBuilt()});
         return out;
     }
@@ -6508,7 +6600,7 @@ public class NewModePvp {
                 GearItems.buildTab(c, st, W);          // Chiến tranh: trang trang bị vật phẩm thay cho trang chỉ số
             } else {
                 ArrayList<Object> statBase = new ArrayList<>();
-                for (int q = 0; q < STATS.length; q++) if (q != STAT_ARMY) statBase.add(q);
+                for (int q = 0; q < STATS.length; q++) if (q != STAT_ARMY && statVisible(q)) statBase.add(q);
                 ArrayList<Object> statOrder = orderedBy(1, statBase);
                 statHeader(c, st, W);
                 for (Object o : statOrder) statRow(c, st, (Integer) o, W);
