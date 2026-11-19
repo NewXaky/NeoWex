@@ -350,7 +350,7 @@ public final class DtgSoldern {
             b1D.width(340f).get().setWrap(true);
             b1D.get().setAlignment(Align.left);
             b1.row();
-            b1.button(isEn() ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]", () -> {
+            b1.button(isEn() ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]", () -> {
                 CoreBuild core = team.core();
                 if (core != null && core.items.get(Items.titanium) >= reqMK2.titanium && core.items.get(Items.silicon) >= reqMK2.silicon) {
                     NexNet.take(core, Items.titanium, reqMK2.titanium);
@@ -362,7 +362,7 @@ public final class DtgSoldern {
                     dialog.hide();
                     deselect();
                 } else {
-                    Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2 branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2![]");
+                    Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2 branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]");
                 }
             }).size(180f, 38f);
 
@@ -387,7 +387,7 @@ public final class DtgSoldern {
             b2D.width(340f).get().setWrap(true);
             b2D.get().setAlignment(Align.left);
             b2.row();
-            b2.button(isEn() ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]", () -> {
+            b2.button(isEn() ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]", () -> {
                 CoreBuild core = team.core();
                 if (core != null && core.items.get(Items.titanium) >= reqMK2B.titanium && core.items.get(Items.silicon) >= reqMK2B.silicon && core.items.get(Items.plastanium) >= reqMK2B.plastanium) {
                     NexNet.take(core, Items.titanium, reqMK2B.titanium);
@@ -400,7 +400,7 @@ public final class DtgSoldern {
                     dialog.hide();
                     deselect();
                 } else {
-                    Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2B branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2B![]");
+                    Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2B branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]");
                 }
             }).size(180f, 38f);
 

@@ -354,20 +354,20 @@ public final class Xylaon {
             Table b1 = new Table(); b1.background(Styles.black6); b1.margin(12);
             b1.add("[cyan]===(MK2)===[]").row();
             wrap(b1.add(t(isEn,
-                "[white]• Health: [green]+30%[] ([green]650[] HP)\n• Range: [green]+29.5%[] ([orange]544[] px)\n• Base Damage: [green]+30%[] ([yellow]26[] DMG/bullet)\n• [orange]Accelerated Semiconductor Cooling:[] Attack speed increases up to [green]+450%[] based on heat buildup\n• While reducing cooldown lock time down to [orange]3.0s[]",
-                "[white]• Máu cấu trúc: [green]+30%[] ([green]650[] HP)\n• Tầm bắn: [green]+29.5%[] ([orange]544[] px)\n• Sát thương gốc: [green]+30%[] ([yellow]26[] DMG/viên)\n• [orange]Tản Nhiệt Bán Dẫn Gia Tốc:[] Tốc độ xả đạn gia tăng tối đa [green]+450%[] theo nhiệt tích lũy\n• Đồng thời giảm thời gian khóa xả nhiệt xuống chỉ còn [orange]3.0[] giây")), 340);
+                "[white]• Health: [green]+[gold]30%[][] ([green]650[] HP)\n• Range: [green]+[gold]29.5%[][] ([orange]544[] px)\n• Base Damage: [green]+[gold]30%[][] ([yellow]26[] DMG/bullet)\n• [orange]Accelerated Semiconductor Cooling:[] Attack speed increases up to [green]+[gold]450%[][] based on heat buildup\n• While reducing cooldown lock time down to [orange]3.0s[]",
+                "[white]• Thân thép: [green]+[gold]30%[][] ([green]650[] HP)\n• Tầm vươn: [green]+[gold]29.5%[][] ([orange]544[] px)\n• Uy lực gốc: [green]+[gold]30%[][] ([yellow]26[] DMG/viên)\n• [orange]Tản Nhiệt Bán Dẫn Gia Tốc:[] Tốc độ xả đạn gia tăng tối đa [green]+[gold]450%[][] theo nhiệt tích lũy\n• Đồng thời giảm thời gian khóa xả nhiệt xuống chỉ còn [orange]3.0[] giây")), 340);
             b1.row();
-            b1.button(t(isEn, "[green]UPGRADE MK2[]", "[green]NÂNG CẤP MK2[]"), () -> {
+            b1.button(t(isEn, "[green]UPGRADE MK2[]", "[green]TIẾN HÓA MK2[]"), () -> {
                 if (processPartialUpgrade(1, REQ_MK2)) { dialog.hide(); deselect(); }
             }).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
             b2.add("[purple]===(MK2B)===[]").row();
             wrap(b2.add(t(isEn,
-                "[white]• Health: [green]+56.25%[] ([green]781[] HP)\n• Range: [red]-30%[] ([orange]294[] px)\n• Base Damage: [red]-35%[] ([yellow]13[] DMG/bullet)\n• [orange]Cyclic Super-Impulse Burst:[] Accelerated fire rate hits an explosive [green]+999%[]\n• Automatically triggering ultra-fast [orange]1.5s[] cooling to maintain relentless close-range firepower",
-                "[white]• Máu cấu trúc: [green]+56.25%[] ([green]781[] HP)\n• Tầm bắn: [red]-30%[] ([orange]294[] px)\n• Sát thương gốc: [red]-35%[] ([yellow]13[] DMG/viên)\n• [orange]Siêu Xung Bùng Nổ Chu Kỳ Tốc Độ:[] Tốc độ bắn gia tốc chạm mốc bùng nổ [green]+999%[]\n• Tự động kích hoạt xả nhiệt cực nhanh chỉ trong [orange]1.5[] giây để duy trì mật độ hỏa lực tầm gần liên tục")), 340);
+                "[white]• Health: [green]+[gold]56.25%[][] ([green]781[] HP)\n• Range: [red]-[gold]30%[][] ([orange]294[] px)\n• Base Damage: [red]-[gold]35%[][] ([yellow]13[] DMG/bullet)\n• [orange]Cyclic Super-Impulse Burst:[] Accelerated fire rate hits an explosive [green]+[gold]999%[][]\n• Automatically triggering ultra-fast [orange]1.5s[] cooling to maintain relentless close-range firepower",
+                "[white]• Thân thép: [green]+[gold]56.25%[][] ([green]781[] HP)\n• Tầm vươn: [red]-[gold]30%[][] ([orange]294[] px)\n• Uy lực gốc: [red]-[gold]35%[][] ([yellow]13[] DMG/viên)\n• [orange]Siêu Xung Bùng Nổ Chu Kỳ Tốc Độ:[] Tốc độ bắn gia tốc chạm mốc bùng nổ [green]+[gold]999%[][]\n• Tự động kích hoạt xả nhiệt cực nhanh chỉ trong [orange]1.5[] giây để duy trì mật độ hỏa lực tầm gần liên tục")), 340);
             b2.row();
-            b2.button(t(isEn, "[orange]UPGRADE MK2B[]", "[orange]NÂNG CẤP MK2B[]"), () -> {
+            b2.button(t(isEn, "[orange]UPGRADE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), () -> {
                 if (processPartialUpgrade(2, REQ_MK2B)) { dialog.hide(); deselect(); }
             }).size(180, 38);
 
@@ -388,18 +388,18 @@ public final class Xylaon {
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
                 desc = isEn
-                    ? "[yellow]⚡ BASE STATS (MK1) ⚡[]\n[white]Turret HP: [green]500[]\nRange: [orange]420[] px\nBase Damage (Graphite): [yellow]20[] DMG/bullet\nBase Damage (Copper): [yellow]12[] DMG/bullet[]\n• [orange]Thermal Circuit System:[] Each shot builds [orange]1%[] heat ([yellow]540[] max)\n• Overheat forces a [orange]4.0s[] cooling shutdown\n• Sustained firing for [orange]3.0s[] grants up to [green]+350%[] attack speed"
-                    : "[yellow]⚡ THÔNG SỐ CƠ BẢN (MK1) ⚡[]\n[white]Máu tháp pháo: [green]500[]\nTầm bắn: [orange]420[] px\nSát thương gốc (Graphite): [yellow]20[] DMG/viên\nSát thương gốc (Chì/Đồng): [yellow]12[] DMG/viên[]\n• [orange]Hệ Thống Nhiệt Mạch:[] Mỗi phát bắn tích lũy [orange]1%[] nhiệt lượng ([yellow]540[] điểm)\n• Quá nhiệt sẽ khóa pháo [orange]4.0[] giây để làm mát\n• Duy trì bắn liên tục trong [orange]3.0[] giây gia tăng tối đa [green]+350%[] tốc độ bắn";
+                    ? "[yellow]⚡ BASE STATS (MK1) ⚡[]\n[white]Turret HP: [green]500[]\nRange: [orange]420[] px\nBase Damage (Graphite): [yellow]20[] DMG/bullet\nBase Damage (Copper): [yellow]12[] DMG/bullet[]\n• [orange]Thermal Circuit System:[] Each shot builds [orange]1%[] heat ([yellow]540[] max)\n• Overheat forces a [orange]4.0s[] cooling shutdown\n• Sustained firing for [orange]3.0s[] grants up to [green]+[gold]350%[][] attack speed"
+                    : "[yellow]⚡ BẢN THỂ GỐC (MK1) ⚡[]\n[white]Thân thép: [green]500[]\nTầm vươn: [orange]420[] px\nUy lực gốc (Graphite): [yellow]20[] DMG/viên\nUy lực gốc (Chì/Đồng): [yellow]12[] DMG/viên[]\n• [orange]Hệ Thống Nhiệt Mạch:[] Mỗi phát bắn tích lũy [orange]1%[] nhiệt lượng ([yellow]540[] điểm)\n• Quá nhiệt sẽ khóa pháo [orange]4.0[] giây để làm mát\n• Duy trì bắn liên tục trong [orange]3.0[] giây gia tăng tối đa [green]+[gold]350%[][] tốc độ bắn";
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
                 desc = isEn
-                    ? "[cyan]⚡ UPGRADE STATS (MK2) ⚡[]\n[white]Turret HP: [green]650[] ([green]+30%[])\nRange: [orange]544[] px ([green]+29.5%[])\nBase Damage: [yellow]26[] DMG/bullet ([green]+30%[])[]\n• [orange]Enhanced Semiconductor Cooling:[] Max heat reduced to [yellow]480[] points\n• Cooling system lock duration reduced to [orange]3.0s[]\n• Peak attack speed increased to [green]+450%[]"
-                    : "[cyan]⚡ THÔNG SỐ NÂNG CẤP (MK2) ⚡[]\n[white]Máu tháp pháo: [green]650[] ([green]+30%[])\nTầm bắn: [orange]544[] px ([green]+29.5%[])\nSát thương gốc: [yellow]26[] DMG/viên ([green]+30%[])[]\n• [orange]Tản Nhiệt Tăng Cường:[] Giới hạn chịu nhiệt giảm còn [yellow]480[] điểm\n• Thời gian khóa xả nhiệt rút ngắn còn [orange]3.0[] giây\n• Tốc độ bắn gia tốc cực đại đạt [green]+450%[]";
+                    ? "[cyan]⚡ UPGRADE STATS (MK2) ⚡[]\n[white]Turret HP: [green]650[] ([green]+[gold]30%[][])\nRange: [orange]544[] px ([green]+[gold]29.5%[][])\nBase Damage: [yellow]26[] DMG/bullet ([green]+[gold]30%[][])[]\n• [orange]Enhanced Semiconductor Cooling:[] Max heat reduced to [yellow]480[] points\n• Cooling system lock duration reduced to [orange]3.0s[]\n• Peak attack speed increased to [green]+[gold]450%[][]"
+                    : "[cyan]⚡ TIẾN HÓA (MK2) ⚡[]\n[white]Thân thép: [green]650[] ([green]+[gold]30%[][])\nTầm vươn: [orange]544[] px ([green]+[gold]29.5%[][])\nUy lực gốc: [yellow]26[] DMG/viên ([green]+[gold]30%[][])[]\n• [orange]Tản Nhiệt Tăng Cường:[] Giới hạn chịu nhiệt giảm còn [yellow]480[] điểm\n• Thời gian khóa xả nhiệt rút ngắn còn [orange]3.0[] giây\n• Tốc độ bắn gia tốc cực đại đạt [green]+[gold]450%[][]";
             } else if (tier == 2) {
                 title += "[purple](MK2B)[]";
                 desc = isEn
-                    ? "[purple]⚡ SUPER-IMPULSE STATS (MK2B) ⚡[]\n[white]Turret HP: [green]781[] ([green]+56.25%[])\nRange: [orange]294[] px ([red]-30%[])\nBase Damage: [yellow]13[] DMG/bullet ([red]-35%[])[]\n• [orange]Cyclic Super-Impulse System:[] Reaches an explosive [green]+999%[] fire rate\n• System lock duration to flush heat is reduced to an extreme [orange]1.5s[] for continuous close-range output"
-                    : "[purple]⚡ THÔNG SỐ SIÊU XUNG (MK2B) ⚡[]\n[white]Máu tháp pháo: [green]781[] ([green]+56.25%[])\nTầm bắn: [orange]294[] px ([red]-30%[])\nSát thương gốc: [yellow]13[] DMG/viên ([red]-35%[])[]\n• [orange]Hệ Thống Siêu Xung Chu Kỳ:[] Tốc độ bắn gia tốc bùng nổ lên mốc [green]+999%[]\n• Thời gian khóa xả sạch nhiệt giảm cực hạn xuống còn [orange]1.5[] giây giúp duy trì hỏa lực tầm gần liên tục";
+                    ? "[purple]⚡ SUPER-IMPULSE STATS (MK2B) ⚡[]\n[white]Turret HP: [green]781[] ([green]+[gold]56.25%[][])\nRange: [orange]294[] px ([red]-[gold]30%[][])\nBase Damage: [yellow]13[] DMG/bullet ([red]-[gold]35%[][])[]\n• [orange]Cyclic Super-Impulse System:[] Reaches an explosive [green]+[gold]999%[][] fire rate\n• System lock duration to flush heat is reduced to an extreme [orange]1.5s[] for continuous close-range output"
+                    : "[purple]⚡ THÔNG SỐ SIÊU XUNG (MK2B) ⚡[]\n[white]Thân thép: [green]781[] ([green]+[gold]56.25%[][])\nTầm vươn: [orange]294[] px ([red]-[gold]30%[][])\nUy lực gốc: [yellow]13[] DMG/viên ([red]-[gold]35%[][])[]\n• [orange]Hệ Thống Siêu Xung Chu Kỳ:[] Tốc độ bắn gia tốc bùng nổ lên mốc [green]+[gold]999%[][]\n• Thời gian khóa xả sạch nhiệt giảm cực hạn xuống còn [orange]1.5[] giây giúp duy trì hỏa lực tầm gần liên tục";
             }
             BaseDialog dialog = new BaseDialog(title);
             Table info = new Table();

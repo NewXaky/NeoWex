@@ -641,14 +641,14 @@ public final class Flazerd {
                                    " [white]• Activates dual curved sine-wave sub-lasers along the main axis.";
             Cell<Label> b1D = b1.add(b1Text);
             b1D.width(340f); b1D.get().setWrap(true); b1D.get().setAlignment(Align.left); b1.row();
-            b1.button(vi ? "[green]KÍCH HOẠT MK2[]" : "[green]ACTIVATE MK2[]", () -> {
+            b1.button(vi ? "[green]TIẾN HÓA MK2[]" : "[green]ACTIVATE MK2[]", () -> {
                 CoreBuild core = team.core();
                 if (core != null && core.items.get(Items.copper) >= reqMK2.copper && core.items.get(Items.graphite) >= reqMK2.graphite) {
                     NexNet.take(core, Items.copper, reqMK2.copper); NexNet.take(core, Items.graphite, reqMK2.graphite);
                     NexNet.fx(Fx.upgradeCore, x, y); NexNet.fx(Fx.mineHuge, x, y); NexNet.shake(5f, 5f, x, y);
                     NexNet.configure(this, Integer.valueOf(2)); dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfoToast(vi ? "[red]Không đủ tài nguyên cho nhánh MK2![]" : "[red]Not enough resources for MK2 path![]", 2f);
+                    Vars.ui.showInfoToast(vi ? "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]" : "[red]Not enough resources for MK2 path![]", 2f);
                 }
             }).size(180, 38);
 
@@ -666,14 +666,14 @@ public final class Flazerd {
                                    " [white]• Each sub-laser deals [red]exactly 50%[] DMG of the main laser.";
             Cell<Label> b2D = b2.add(b2Text);
             b2D.width(340f); b2D.get().setWrap(true); b2D.get().setAlignment(Align.left); b2.row();
-            b2.button(vi ? "[orange]KÍCH HOẠT MK2B[]" : "[orange]ACTIVATE MK2B[]", () -> {
+            b2.button(vi ? "[orange]TIẾN HÓA MK2B[]" : "[orange]ACTIVATE MK2B[]", () -> {
                 CoreBuild core = team.core();
                 if (core != null && core.items.get(Items.lead) >= reqMK3.lead && core.items.get(Items.silicon) >= reqMK3.silicon) {
                     NexNet.take(core, Items.lead, reqMK3.lead); NexNet.take(core, Items.silicon, reqMK3.silicon);
                     NexNet.fx(Fx.bigShockwave, x, y); NexNet.fx(Fx.mineHuge, x, y); NexNet.shake(5f, 5f, x, y);
                     NexNet.configure(this, Integer.valueOf(3)); dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfoToast(vi ? "[red]Không đủ tài nguyên cho nhánh MK2B![]" : "[red]Not enough resources for MK2B path![]", 2f);
+                    Vars.ui.showInfoToast(vi ? "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]" : "[red]Not enough resources for MK2B path![]", 2f);
                 }
             }).size(180, 38);
 

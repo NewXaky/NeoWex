@@ -286,7 +286,7 @@ public final class Rangtaturs {
             Cell<Label> b1D = b1.add(b1Text);
             b1D.width(340f); b1D.get().setWrap(true); b1D.get().setAlignment(Align.left);
             b1.row();
-            b1.button(isEn ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]", () -> upgrade(1, dialog, isEn)).size(180, 38);
+            b1.button(isEn ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]", () -> upgrade(1, dialog, isEn)).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12f);
             b2.add("[purple]===(MK2B)===[]").row();
@@ -304,7 +304,7 @@ public final class Rangtaturs {
             Cell<Label> b2D = b2.add(b2Text);
             b2D.width(340f); b2D.get().setWrap(true); b2D.get().setAlignment(Align.left);
             b2.row();
-            b2.button(isEn ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]", () -> upgrade(2, dialog, isEn)).size(180, 38);
+            b2.button(isEn ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]", () -> upgrade(2, dialog, isEn)).size(180, 38);
 
             branchesTable.add(b1).width(340f); branchesTable.row();
             branchesTable.add().height(12).row();

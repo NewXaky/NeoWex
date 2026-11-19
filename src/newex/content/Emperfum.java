@@ -475,7 +475,7 @@ public final class Emperfum {
                     NexNet.take(core, Items.copper, reqMK2.copper);
                     NexNet.fx(Fx.upgradeCore, x, y);
                 } else {
-                    Vars.ui.showInfo(isVN() ? "[red]Không đủ tài nguyên cho nhánh MK2![]" : "[red]Not enough resources for MK2![]");
+                    Vars.ui.showInfo(isVN() ? "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]" : "[red]Not enough resources for MK2![]");
                     return;
                 }
             } else {
@@ -487,7 +487,7 @@ public final class Emperfum {
                     NexNet.take(core, Items.silicon, reqMK2B.silicon);
                     NexNet.fx(Fx.bigShockwave, x, y);
                 } else {
-                    Vars.ui.showInfo(isVN() ? "[red]Không đủ tài nguyên cho nhánh MK2B![]" : "[red]Not enough resources for MK2B![]");
+                    Vars.ui.showInfo(isVN() ? "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]" : "[red]Not enough resources for MK2B![]");
                     return;
                 }
             }
@@ -575,7 +575,7 @@ public final class Emperfum {
             b1D.setAlignment(Align.left);
             b1.row();
             b1.add().height(8).row();
-            b1.button(isVN() ? "[#c084fc]KÍCH HOẠT MK2[]" : "[#c084fc]ACTIVATE MK2[]", () -> upgrade(1, dialog)).size(200, 40).center();
+            b1.button(isVN() ? "[#c084fc]TIẾN HÓA MK2[]" : "[#c084fc]ACTIVATE MK2[]", () -> upgrade(1, dialog)).size(200, 40).center();
 
             Table b2 = new Table();
             b2.background(Styles.black8);
@@ -599,7 +599,7 @@ public final class Emperfum {
             b2D.setAlignment(Align.left);
             b2.row();
             b2.add().height(8).row();
-            b2.button(isVN() ? "[#e9d5ff]KÍCH HOẠT MK2B[]" : "[#e9d5ff]ACTIVATE MK2B[]", () -> upgrade(2, dialog)).size(200, 40).center();
+            b2.button(isVN() ? "[#e9d5ff]TIẾN HÓA MK2B[]" : "[#e9d5ff]ACTIVATE MK2B[]", () -> upgrade(2, dialog)).size(200, 40).center();
 
             branchesTable.add(b1).width(320).padBottom(10).row();
             branchesTable.add(b2).width(320).row();

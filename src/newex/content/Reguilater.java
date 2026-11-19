@@ -254,7 +254,7 @@ public final class Reguilater {
                 + "• Aim Speed: [green]+60%[]\n"
                 + "• [orange]Dual Pressure Compression:[] Unlocks high-speed Burst-Shot mechanism and Crit strike bursts dealing double damage")), 340);
             b1.row();
-            b1.button(t(en, "[green]KÍCH HOẠT MK2[]", "[green]ACTIVATE MK2[]"), () -> {
+            b1.button(t(en, "[green]TIẾN HÓA MK2[]", "[green]ACTIVATE MK2[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_MK2[0] && core.items.get(Items.silicon) >= REQ_MK2[1]) {
                     NexNet.take(core, Items.copper, REQ_MK2[0]);
@@ -264,7 +264,7 @@ public final class Reguilater {
                     dialog.hide();
                     deselect();
                 } else {
-                    Vars.ui.showInfo(t(en, "[red]Không đủ tài nguyên cho nhánh MK2![]", "[red]Not enough resources for MK2 branch![]"));
+                    Vars.ui.showInfo(t(en, "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]", "[red]Not enough resources for MK2 branch![]"));
                 }
             }).size(180, 38);
 
@@ -282,7 +282,7 @@ public final class Reguilater {
                 + "• Base Damage: [green]+500%[]\n"
                 + "• [orange]Destructive Saturation Circuit:[] Automatically splits sub-laser chains (up to 6 rays) to incinerate nearby targets upon hit")), 340);
             b2.row();
-            b2.button(t(en, "[orange]KÍCH HOẠT MK2B[]", "[orange]ACTIVATE MK2B[]"), () -> {
+            b2.button(t(en, "[orange]TIẾN HÓA MK2B[]", "[orange]ACTIVATE MK2B[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.thorium) >= REQ_MK3[0] && core.items.get(Items.titanium) >= REQ_MK3[1]) {
                     NexNet.take(core, Items.thorium, REQ_MK3[0]);
@@ -292,7 +292,7 @@ public final class Reguilater {
                     dialog.hide();
                     deselect();
                 } else {
-                    Vars.ui.showInfo(t(en, "[red]Không đủ tài nguyên cho nhánh MK2B![]", "[red]Not enough resources for MK2B branch![]"));
+                    Vars.ui.showInfo(t(en, "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]", "[red]Not enough resources for MK2B branch![]"));
                 }
             }).size(180, 38);
 
@@ -334,7 +334,7 @@ public final class Reguilater {
                     + "• Barrel rotation speed continuously increases while tracking targets.\n"
                     + "• Damage increases linearly up to +100% during sustained firing.");
             } else if (tier == 2) {
-                title += t(en, "[cyan]THÔNG SỐ NÂNG CẤP MK2[]", "[cyan]MK2 UPGRADE STATS[]");
+                title += t(en, "[cyan]TIẾN HÓA MK2[]", "[cyan]MK2 UPGRADE STATS[]");
                 desc = t(en,
                     "[cyan]⚡ THÔNG SỐ NÂNG CẤP MK2 ⚡[]\n"
                     + "[lightgray]Máu cấu trúc:[] [green]13,000[]\n"
@@ -355,7 +355,7 @@ public final class Reguilater {
                     + "• Triggers high-speed Burst-Shot rate.\n"
                     + "• Automatically accumulates orange particles, unlocking Crit chance dealing double damage.");
             } else if (tier == 3) {
-                title += t(en, "[purple]THÔNG SỐ NÂNG CẤP MK2B[]", "[purple]MK2B UPGRADE STATS[]");
+                title += t(en, "[purple]TIẾN HÓA MK2B[]", "[purple]MK2B UPGRADE STATS[]");
                 desc = t(en,
                     "[purple]⚡ THÔNG SỐ NÂNG CẤP MK2B ⚡[]\n"
                     + "[lightgray]Máu cấu trúc:[] [green]13,000[]\n"

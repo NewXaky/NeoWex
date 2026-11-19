@@ -200,9 +200,9 @@ public final class Holyder {
                 configure(Integer.valueOf(tier));
                 dialog.hide(); deselect();
             } else if (tier == 2) {
-                Vars.ui.showInfo(en ? "[red]Not enough resources for MK2 branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2![]");
+                Vars.ui.showInfo(en ? "[red]Not enough resources for MK2 branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]");
             } else {
-                Vars.ui.showInfo(en ? "[red]Not enough resources for MK2B branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2B![]");
+                Vars.ui.showInfo(en ? "[red]Not enough resources for MK2B branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]");
             }
         }
 
@@ -227,7 +227,7 @@ public final class Holyder {
                         " [white]• Tăng [green]+28% Máu[] và tăng [green]+6.25% Tầm bắn[].";
             Cell<Label> b1D = b1.add(b1Text);
             b1D.width(340f); b1D.get().setWrap(true); b1D.get().setAlignment(Align.left); b1.row();
-            b1.button(en ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]", () -> upgrade(2, dialog, en)).size(180, 38);
+            b1.button(en ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]", () -> upgrade(2, dialog, en)).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12f);
             b2.add("[purple]===(MK2B)===[]").row();
@@ -242,7 +242,7 @@ public final class Holyder {
                         " [white]• Tăng [green]+60% Máu[] hệ thống và tăng [green]+12.5% Tầm bắn[], nhưng giảm sức bền của lõi khiên.";
             Cell<Label> b2D = b2.add(b2Text);
             b2D.width(340f); b2D.get().setWrap(true); b2D.get().setAlignment(Align.left); b2.row();
-            b2.button(en ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]", () -> upgrade(3, dialog, en)).size(180, 38);
+            b2.button(en ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]", () -> upgrade(3, dialog, en)).size(180, 38);
 
             branchesTable.add(b1).width(340f); branchesTable.row();
             branchesTable.add().height(12).row();

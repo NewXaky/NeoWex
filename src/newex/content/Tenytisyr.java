@@ -389,18 +389,18 @@ public final class Tenytisyr {
             Table b1 = new Table(); b1.background(Styles.black6); b1.margin(12);
             b1.add("[cyan]===(MK2 - PENETRATION)===[]").row();
             wrap(b1.add(t(isEn,
-                "[white]• Health: [green]+50%[] (4,500 HP)\n• Range: [green]+31.25%[] (420 px)\n• Base Damage: [green]+44.4%[] (97.5 DMG)\n• [orange]Full Heat Empowerment:[] Reaching max stack adds +1% Max HP true damage per bullet",
-                "[white]• Máu cấu trúc: [green]+50%[] (4,500 HP)\n• Tầm bắn: [green]+31.25%[] (420 px)\n• Sát thương gốc: [green]+44.4%[] (97.5 DMG)\n• [orange]Nội tại nâng cấp:[] Tích đủ tần giới hạn\n• Đạn bắn ra sẽ gây thêm 1% Max HP của mục tiêu")), 340);
+                "[white]• Health: [green]+[gold]50%[][] (4,500 HP)\n• Range: [green]+[gold]31.25%[][] (420 px)\n• Base Damage: [green]+[gold]44.4%[][] (97.5 DMG)\n• [orange]Full Heat Empowerment:[] Reaching max stack adds [green]+1%[] Max HP true damage per bullet",
+                "[white]• Thân thép: [green]+[gold]50%[][] (4,500 HP)\n• Tầm vươn: [green]+[gold]31.25%[][] (420 px)\n• Uy lực gốc: [green]+[gold]44.4%[][] (97.5 DMG)\n• [orange]Nội tại nâng cấp:[] Tích đủ tần giới hạn\n• Đạn bắn ra sẽ gây thêm [gold]1%[] Max HP của mục tiêu")), 340);
             b1.row();
-            b1.button(t(isEn, "[green]UPGRADE MK2[]", "[green]NÂNG CẤP MK2[]"), () -> { doUpgrade(1); dialog.hide(); deselect(); }).size(180, 38);
+            b1.button(t(isEn, "[green]UPGRADE MK2[]", "[green]TIẾN HÓA MK2[]"), () -> { doUpgrade(1); dialog.hide(); deselect(); }).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
             b2.add("[purple]===(MK2B - HOMING)===[]").row();
             wrap(b2.add(t(isEn,
-                "[white]• Health: [green]+33.3%[] (4,000 HP)\n• Range: [green]+12.5%[] (360 px)\n• Base Damage: [green]+172.2%[] (183.75 DMG)\n• [orange]Full Heat Blast:[] Reaching max stack causes bullet hits to trigger a 35-tile explosion dealing 0.5% Max HP",
-                "[white]• Máu cấu trúc: [green]+33.3%[] (4,000 HP)\n• Tầm bắn: [green]+12.5%[] (360 px)\n• Sát thương gốc: [green]+172.2%[] (183.75 DMG)\n• [orange]Nội tại nâng cấp:[] Tích đủ tần giới hạn\n• Đạn bắn ra nổ phạm vi 35 ô với 0.5% Max HP")), 340);
+                "[white]• Health: [green]+[gold]33.3%[][] (4,000 HP)\n• Range: [green]+[gold]12.5%[][] (360 px)\n• Base Damage: [green]+[gold]172.2%[][] (183.75 DMG)\n• [orange]Full Heat Blast:[] Reaching max stack causes bullet hits to trigger a 35-tile explosion dealing [gold]0.5%[] Max HP",
+                "[white]• Thân thép: [green]+[gold]33.3%[][] (4,000 HP)\n• Tầm vươn: [green]+[gold]12.5%[][] (360 px)\n• Uy lực gốc: [green]+[gold]172.2%[][] (183.75 DMG)\n• [orange]Nội tại nâng cấp:[] Tích đủ tần giới hạn\n• Đạn bắn ra nổ phạm vi 35 ô với [gold]0.5%[] Max HP")), 340);
             b2.row();
-            b2.button(t(isEn, "[orange]UPGRADE MK2B[]", "[orange]NÂNG CẤP MK2B[]"), () -> { doUpgrade(2); dialog.hide(); deselect(); }).size(180, 38);
+            b2.button(t(isEn, "[orange]UPGRADE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), () -> { doUpgrade(2); dialog.hide(); deselect(); }).size(180, 38);
 
             branches.add(b1).width(340); branches.row();
             branches.add().height(12).row();
@@ -419,18 +419,18 @@ public final class Tenytisyr {
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
                 desc = isEn
-                    ? "[gold]⚡ BASE STATS (MK1) ⚡[]\n[lightgray]Turret HP:[] [green]3,000[]\n[lightgray]Effective Range:[] [orange]320 px[]\n[lightgray]Base Damage (Silicon):[] [yellow]67.50 DMG[]\n[lightgray]Base Damage (Copper):[] [orange]33.75 DMG[]\n[lightgray]Penetration:[] [white]3 targets[]\n\n[sky]⚡ MECHANIC:[]\n• Starts at 500% Attack Speed, decreasing by 5%/s while firing.\n• Damage starts at 0% bonus and increases by 50%/s up to 5000%."
-                    : "[gold]⚡ THÔNG SỐ CƠ BẢN (MK1) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]3,000[]\n[lightgray]Tầm bắn hiệu dụng:[] [orange]320 pixel[]\n[lightgray]Sát thương Silicon:[] [yellow]67.50 DMG[]\n[lightgray]Sát thương Đồng (Copper):[] [orange]33.75 DMG[]\n[lightgray]Khả năng xuyên thấu:[] [white]3 mục tiêu[]\n\n[sky]⚡ CƠ CHẾ BẮN VÀ TÍCH LŨY:[]\n• Tốc độ bắn ban đầu là 500%, giảm dần 5%/giây khi liên tục bắn.\n• Sát thương tăng dần 50%/giây khi bắn, tối đa cộng thêm +5000% DMG.";
+                    ? "[gold]⚡ BASE STATS (MK1) ⚡[]\n[lightgray]Turret HP:[] [green]3,000[]\n[lightgray]Effective Range:[] [orange]320 px[]\n[lightgray]Base Damage (Silicon):[] [yellow]67.50 DMG[]\n[lightgray]Base Damage (Copper):[] [orange]33.75 DMG[]\n[lightgray]Penetration:[] [white]3 targets[]\n\n[sky]⚡ MECHANIC:[]\n• Starts at [gold]500%[] Attack Speed, decreasing by [gold]5%[]/s while firing.\n• Damage starts at [gold]0%[] bonus and increases by [gold]50%[]/s up to [gold]5000%[]."
+                    : "[gold]⚡ BẢN THỂ GỐC (MK1) ⚡[]\n[lightgray]Thân thép:[] [green]3,000[]\n[lightgray]Tầm vươn:[] [orange]320 pixel[]\n[lightgray]Sát thương Silicon:[] [yellow]67.50 DMG[]\n[lightgray]Sát thương Đồng (Copper):[] [orange]33.75 DMG[]\n[lightgray]Khả năng xuyên thấu:[] [white]3 mục tiêu[]\n\n[sky]⚡ CƠ CHẾ BẮN VÀ TÍCH LŨY:[]\n• Tốc độ bắn ban đầu là [gold]500%[], giảm dần [gold]5%[]/giây khi liên tục bắn.\n• Sát thương tăng dần [gold]50%[]/giây khi bắn, tối đa cộng thêm [green]+5000%[] DMG.";
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
                 desc = isEn
-                    ? "[cyan]⚡ BASE STATS (MK2) ⚡[]\n[lightgray]Turret HP:[] [green]4,500 [lime](+50%)[]\n[lightgray]Effective Range:[] [orange]420 px [lime](+31.2%)[]\n[lightgray]Base Damage (Silicon):[] [yellow]97.50 DMG [lime](+44.4%)[]\n[lightgray]Base Damage (Copper):[] [orange]48.75 DMG[]\n[lightgray]Penetration:[] [yellow]5 targets[]\n\n[lime]⚡ SPECIAL EFFECT:[]\n• Firing until max stack deals [green]+1% Max HP[] bonus damage."
-                    : "[cyan]⚡ THÔNG SỐ CƠ BẢN (MK2) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]4,500 [lime](+50%)[]\n[lightgray]Tầm bắn hiệu dụng:[] [orange]420 pixel [lime](+31.2%)[]\n[lightgray]Sát thương Silicon:[] [yellow]97.50 DMG [lime](+44.4%)[]\n[lightgray]Sát thương Đồng (Copper):[] [orange]48.75 DMG[]\n[lightgray]Khả năng xuyên thấu:[] [yellow]5 mục tiêu[]\n\n[lime]⚡ HIỆU ỨNG ĐẶC BIỆT:[]\n• Khi đạt đủ mốc giới hạn tích lũy, đạn bắn ra gây thêm [green]1% Max HP[] của mục tiêu.";
+                    ? "[cyan]⚡ BASE STATS (MK2) ⚡[]\n[lightgray]Turret HP:[] [green]4,500 [lime]([green]+50%[])[]\n[lightgray]Effective Range:[] [orange]420 px [lime]([green]+31.2%[])[]\n[lightgray]Base Damage (Silicon):[] [yellow]97.50 DMG [lime]([green]+44.4%[])[]\n[lightgray]Base Damage (Copper):[] [orange]48.75 DMG[]\n[lightgray]Penetration:[] [yellow]5 targets[]\n\n[lime]⚡ SPECIAL EFFECT:[]\n• Firing until max stack deals [green]+[gold]1%[] Max HP[] bonus damage."
+                    : "[cyan]⚡ BẢN THỂ GỐC (MK2) ⚡[]\n[lightgray]Thân thép:[] [green]4,500 [lime]([green]+50%[])[]\n[lightgray]Tầm vươn:[] [orange]420 pixel [lime]([green]+31.2%[])[]\n[lightgray]Sát thương Silicon:[] [yellow]97.50 DMG [lime]([green]+44.4%[])[]\n[lightgray]Sát thương Đồng (Copper):[] [orange]48.75 DMG[]\n[lightgray]Khả năng xuyên thấu:[] [yellow]5 mục tiêu[]\n\n[lime]⚡ HIỆU ỨNG ĐẶC BIỆT:[]\n• Khi đạt đủ mốc giới hạn tích lũy, đạn bắn ra gây thêm [green]1% Max HP[] của mục tiêu.";
             } else if (tier == 2) {
                 title += "[purple](MK2B)[]";
                 desc = isEn
-                    ? "[purple]⚡ BASE STATS (MK2B) ⚡[]\n[lightgray]Turret HP:[] [green]4,000 [lime](+33.3%)[]\n[lightgray]Effective Range:[] [orange]360 px [lime](+12.5%)[]\n[lightgray]Base Damage (Silicon):[] [red]183.75 DMG (+172.2%)[]\n[lightgray]Base Damage (Copper):[] [orange]91.875 DMG[]\n\n[purple]🔥 SPECIAL EFFECT:[]\n• Firing until max stack triggers a 35-tile AOE explosion dealing [pink]0.5% Max HP[]."
-                    : "[purple]⚡ THÔNG SỐ CƠ BẢN (MK2B) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]4,000 [lime](+33.3%)[]\n[lightgray]Tầm bắn hiệu dụng:[] [orange]360 pixel [lime](+12.5%)[]\n[lightgray]Sát thương Silicon:[] [red]183.75 DMG (+172.2%)[]\n[lightgray]Sát thương Đồng (Copper):[] [orange]91.875 DMG[]\n\n[purple]🔥 HIỆU ỨNG ĐẶC BIỆT:[]\n• Khi đạt đủ mốc giới hạn tích lũy, đạn bắn ra nổ phạm vi 35 ô với [pink]0.5% Max HP[].";
+                    ? "[purple]⚡ BASE STATS (MK2B) ⚡[]\n[lightgray]Turret HP:[] [green]4,000 [lime]([green]+33.3%[])[]\n[lightgray]Effective Range:[] [orange]360 px [lime]([green]+12.5%[])[]\n[lightgray]Base Damage (Silicon):[] [red]183.75 DMG ([green]+172.2%[])[]\n[lightgray]Base Damage (Copper):[] [orange]91.875 DMG[]\n\n[purple]🔥 SPECIAL EFFECT:[]\n• Firing until max stack triggers a 35-tile AOE explosion dealing [pink]0.5% Max HP[]."
+                    : "[purple]⚡ BẢN THỂ GỐC (MK2B) ⚡[]\n[lightgray]Thân thép:[] [green]4,000 [lime]([green]+33.3%[])[]\n[lightgray]Tầm vươn:[] [orange]360 pixel [lime]([green]+12.5%[])[]\n[lightgray]Sát thương Silicon:[] [red]183.75 DMG ([green]+172.2%[])[]\n[lightgray]Sát thương Đồng (Copper):[] [orange]91.875 DMG[]\n\n[purple]🔥 HIỆU ỨNG ĐẶC BIỆT:[]\n• Khi đạt đủ mốc giới hạn tích lũy, đạn bắn ra nổ phạm vi 35 ô với [pink]0.5% Max HP[].";
             }
             BaseDialog dialog = new BaseDialog(title);
             Table info = new Table();

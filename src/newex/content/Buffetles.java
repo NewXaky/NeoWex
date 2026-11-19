@@ -248,7 +248,7 @@ public final class Buffetles {
             if (core == null) return t("[red]Team Core not found![]", "[red]Không tìm thấy Lõi Đội![]");
             int th = core.items.get(Items.thorium), si = core.items.get(Items.silicon);
             int su = core.items.get(Items.surgeAlloy), ph = core.items.get(Items.phaseFabric);
-            return t("[yellow]CORE RESOURCE REQUIREMENTS:[]\n[cyan]MK2 Branch:[]\n", "[yellow]YÊU CẦU TÀI NGUYÊN KHO LÕI:[]\n[cyan]Nhánh MK2:[]\n")
+            return t("[yellow]CORE RESOURCE REQUIREMENTS:[]\n[cyan]MK2 Branch:[]\n", "[yellow]CỦA CẢI CẦN HIẾN TẾ:[]\n[cyan]Nhánh MK2:[]\n")
                 + " • Thorium: " + col(th, REQ_MK2[0]) + th + "[] / " + REQ_MK2[0] + "\n"
                 + " • Silicon: " + col(si, REQ_MK2[1]) + si + "[] / " + REQ_MK2[1] + "\n"
                 + t("[purple]MK2B Branch:[]\n", "[purple]Nhánh MK2B:[]\n")
@@ -285,8 +285,8 @@ public final class Buffetles {
                 deselect();
             } else {
                 Vars.ui.showInfo(target == 1
-                    ? t("[red]Not enough resources for MK2![]", "[red]Không đủ tài nguyên cho nhánh MK2![]")
-                    : t("[red]Not enough resources for MK2B![]", "[red]Không đủ tài nguyên cho nhánh MK2B![]"));
+                    ? t("[red]Not enough resources for MK2![]", "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]")
+                    : t("[red]Not enough resources for MK2B![]", "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]"));
             }
         }
 
@@ -310,14 +310,14 @@ public final class Buffetles {
             Table branches = new Table();
             Table b1 = branch(dialog,
                 t("[cyan]===(MK2 - SUPER SPEED CRIT)===[]", "[cyan]===(MK2 - BẠO KÍCH SIÊU TỐC)===[]"),
-                t("[white]• Crit chance gain/stack: [green]+0.5%[] (base 0.1%)\n• TRUE DAMAGE: [scarlet]50% True Damage (Bypasses armor, shield, Vela mechanism)[]\n• [orange]Special Ability:[] Accelerates crit chance stacking speed by 5x\n• On shoot, 20% chance to permanently gain +1% crit damage. 2% chance to gain 500% fire rate for 1s",
-                  "[white]• Tăng tỉ lệ bạo kích/stack: [green]+0.5%[] (gốc 0.1%)\n• SÁT THƯƠNG CHUẨN: [scarlet]50% True Damage (Xuyên giáp, khiên, cơ chế Vela)[]\n• [orange]Kỹ năng đặc biệt:[] Tăng tốc tích lũy tỉ lệ bạo kích gấp 5 lần\n• Khi bắn đạn có 20% tỉ lệ tăng vĩnh viễn +1% sát thương bạo kích\n• Khi bắn có 2% tỉ lệ tăng 500% tốc bắn trong 1s"),
-                t("[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"), 1);
+                t("[white]• Crit chance gain/stack: [green]+[gold]0.5%[][] (base [gold]0.1%[])\n• TRUE DAMAGE: [scarlet]50% True Damage (Bypasses armor, shield, Vela mechanism)[]\n• [orange]Special Ability:[] Accelerates crit chance stacking speed by 5x\n• On shoot, [gold]20%[] chance to permanently gain [green]+1%[] crit damage. [gold]2%[] chance to gain [gold]500%[] fire rate for 1s",
+                  "[white]• Tăng tỉ lệ bạo kích/stack: [green]+[gold]0.5%[][] (gốc [gold]0.1%[])\n• SÁT THƯƠNG CHUẨN: [scarlet]50% True Damage (Xuyên giáp, khiên, cơ chế Vela)[]\n• [orange]Kỹ năng đặc biệt:[] Tăng tốc tích lũy tỉ lệ bạo kích gấp 5 lần\n• Khi bắn đạn có [gold]20%[] tỉ lệ tăng vĩnh viễn [green]+1%[] sát thương bạo kích\n• Khi bắn có [gold]2%[] tỉ lệ tăng [gold]500%[] tốc bắn trong 1s"),
+                t("[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"), 1);
             Table b2 = branch(dialog,
                 t("[purple]===(MK2B - DAMAGE MULTIPLIER)===[]", "[purple]===(MK2B - BỘI PHÁT SÁT THƯƠNG)===[]"),
-                t("[white]• Base bullet damage: [green]+50.0%[]\n• TRUE DAMAGE: [scarlet]50% True Damage (Bypasses armor, shield, Vela mechanism)[]\n• [orange]Special Ability:[] Maintains maximum crit mechanism and 2% chance to gain 500% fire rate for 1s on shot",
-                  "[white]• Sát thương gốc của đạn: [green]+50.0%[]\n• SÁT THƯƠNG CHUẨN: [scarlet]50% True Damage (Xuyên giáp, khiên, cơ chế Vela)[]\n• [orange]Kỹ năng đặc biệt:[] Duy trì cơ chế bạo kích cực đại và khi bắn có 2% cơ hội tăng 500% tốc bắn trong 1s"),
-                t("[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"), 2);
+                t("[white]• Base bullet damage: [green]+[gold]50.0%[][]\n• TRUE DAMAGE: [scarlet]50% True Damage (Bypasses armor, shield, Vela mechanism)[]\n• [orange]Special Ability:[] Maintains maximum crit mechanism and [gold]2%[] chance to gain [gold]500%[] fire rate for 1s on shot",
+                  "[white]• Uy lực gốc của đạn: [green]+[gold]50.0%[][]\n• SÁT THƯƠNG CHUẨN: [scarlet]50% True Damage (Xuyên giáp, khiên, cơ chế Vela)[]\n• [orange]Kỹ năng đặc biệt:[] Duy trì cơ chế bạo kích cực đại và khi bắn có [gold]2%[] cơ hội tăng [gold]500%[] tốc bắn trong 1s"),
+                t("[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), 2);
 
             branches.add(b1).width(340f).row();
             branches.add().height(12f).row();
@@ -338,16 +338,16 @@ public final class Buffetles {
 
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
-                desc = t("[gold]⚡ BASE STATS (MK1) ⚡[]\n[lightgray]Starting Crit Chance:[] [orange]5.0%[]\n[lightgray]Stack Gain:[] [white]+0.1% / stack[]\n[lightgray]Crit Damage:[] [yellow]+" + cd + "%[]\n\n[sky]⚡ STACKING MECHANISM:[]\n• Every shot increases crit stacks.\n• On shot: 2% chance to gain +500% fire rate for 1 second.\n• When crit rate reaches 100%, stacks reset and grants +15% permanent crit damage.",
-                         "[gold]⚡ THÔNG SỐ CƠ BẢN (MK1) ⚡[]\n[lightgray]Tỉ lệ bạo kích khởi điểm:[] [orange]5.0%[]\n[lightgray]Mức tích lũy:[] [white]+0.1% / stack[]\n[lightgray]Sát thương bạo kích:[] [yellow]+" + cd + "%[]\n\n[sky]⚡ CƠ CHẾ DỒN ĐẠP (STACKS):[]\n• Mỗi lần bắn sẽ tăng stack bạo kích.\n• Khi phát bắn diễn ra: 2% cơ hội tăng +500% tốc bắn trong 1 giây.\n• Khi tỉ lệ bạo kích đạt 100%, reset stack và cộng thêm 15% sát thương bạo kích vĩnh viễn.");
+                desc = t("[gold]⚡ BASE STATS (MK1) ⚡[]\n[lightgray]Starting Crit Chance:[] [orange]5.0%[]\n[lightgray]Stack Gain:[] [white]+[gold]0.1%[] / stack[]\n[lightgray]Crit Damage:[] [yellow]+" + cd + "%[]\n\n[sky]⚡ STACKING MECHANISM:[]\n• Every shot increases crit stacks.\n• On shot: [gold]2%[] chance to gain [green]+500%[] fire rate for 1 second.\n• When crit rate reaches [gold]100%[], stacks reset and grants [green]+15%[] permanent crit damage.",
+                         "[gold]⚡ BẢN THỂ GỐC (MK1) ⚡[]\n[lightgray]Tỉ lệ bạo kích khởi điểm:[] [orange]5.0%[]\n[lightgray]Mức tích lũy:[] [white]+[gold]0.1%[] / stack[]\n[lightgray]Sát thương bạo kích:[] [yellow]+" + cd + "%[]\n\n[sky]⚡ CƠ CHẾ DỒN ĐẠP (STACKS):[]\n• Mỗi lần bắn sẽ tăng stack bạo kích.\n• Khi phát bắn diễn ra: [gold]2%[] cơ hội tăng [green]+500%[] tốc bắn trong 1 giây.\n• Khi tỉ lệ bạo kích đạt [gold]100%[], reset stack và cộng thêm [gold]15%[] sát thương bạo kích vĩnh viễn.");
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
-                desc = t("[cyan]⚡ BASE STATS (MK2) ⚡[]\n[lightgray]Damage Type:[] [scarlet]50% True Damage (Pierces Shield, Armor, Vela)[]\n[lightgray]Crit Stack Rate:[] [lime]+0.5% / stack (5x speed)[]\n[lightgray]Current Crit Damage:[] [yellow]+" + cd + "%[]\n\n[lime]⚡ MK2 SPECIAL MECHANISM:[]\n• On shot: [yellow]20% chance[] to add [green]+1% permanent crit damage[].\n• On shot: [gold]2% chance[] to activate [orange]+500% fire rate[] for 1 second.",
-                         "[cyan]⚡ THÔNG SỐ CƠ BẢN (MK2) ⚡[]\n[lightgray]Loại Sát Thương:[] [scarlet]50% Sát thương Chuẩn (Xuyên Vela Shield, Giáp, Khiên)[]\n[lightgray]Mức tích lũy bạo kích:[] [lime]+0.5% / stack (x5 tốc độ)[]\n[lightgray]Sát thương bạo kích hiện tại:[] [yellow]+" + cd + "%[]\n\n[lime]⚡ CƠ CHẾ ĐẶC BIỆT MK2:[]\n• Khi bắn có [yellow]20% tỉ lệ[] tăng thêm [green]+1% sát thương bạo kích[] vĩnh viễn.\n• Khi phát bắn diễn ra: [gold]2% cơ hội[] kích hoạt [orange]+500% tốc bắn[] trong 1 giây.");
+                desc = t("[cyan]⚡ BASE STATS (MK2) ⚡[]\n[lightgray]Damage Type:[] [scarlet]50% True Damage (Pierces Shield, Armor, Vela)[]\n[lightgray]Crit Stack Rate:[] [lime]+[gold]0.5%[] / stack (5x speed)[]\n[lightgray]Current Crit Damage:[] [yellow]+" + cd + "%[]\n\n[lime]⚡ MK2 SPECIAL MECHANISM:[]\n• On shot: [yellow]20% chance[] to add [green]+[gold]1%[] permanent crit damage[].\n• On shot: [gold]2% chance[] to activate [orange]+[gold]500%[] fire rate[] for 1 second.",
+                         "[cyan]⚡ BẢN THỂ GỐC (MK2) ⚡[]\n[lightgray]Loại Sát Thương:[] [scarlet]50% Sát thương Chuẩn (Xuyên Vela Shield, Giáp, Khiên)[]\n[lightgray]Mức tích lũy bạo kích:[] [lime]+[gold]0.5%[] / stack (x5 tốc độ)[]\n[lightgray]Sát thương bạo kích hiện tại:[] [yellow]+" + cd + "%[]\n\n[lime]⚡ CƠ CHẾ ĐẶC BIỆT MK2:[]\n• Khi bắn có [yellow]20% tỉ lệ[] tăng thêm [green]+[gold]1%[] sát thương bạo kích[] vĩnh viễn.\n• Khi phát bắn diễn ra: [gold]2% cơ hội[] kích hoạt [orange]+[gold]500%[] tốc bắn[] trong 1 giây.");
             } else if (tier == 2) {
                 title += "[purple](MK2B)[]";
-                desc = t("[purple]⚡ BASE STATS (MK2B) ⚡[]\n[lightgray]Damage Type:[] [scarlet]50% True Damage (Pierces Shield, Armor, Vela)[]\n[lightgray]Base Bullet DMG:[] [lime]+50.0% DMG[]\n\n[purple]🔥 MK2B SPECIAL MECHANISM:[]\n• On shot: [gold]2% chance[] to gain [orange]+500% fire rate[] for 1 second.",
-                         "[purple]⚡ THÔNG SỐ CƠ BẢN (MK2B) ⚡[]\n[lightgray]Loại Sát Thương:[] [scarlet]50% Sát thương Chuẩn (Xuyên Vela Shield, Giáp, Khiên)[]\n[lightgray]Sát thương gốc đạn:[] [lime]+50.0% DMG[]\n\n[purple]🔥 CƠ CHẾ ĐẶC BIỆT MK2B:[]\n• Khi phát bắn diễn ra: [gold]2% tỉ lệ[] tăng [orange]+500% tốc bắn[] trong 1 giây.");
+                desc = t("[purple]⚡ BASE STATS (MK2B) ⚡[]\n[lightgray]Damage Type:[] [scarlet]50% True Damage (Pierces Shield, Armor, Vela)[]\n[lightgray]Base Bullet DMG:[] [lime]+[gold]50.0%[] DMG[]\n\n[purple]🔥 MK2B SPECIAL MECHANISM:[]\n• On shot: [gold]2% chance[] to gain [orange]+[gold]500%[] fire rate[] for 1 second.",
+                         "[purple]⚡ BẢN THỂ GỐC (MK2B) ⚡[]\n[lightgray]Loại Sát Thương:[] [scarlet]50% Sát thương Chuẩn (Xuyên Vela Shield, Giáp, Khiên)[]\n[lightgray]Uy lực gốc đạn:[] [lime]+[gold]50.0%[] DMG[]\n\n[purple]🔥 CƠ CHẾ ĐẶC BIỆT MK2B:[]\n• Khi phát bắn diễn ra: [gold]2% tỉ lệ[] tăng [orange]+[gold]500%[] tốc bắn[] trong 1 giây.");
             }
 
             BaseDialog dialog = new BaseDialog(title);

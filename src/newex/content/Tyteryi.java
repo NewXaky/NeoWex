@@ -526,7 +526,7 @@ public final class Tyteryi {
 
         private void openUpgradeDialog(int tier) {
             int nextTier = tier + 1;
-            BaseDialog dialog = new BaseDialog(nextTier == 1 ? "TRUNG TÂM NÂNG CẤP MK2" : "TRUNG TÂM NÂNG CẤP MK3");
+            BaseDialog dialog = new BaseDialog(nextTier == 1 ? "TRUNG TÂM TIẾN HÓA MK2" : "TRUNG TÂM NÂNG CẤP MK3");
             dialog.cont.add(nextTier == 1 ? "[#ffe066]=== NÂNG CẤP LÊN PROTOCOL MK2 ===[]" : "[#ffaa00]=== NÂNG CẤP LÊN PROTOCOL MK3 ===[]").row();
 
             String reqSnapshot;
@@ -551,7 +551,7 @@ public final class Tyteryi {
             dialog.cont.add(reqSnapshot).row();
             dialog.cont.add().height(10).row();
 
-            dialog.cont.button(nextTier == 1 ? "[#ffd700]KÍCH HOẠT MK2[]" : "[#ffaa00]KÍCH HOẠT MK3[]", () -> {
+            dialog.cont.button(nextTier == 1 ? "[#ffd700]TIẾN HÓA MK2[]" : "[#ffaa00]KÍCH HOẠT MK3[]", () -> {
                 CoreBuild core = team.core();
                 Req req = nextTier == 1 ? reqMK2 : reqMK3;
                 boolean hasMats = core != null

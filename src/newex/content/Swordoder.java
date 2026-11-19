@@ -1244,7 +1244,7 @@ public final class Swordoder {
             boxA.margin(12f);
             boxA.add(t("[yellow]===(MK2)===[]", "[yellow]===(MK2)===[]")).row();
 
-            String txtA = tier == 1 ? t("[green]✔ ĐÃ NÂNG CẤP MK2[]\n", "[green]✔ MK2 UPGRADED[]\n") : "";
+            String txtA = tier == 1 ? t("[green]✔ ĐÃ TIẾN HÓA MK2[]\n", "[green]✔ MK2 UPGRADED[]\n") : "";
             txtA += t(
                 "Kiếm sĩ song hướng:\n" +
                 " [white]• Kiểu bắn mới: [green]2 bên góc 30°[] (30° trước, 30° sau [yellow]0.2s[])\n" +
@@ -1265,7 +1265,7 @@ public final class Swordoder {
             boxA.row();
 
             if (tier == 0) {
-                boxA.button(t("[yellow]NÂNG CẤP MK2[]", "[yellow]UPGRADE MK2[]"), () -> tryUpgrade(dialog, 1,
+                boxA.button(t("[yellow]TIẾN HÓA MK2[]", "[yellow]UPGRADE MK2[]"), () -> tryUpgrade(dialog, 1,
                     new Item[]{Items.copper, Items.lead, Items.silicon},
                     new int[]{reqMK2.copper, reqMK2.lead, reqMK2.silicon})).size(280f, 40f);
             }
@@ -1278,7 +1278,7 @@ public final class Swordoder {
             boxB.margin(12f);
             boxB.add(t("[cyan]===(MK2B)===[]", "[cyan]===(MK2B)===[]")).row();
 
-            String txtB = tier == 2 ? t("[green]✔ ĐÃ NÂNG CẤP MK2B[]\n", "[green]✔ MK2B UPGRADED[]\n") : "";
+            String txtB = tier == 2 ? t("[green]✔ ĐÃ TIẾN HÓA MK2B[]\n", "[green]✔ MK2B UPGRADED[]\n") : "";
             txtB += t(
                 "Trảm kiếm tầm xa:\n" +
                 " [white]• Tầm bắn: [green]+500%[] (1,260px)\n" +
@@ -1299,7 +1299,7 @@ public final class Swordoder {
             boxB.row();
 
             if (tier == 0) {
-                boxB.button(t("[cyan]NÂNG CẤP MK2B[]", "[cyan]UPGRADE MK2B[]"), () -> tryUpgrade(dialog, 2,
+                boxB.button(t("[cyan]TIẾN HÓA MK2B[]", "[cyan]UPGRADE MK2B[]"), () -> tryUpgrade(dialog, 2,
                     new Item[]{Items.titanium, Items.thorium, Items.graphite},
                     new int[]{reqMK2B.titanium, reqMK2B.thorium, reqMK2B.graphite})).size(280f, 40f);
             }
@@ -1338,15 +1338,15 @@ public final class Swordoder {
             );
             if (tier == 1) {
                 descStr += t(
-                    "\n\n[yellow]===(MK2)===[]\n[white]• Bắn 2 bên góc 30° (30° trước, 30° sau 0.2s)\n• Bạo kích: [green]50%[] tỉ lệ, [green]+145%[] sát thương[]",
-                    "\n\n[yellow]===(MK2)===[]\n[white]• Fires both sides at 30° (30° front, 30° back after 0.2s)\n• Crit: [green]50%[] chance, [green]+145%[] damage[]"
+                    "\n\n[yellow]===(MK2)===[]\n[white]• Bắn 2 bên góc 30° (30° trước, 30° sau 0.2s)\n• Bạo kích: [green]50%[] tỉ lệ, [green]+[gold]145%[][] sát thương[]",
+                    "\n\n[yellow]===(MK2)===[]\n[white]• Fires both sides at 30° (30° front, 30° back after 0.2s)\n• Crit: [green]50%[] chance, [green]+[gold]145%[][] damage[]"
                 );
             }
 
             if (tier == 2) {
                 descStr += t(
-                    "\n\n[cyan]===(MK2B)===[]\n[white]• Tầm bắn +500%\n• Mỗi 1s tạo nhát chém tại vị trí mục tiêu\n• Khóa tối đa 3 mục tiêu[]",
-                    "\n\n[cyan]===(MK2B)===[]\n[white]• Range +500%\n• Every 1s creates a slash at target position\n• Locks up to 3 targets[]"
+                    "\n\n[cyan]===(MK2B)===[]\n[white]• Tầm bắn [green]+500%[]\n• Mỗi 1s tạo nhát chém tại vị trí mục tiêu\n• Khóa tối đa 3 mục tiêu[]",
+                    "\n\n[cyan]===(MK2B)===[]\n[white]• Range [green]+500%[]\n• Every 1s creates a slash at target position\n• Locks up to 3 targets[]"
                 );
             }
 

@@ -798,8 +798,8 @@ private static String tr(String key) {
                         else if (resultPerk == 2) perkName = isEn() ? "[orange]PERK 2[]" : "[orange]PHÚC LỢI 2[]";
                         else if (resultPerk == 3) perkName = isEn() ? "[cyan]PERK 3[]" : "[cyan]PHÚC LỢI 3[]";
                         else if (resultPerk == 4) perkName = isEn() ? "[purple]PERK 4[]" : "[purple]PHÚC LỢI 4[]";
-                        else if (resultPerk == 5) perkName = isEn() ? "[green]★ PERK 5 (1% SUPER RARE) ★[]" : "[green]★ PHÚC LỢI 5 (1% SIÊU HIẾM) ★[]";
-                        else perkName = isEn() ? "[red]★ PERK 6 (1% SUPER RARE) ★[]" : "[red]★ PHÚC LỢI 6 (1% SIÊU HIẾM) ★[]";
+                        else if (resultPerk == 5) perkName = isEn() ? "[green]★ PERK 5 ([gold]1%[] SUPER RARE) ★[]" : "[green]★ PHÚC LỢI 5 ([gold]1%[] SIÊU HIẾM) ★[]";
+                        else perkName = isEn() ? "[red]★ PERK 6 ([gold]1%[] SUPER RARE) ★[]" : "[red]★ PHÚC LỢI 6 ([gold]1%[] SIÊU HIẾM) ★[]";
 
                         Vars.ui.showInfo(tr("won") + perkName);
 

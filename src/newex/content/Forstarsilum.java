@@ -334,9 +334,9 @@ public final class Forstarsilum {
                             "• [orange]Gia Tốc Từ Tính:[] Tích lũy buff gấp đôi (+20%/viên)\n• [gold]40% cơ hội bắn đòn dồn lực (tụ kiếm 1s, gây 75% True Damage)[] theo mỗi phát bắn thường";
             arc.scene.ui.layout.Cell<arc.scene.ui.Label> b1D = b1.add(b1Text);
             b1D.width(340f).get().setWrap(true); b1D.get().setAlignment(Align.left); b1.row();
-            b1.button(english ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]", () -> {
+            b1.button(english ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]", () -> {
                 if (tryUpgrade(reqMK2, 1, english)) { dialog.hide(); deselect(); }
-                else Vars.ui.showInfo(english ? "[red]Not enough resources for MK2 branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2![]");
+                else Vars.ui.showInfo(english ? "[red]Not enough resources for MK2 branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]");
             }).size(180f, 38f);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12f);
@@ -352,9 +352,9 @@ public final class Forstarsilum {
                             "• [orange]Duy Trì Năng Lượng:[] Sau khi bắn đòn dồn lực (gây 75% True Damage)\n• [gold]có xác suất KHÔNG RESET thanh buff (80% -> 70% -> ... -> 0%)[]";
             arc.scene.ui.layout.Cell<arc.scene.ui.Label> b2D = b2.add(b2Text);
             b2D.width(340f).get().setWrap(true); b2D.get().setAlignment(Align.left); b2.row();
-            b2.button(english ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]", () -> {
+            b2.button(english ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]", () -> {
                 if (tryUpgrade(reqMK2B, 2, english)) { dialog.hide(); deselect(); }
-                else Vars.ui.showInfo(english ? "[red]Not enough resources for MK2B branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2B![]");
+                else Vars.ui.showInfo(english ? "[red]Not enough resources for MK2B branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]");
             }).size(180f, 38f);
 
             branchesTable.add(b1).width(340f); branchesTable.row();

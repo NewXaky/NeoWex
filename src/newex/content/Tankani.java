@@ -327,9 +327,9 @@ public final class Tankani {
                     + " [white]• Giữ nguyên cơ chế bắn đa mục tiêu (Đất & Không) và tầm bắn gốc.[]\n"
                     + " [white]• Đạn chạm mục tiêu kích nổ lan phạm vi [orange]50 pixel[].[]\n"
                     + " [white]• Mục tiêu chính nhận [red]" + v.dmg + " sát thương gốc[] trực diện.[]\n"
-                    + " [white]• Kẻ địch lân cận chịu [yellow]" + v.mk2Splash + " sát thương nổ lan[] (50%).[]";
+                    + " [white]• Kẻ địch lân cận chịu [yellow]" + v.mk2Splash + " sát thương nổ lan[] ([gold]50%[]).[]";
             Cell0.wrap(b1.add(b1Text), 340); b1.row();
-            b1.button(t(isEn, "[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"), () -> {
+            b1.button(t(isEn, "[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_CU && core.items.get(Items.lead) >= REQ_PB) {
                     NexNet.take(core, Items.copper, REQ_CU); NexNet.take(core, Items.lead, REQ_PB);
@@ -337,7 +337,7 @@ public final class Tankani {
                     setTier(1);
                     NexNet.configure(this, Integer.valueOf(1));
                     dialog.hide(); deselect();
-                } else Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2![]", "[red]Không đủ tài nguyên cho nhánh MK2![]"));
+                } else Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2![]", "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]"));
             }).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
@@ -354,9 +354,9 @@ public final class Tankani {
                     + " [white]• [red]Loại bỏ hoàn toàn khả năng bắn mục tiêu mặt đất[].[]\n"
                     + " [white]• Tăng tốc độ đạn bay lên [sky]20.0[] chuyên dụng diệt Không Quân.[]\n"
                     + " [white]• Đạn nổ áp suất tạo vùng sát thương lan rộng tới [pink]150 pixel[].[]\n"
-                    + " [white]• Gây [orange]" + v.mk2bSplash + " sát thương diện rộng[] (80% lực bắn gốc).[]";
+                    + " [white]• Gây [orange]" + v.mk2bSplash + " sát thương diện rộng[] ([gold]80%[] lực bắn gốc).[]";
             Cell0.wrap(b2.add(b2Text), 340); b2.row();
-            b2.button(t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"), () -> {
+            b2.button(t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_CU && core.items.get(Items.lead) >= REQ_PB
                     && core.items.get(Items.titanium) >= REQ_TI_B) {
@@ -366,7 +366,7 @@ public final class Tankani {
                     setTier(2);
                     NexNet.configure(this, Integer.valueOf(2));
                     dialog.hide(); deselect();
-                } else Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2B![]", "[red]Không đủ tài nguyên cho nhánh MK2B![]"));
+                } else Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2B![]", "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]"));
             }).size(180, 38);
 
             branches.add(b1).width(340); branches.row();
@@ -394,19 +394,19 @@ public final class Tankani {
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
                 desc = t(isEn, "[gold]⚡ UNUPGRADED BASE STATS (MK1) ⚡[]\n[lightgray]Turret Health:[] [green]1413 HP[]\n[lightgray]Target Type:[] Ground & Air\n[lightgray]Single Target Damage:[] [red]",
-                    "[gold]⚡ THÔNG SỐ GỐC CHƯA NÂNG CẤP (MK1) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]1413 HP[]\n[lightgray]Trạng thái mục tiêu:[] Đất & Không\n[lightgray]Sát thương mục tiêu đơn:[] [red]")
+                    "[gold]⚡ THÔNG SỐ GỐC CHƯA NÂNG CẤP (MK1) ⚡[]\n[lightgray]Thân thép:[] [green]1413 HP[]\n[lightgray]Trạng thái mục tiêu:[] Đất & Không\n[lightgray]Sát thương mục tiêu đơn:[] [red]")
                     + getModifiedDamage(v.dmg) + t(isEn, " Damage[] (Base: ", " Sát thương[] (Gốc: ") + v.dmg + ")\n" + stack;
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
                 desc = t(isEn, "[cyan]⚡ AREA DAMAGE CONFIG (MK2) ⚡[]\n[lightgray]Turret Health:[] [green]1838 HP[]\n[lightgray]Splash Area:[] [orange]50 Pixels[]\n[lightgray]Direct Damage:[] [red]",
-                    "[cyan]⚡ CẤU HÌNH ĐẠN DIỆN RỘNG (MK2) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]1838 HP[]\n[lightgray]Vùng nổ lan (Splash):[] [orange]50 Pixel[]\n[lightgray]Sát thương trực diện:[] [red]")
+                    "[cyan]⚡ CẤU HÌNH ĐẠN DIỆN RỘNG (MK2) ⚡[]\n[lightgray]Thân thép:[] [green]1838 HP[]\n[lightgray]Vùng nổ lan (Splash):[] [orange]50 Pixel[]\n[lightgray]Sát thương trực diện:[] [red]")
                     + getModifiedDamage(v.dmg) + t(isEn, " Damage[] (Base: ", " Sát thương[] (Gốc: ") + v.dmg + ")\n"
                     + t(isEn, "[lightgray]Splash Damage:[] [yellow]", "[lightgray]Sát thương nổ lan:[] [yellow]")
                     + getModifiedDamage(v.mk2Splash) + t(isEn, " Damage[] (Base: ", " Sát thương[] (Gốc: ") + v.mk2Splash + ")\n" + stack;
             } else {
                 title += "[purple](MK2B)[]";
                 desc = t(isEn, "[purple]⚡ HEAVY ANTI-AIR CONFIG (MK2B) ⚡[]\n[lightgray]Turret Health:[] [green]2375 HP[]\n[lightgray]Range:[] [green]Double Base Range (x2 Range)[]\n[lightgray]Target Type:[] [red]AIR ONLY[]\n[lightgray]Pressure Splash Area:[] [pink]150 Pixels[]\n[lightgray]Anti-Air Splash Damage:[] [orange]",
-                    "[purple]⚡ CẤU HÌNH PHÒNG KHÔNG HẠNG NẶNG (MK2B) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]2375 HP[]\n[lightgray]Tầm bắn:[] [green]Gấp đôi tầm bắn gốc (x2 Range)[]\n[lightgray]Trạng thái mục tiêu:[] [red]Chỉ bắn KHÔNG QUÂN[]\n[lightgray]Vùng nổ lan áp suất:[] [pink]150 Pixel[]\n[lightgray]Sát thương nổ phòng không:[] [orange]")
+                    "[purple]⚡ CẤU HÌNH PHÒNG KHÔNG HẠNG NẶNG (MK2B) ⚡[]\n[lightgray]Thân thép:[] [green]2375 HP[]\n[lightgray]Tầm vươn:[] [green]Gấp đôi tầm bắn gốc (x2 Range)[]\n[lightgray]Trạng thái mục tiêu:[] [red]Chỉ bắn KHÔNG QUÂN[]\n[lightgray]Vùng nổ lan áp suất:[] [pink]150 Pixel[]\n[lightgray]Sát thương nổ phòng không:[] [orange]")
                     + getModifiedDamage(v.mk2bSplash) + t(isEn, " Damage[] (Base: ", " Sát thương[] (Gốc: ") + v.mk2bSplash + ")\n" + stack;
             }
 

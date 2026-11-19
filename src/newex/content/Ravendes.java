@@ -516,15 +516,15 @@ public final class Ravendes {
             // Văn bản nhánh nâng cấp trong JS gốc chỉ có tiếng Việt (không phân en/vi) nên giữ nguyên.
             Table b1 = new Table(); b1.background(Styles.black6); b1.margin(12);
             b1.add("[#ffd700]👑 PHÂN NHÁNH A: PROTOCOL MK2 [ROYAL LONG-RANGE][]").row();
-            wrap(b1.add("Tối ưu hóa tầm xa siêu cấp và gia tăng độ bền tháp.\n • [#ffe066]Khung vách:[] Titan cường lực [green]2,700 HP[] (+50%).\n • [#ffe066]Tầm bắn siêu xa:[] Tối đa [yellow]1800px[]."), 340);
+            wrap(b1.add("Tối ưu hóa tầm xa siêu cấp và gia tăng độ bền tháp.\n • [#ffe066]Khung vách:[] Titan cường lực [green]2,700 HP[] ([green]+50%[]).\n • [#ffe066]Tầm bắn siêu xa:[] Tối đa [yellow]1800px[]."), 340);
             b1.row();
-            b1.button("[#ffd700]KÍCH HOẠT MK2[]", () -> { doUpgrade(1); dialog.hide(); deselect(); }).size(180, 38);
+            b1.button("[#ffd700]TIẾN HÓA MK2[]", () -> { doUpgrade(1); dialog.hide(); deselect(); }).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
             b2.add("[#ffaa00]⚡ PHÂN NHÁNH B: PROTOCOL MK2B [GOLDEN OVERCLOCK][]").row();
-            wrap(b2.add("Sấy đạn ngôi sao hoàng gia cực nhanh càn quét mục tiêu.\n • [#ffe066]Khung vách:[] Ép xung bền bỉ [green]1,600 HP[].\n • [#ffe066]Tầm bắn:[] [yellow]1300px[] kèm đạn shotgun định kỳ."), 340);
+            wrap(b2.add("Sấy đạn ngôi sao hoàng gia cực nhanh càn quét mục tiêu.\n • [#ffe066]Khung vách:[] Ép xung bền bỉ [green]1,600 HP[].\n • [#ffe066]Tầm vươn:[] [yellow]1300px[] kèm đạn shotgun định kỳ."), 340);
             b2.row();
-            b2.button("[#ffaa00]KÍCH HOẠT MK2B[]", () -> { doUpgrade(2); dialog.hide(); deselect(); }).size(180, 38);
+            b2.button("[#ffaa00]TIẾN HÓA MK2B[]", () -> { doUpgrade(2); dialog.hide(); deselect(); }).size(180, 38);
 
             branches.add(b1).width(340); branches.row();
             branches.add().height(12).row();

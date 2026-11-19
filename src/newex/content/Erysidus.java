@@ -352,10 +352,10 @@ public final class Erysidus {
             Table b1 = new Table(); b1.background(Styles.black6); b1.margin(12);
             b1.add(t(isEn, "[cyan]===(MK2 - SUPER FIREPOWER SPEED)===[]", "[cyan]===(MK2 - SIÊU TỐC HỎA LỰC)===[]")).row();
             wrap(b1.add(t(isEn,
-                "Optimize reload system and firepower output:\n [white]• Max health increased to [green]4125 HP[].[]\n [white]• [cyan]+130% missile turret speed[].[]\n [white]• Ultra-fast melee ammo ([yellow]0.1s/shot[]).[]",
+                "Optimize reload system and firepower output:\n [white]• Max health increased to [green]4125 HP[].[]\n [white]• [cyan]+[gold]130%[] missile turret speed[].[]\n [white]• Ultra-fast melee ammo ([yellow]0.1s/shot[]).[]",
                 "Tối ưu hóa hệ thống nạp đạn và xả hỏa lực:\n [white]• Tăng lượng máu tối đa lên [green]4125 HP[].[]\n [white]• Tăng [cyan]130% tốc độ pháo tên lửa[].[]\n [white]• Đạn cận chiến bắn siêu tốc ([yellow]0.1s/viên[]).[]")), 340);
             b1.row();
-            b1.button(t(isEn, "[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"), () -> {
+            b1.button(t(isEn, "[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_MK2[0] && core.items.get(Items.lead) >= REQ_MK2[1] && core.items.get(Items.silicon) >= REQ_MK2[2]) {
                     NexNet.take(core, Items.copper, REQ_MK2[0]); NexNet.take(core, Items.lead, REQ_MK2[1]); NexNet.take(core, Items.silicon, REQ_MK2[2]);
@@ -364,17 +364,17 @@ public final class Erysidus {
                     NexNet.configure(this, Integer.valueOf(1));
                     dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2 branch![]", "[red]Không đủ tài nguyên cho nhánh MK2![]"));
+                    Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2 branch![]", "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]"));
                 }
             }).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
             b2.add(t(isEn, "[purple]===(MK2B - DAMAGE ENHANCEMENT)===[]", "[purple]===(MK2B - CƯỜNG HÓA SÁT THƯƠNG)===[]")).row();
             wrap(b2.add(t(isEn,
-                "Breakthrough in energy enhancement technology:\n [white]• Max health increased to [green]5250 HP[].[]\n [white]• [red]+50% damage[] for all sub-bullets and Repulsor Beam.[]",
+                "Breakthrough in energy enhancement technology:\n [white]• Max health increased to [green]5250 HP[].[]\n [white]• [red]+[gold]50%[] damage[] for all sub-bullets and Repulsor Beam.[]",
                 "Đột phá công nghệ cường hóa năng lượng:\n [white]• Gia tăng lượng máu lên tối đa [green]5250 HP[].[]\n [white]• Tăng [red]50% sát thương[] cho tất cả đạn phụ và Chưởng Repulsor.[]")), 340);
             b2.row();
-            b2.button(t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"), () -> {
+            b2.button(t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_MK2B[0] && core.items.get(Items.lead) >= REQ_MK2B[1]
                     && core.items.get(Items.silicon) >= REQ_MK2B[2] && core.items.get(Items.titanium) >= REQ_MK2B[3]) {
@@ -385,7 +385,7 @@ public final class Erysidus {
                     NexNet.configure(this, Integer.valueOf(2));
                     dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2B branch![]", "[red]Không đủ tài nguyên cho nhánh MK2B![]"));
+                    Vars.ui.showInfo(t(isEn, "[red]Not enough resources for MK2B branch![]", "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]"));
                 }
             }).size(180, 38);
 
@@ -413,7 +413,7 @@ public final class Erysidus {
                 ? "\n\n[gold]⭐ KILL BUFF STATS ⭐[]\n[lightgray]Kill Buff Stacks:[] [cyan]" + stacks + "/50 Stacks[]" + maxStatus
                     + "\n[lightgray]Crit Rate:[] [yellow]" + critChance + "%[] (Base 5% + " + stacks + "%)\n[lightgray]Crit Damage:[] [orange]+" + critDmg + "%[]" + plus50
                 : "\n\n[gold]⭐ THÔNG SỐ BUFF KẾT LIỄU ⭐[]\n[lightgray]Tầng Buff tiêu diệt:[] [cyan]" + stacks + "/50 Stack[]" + maxStatus
-                    + "\n[lightgray]Tỉ lệ Bạo kích (Crit Rate):[] [yellow]" + critChance + "%[] (Gốc 5% + " + stacks + "%)\n[lightgray]Sát thương Bạo kích (Crit DMG):[] [orange]+" + critDmg + "%[]" + plus50;
+                    + "\n[lightgray]Tỉ lệ Bạo kích (Crit Rate):[] [yellow]" + critChance + "%[] (Gốc [gold]5%[] + " + stacks + "%)\n[lightgray]Sát thương Bạo kích (Crit DMG):[] [orange]+" + critDmg + "%[]" + plus50;
 
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
@@ -423,13 +423,13 @@ public final class Erysidus {
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
                 desc = isEn
-                    ? "[cyan]⚡ SPEED CONFIG (MK2) ⚡[]\n[lightgray]Health:[] [green]4125 HP[]\n[lightgray]Fire Rate:[] [green]+130% Fire Rate[]\n[lightgray]Melee Ammo:[] Fires every 0.1s" + buff
-                    : "[cyan]⚡ CẤU HÌNH TỐC ĐỘ (MK2) ⚡[]\n[lightgray]Máu:[] [green]4125 HP[]\n[lightgray]Tốc độ xả đạn:[] [green]+130% Tốc độ bắn[]\n[lightgray]Đạn cận chiến:[] Bắn mỗi 0.1s" + buff;
+                    ? "[cyan]⚡ SPEED CONFIG (MK2) ⚡[]\n[lightgray]Health:[] [green]4125 HP[]\n[lightgray]Fire Rate:[] [green]+[gold]130%[] Fire Rate[]\n[lightgray]Melee Ammo:[] Fires every 0.1s" + buff
+                    : "[cyan]⚡ CẤU HÌNH TỐC ĐỘ (MK2) ⚡[]\n[lightgray]Máu:[] [green]4125 HP[]\n[lightgray]Tốc độ xả đạn:[] [green]+[gold]130%[] Tốc độ bắn[]\n[lightgray]Đạn cận chiến:[] Bắn mỗi 0.1s" + buff;
             } else if (tier == 2) {
                 title += "[purple](MK2B)[]";
                 desc = isEn
-                    ? "[purple]⚡ DAMAGE CONFIG (MK2B) ⚡[]\n[lightgray]Health:[] [green]5250 HP[]\n[lightgray]Repulsor Beam:[] [orange]+50% Base Damage[]" + buff
-                    : "[purple]⚡ CẤU HÌNH SÁT THƯƠNG (MK2B) ⚡[]\n[lightgray]Máu:[] [green]5250 HP[]\n[lightgray]Chưởng Repulsor:[] [orange]+50% Sát thương gốc[]" + buff;
+                    ? "[purple]⚡ DAMAGE CONFIG (MK2B) ⚡[]\n[lightgray]Health:[] [green]5250 HP[]\n[lightgray]Repulsor Beam:[] [orange]+[gold]50%[] Base Damage[]" + buff
+                    : "[purple]⚡ CẤU HÌNH SÁT THƯƠNG (MK2B) ⚡[]\n[lightgray]Máu:[] [green]5250 HP[]\n[lightgray]Chưởng Repulsor:[] [orange]+[gold]50%[] Uy lực gốc[]" + buff;
             }
 
             BaseDialog dialog = new BaseDialog(title);

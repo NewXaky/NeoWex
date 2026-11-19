@@ -1238,16 +1238,16 @@ public final class Reflecounum {
                             else if (resultPerk == 2) perkName = "[orange]PERK 2[]";
                             else if (resultPerk == 3) perkName = "[cyan]PERK 3[]";
                             else if (resultPerk == 4) perkName = "[purple]PERK 4[]";
-                            else if (resultPerk == 5) perkName = "[green]★ PERK 5 (1% ULTRA RARE) ★[]";
-                            else perkName = "[red]★ PERK 6 (1% ULTRA RARE) ★[]";
+                            else if (resultPerk == 5) perkName = "[green]★ PERK 5 ([gold]1%[] ULTRA RARE) ★[]";
+                            else perkName = "[red]★ PERK 6 ([gold]1%[] ULTRA RARE) ★[]";
                             Vars.ui.showInfo("[gold]YOU OBTAINED:[]\n" + perkName);
                         } else {
                             if (resultPerk == 1) perkName = "[yellow]PHÚC LỢI 1[]";
                             else if (resultPerk == 2) perkName = "[orange]PHÚC LỢI 2[]";
                             else if (resultPerk == 3) perkName = "[cyan]PHÚC LỢI 3[]";
                             else if (resultPerk == 4) perkName = "[purple]PHÚC LỢI 4[]";
-                            else if (resultPerk == 5) perkName = "[green]★ PHÚC LỢI 5 (1% SIÊU HIẾM) ★[]";
-                            else perkName = "[red]★ PHÚC LỢI 6 (1% SIÊU HIẾM) ★[]";
+                            else if (resultPerk == 5) perkName = "[green]★ PHÚC LỢI 5 ([gold]1%[] SIÊU HIẾM) ★[]";
+                            else perkName = "[red]★ PHÚC LỢI 6 ([gold]1%[] SIÊU HIẾM) ★[]";
                             Vars.ui.showInfo("[gold]BẠN ĐÃ TRÚNG:[]\n" + perkName);
                         }
 
@@ -1260,19 +1260,19 @@ public final class Reflecounum {
                 } else {
                     String perkText = "";
                 if (isEn()) {
-                    if (currentPerk == 1) perkText = "[yellow]✔ ACTIVATED: PERK 1\n• Shield radius +150%\n• Shield HP +50%\n• Heal 10% HP/0.5s for ally Units in 200px[]";
-                    if (currentPerk == 2) perkText = "[orange]✔ ACTIVATED: PERK 2\n• Shield radius +50%\n• Shield HP +90%\n• Auto rebuild destroyed walls & turrets in 350px (every 5s)[]";
-                    if (currentPerk == 3) perkText = "[cyan]✔ ACTIVATED: PERK 3\n• Shield radius +30%\n• Shield HP +30%\n• Store 1000 Dmg to release 100 Dmg shockwave (200px) & heal allies 100 HP[]";
-                    if (currentPerk == 4) perkText = "[purple]✔ ACTIVATED: PERK 4\n• Shield radius +100%\n• Shield HP +100%\n• Reflected bullets gain Homing & Pierce 4[]";
-                    if (currentPerk == 5) perkText = "[green]✔ ACTIVATED: PERK 5 (1% ULTRA RARE)\n• Shield radius +200%\n• Shield HP +300%\n• Heal 10% HP/5s for Units & Structures in 500px\n• Share 50% ally damage taken in 250px[]";
-                    if (currentPerk == 6) perkText = "[red]✔ ACTIVATED: PERK 6 (1% ULTRA RARE)\n• Shield radius +200%\n• Shield HP +300%\n• Store 1000 Dmg to fire 8 piercing energy bullets (Pierce 20, Splash Dmg 20px) at highest HP target![]";
+                    if (currentPerk == 1) perkText = "[yellow]✔ ACTIVATED: PERK 1\n• Shield radius [green]+150%[]\n• Shield HP [green]+50%[]\n• Heal [gold]10%[] HP/0.5s for ally Units in 200px[]";
+                    if (currentPerk == 2) perkText = "[orange]✔ ACTIVATED: PERK 2\n• Shield radius [green]+50%[]\n• Shield HP [green]+90%[]\n• Auto rebuild destroyed walls & turrets in 350px (every 5s)[]";
+                    if (currentPerk == 3) perkText = "[cyan]✔ ACTIVATED: PERK 3\n• Shield radius [green]+30%[]\n• Shield HP [green]+30%[]\n• Store 1000 Dmg to release 100 Dmg shockwave (200px) & heal allies 100 HP[]";
+                    if (currentPerk == 4) perkText = "[purple]✔ ACTIVATED: PERK 4\n• Shield radius [green]+100%[]\n• Shield HP [green]+100%[]\n• Reflected bullets gain Homing & Pierce 4[]";
+                    if (currentPerk == 5) perkText = "[green]✔ ACTIVATED: PERK 5 ([gold]1%[] ULTRA RARE)\n• Shield radius [green]+200%[]\n• Shield HP [green]+300%[]\n• Heal [gold]10%[] HP/5s for Units & Structures in 500px\n• Share [gold]50%[] ally damage taken in 250px[]";
+                    if (currentPerk == 6) perkText = "[red]✔ ACTIVATED: PERK 6 ([gold]1%[] ULTRA RARE)\n• Shield radius [green]+200%[]\n• Shield HP [green]+300%[]\n• Store 1000 Dmg to fire 8 piercing energy bullets (Pierce 20, Splash Dmg 20px) at highest HP target![]";
                 } else {
-                    if (currentPerk == 1) perkText = "[yellow]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1\n• Bán kính khiên +150%\n• Độ bền khiên +50%\n• Hồi 10% HP/0.5s cho Unit đồng minh trong 200px[]";
-                    if (currentPerk == 2) perkText = "[orange]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2\n• Bán kính khiên +50%\n• Độ bền khiên +90%\n• Tự động xây lại tường & pháo bị hủy hoàn toàn trong 350px (mỗi 5s)[]";
-                    if (currentPerk == 3) perkText = "[cyan]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3\n• Bán kính khiên +30%\n• Độ bền khiên +30%\n• Tích 1000 Dmg nổ sóng âm 100 Dmg (200px) & hồi 100 HP cho đồng minh[]";
-                    if (currentPerk == 4) perkText = "[purple]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 4\n• Bán kính khiên +100%\n• Độ bền khiên +100%\n• Đạn phản ngược có Truy đuổi & Xuyên thấu 4[]";
-                    if (currentPerk == 5) perkText = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 5 (1% SIÊU HIẾM)\n• Bán kính khiên +200%\n• Độ bền khiên +300%\n• Hồi 10% HP/5s cho Unit & Công trình trong 500px\n• Chia sẻ 50% Dmg nhận vào từ đồng minh trong 250px[]";
-                    if (currentPerk == 6) perkText = "[red]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 6 (1% SIÊU HIẾM)\n• Bán kính khiên +200%\n• Độ bền khiên +300%\n• Đủ 1000 Dmg hấp thụ bắn 8 đạn năng lượng xé gió (Xuyên 20, Splash Dmg 20px) vào mục tiêu HP cao nhất![]";
+                    if (currentPerk == 1) perkText = "[yellow]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1\n• Bán kính khiên [green]+150%[]\n• Độ bền khiên [green]+50%[]\n• Hồi [gold]10%[] HP/0.5s cho Unit đồng minh trong 200px[]";
+                    if (currentPerk == 2) perkText = "[orange]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2\n• Bán kính khiên [green]+50%[]\n• Độ bền khiên [green]+90%[]\n• Tự động xây lại tường & pháo bị hủy hoàn toàn trong 350px (mỗi 5s)[]";
+                    if (currentPerk == 3) perkText = "[cyan]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3\n• Bán kính khiên [green]+30%[]\n• Độ bền khiên [green]+30%[]\n• Tích 1000 Dmg nổ sóng âm 100 Dmg (200px) & hồi 100 HP cho đồng minh[]";
+                    if (currentPerk == 4) perkText = "[purple]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 4\n• Bán kính khiên [green]+100%[]\n• Độ bền khiên [green]+100%[]\n• Đạn phản ngược có Truy đuổi & Xuyên thấu 4[]";
+                    if (currentPerk == 5) perkText = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 5 ([gold]1%[] SIÊU HIẾM)\n• Bán kính khiên [green]+200%[]\n• Độ bền khiên [green]+300%[]\n• Hồi [gold]10%[] HP/5s cho Unit & Công trình trong 500px\n• Chia sẻ [gold]50%[] Dmg nhận vào từ đồng minh trong 250px[]";
+                    if (currentPerk == 6) perkText = "[red]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 6 ([gold]1%[] SIÊU HIẾM)\n• Bán kính khiên [green]+200%[]\n• Độ bền khiên [green]+300%[]\n• Đủ 1000 Dmg hấp thụ bắn 8 đạn năng lượng xé gió (Xuyên 20, Splash Dmg 20px) vào mục tiêu HP cao nhất![]";
                 }
 
                     Cell<?> spD = spBox.add(perkText);
@@ -1305,7 +1305,7 @@ public final class Reflecounum {
                     ((arc.scene.ui.Label) b1D.get()).setAlignment(Align.left);
                     b1.row();
 
-                String b1Btn = isEn() ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]";
+                String b1Btn = isEn() ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]";
                     b1.button(b1Btn, () -> {
                         CoreBuild core = team.core();
                         if (core != null && core.items.get(Items.titanium) >= reqMK2.titanium && core.items.get(Items.silicon) >= reqMK2.silicon && core.items.get(Items.thorium) >= reqMK2.thorium) {
@@ -1321,7 +1321,7 @@ public final class Reflecounum {
                             dialog.hide();
                             deselect();
                         } else {
-                            Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2 branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2![]");
+                            Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2 branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]");
                         }
                     }).size(180f, 38f);
 
@@ -1344,7 +1344,7 @@ public final class Reflecounum {
                     ((arc.scene.ui.Label) b2D.get()).setAlignment(Align.left);
                     b2.row();
 
-                String b2Btn = isEn() ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]";
+                String b2Btn = isEn() ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]";
                     b2.button(b2Btn, () -> {
                         CoreBuild core = team.core();
                         if (core != null && core.items.get(Items.titanium) >= reqMK2B.titanium && core.items.get(Items.silicon) >= reqMK2B.silicon && core.items.get(Items.plastanium) >= reqMK2B.plastanium && core.items.get(Items.surgeAlloy) >= reqMK2B.surgeAlloy) {
@@ -1361,7 +1361,7 @@ public final class Reflecounum {
                             dialog.hide();
                             deselect();
                         } else {
-                            Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2B branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2B![]");
+                            Vars.ui.showInfo(isEn() ? "[red]Not enough resources for MK2B branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]");
                         }
                     }).size(180f, 38f);
 
@@ -1373,7 +1373,7 @@ public final class Reflecounum {
                 if (isEn()) {
                     statusLabel = (tier == 1) ? "[cyan]UPGRADED TO MK2 TURRET[]" : "[purple]UPGRADED TO MK2B TURRET[]";
                 } else {
-                    statusLabel = (tier == 1) ? "[cyan]ĐÃ NÂNG CẤP THÀNH PHÁO MK2[]" : "[purple]ĐÃ NÂNG CẤP THÀNH PHÁO MK2B[]";
+                    statusLabel = (tier == 1) ? "[cyan]ĐÃ TIẾN HÓA THÀNH PHÁO MK2[]" : "[purple]ĐÃ TIẾN HÓA THÀNH PHÁO MK2B[]";
                 }
                     branchesTable.add(statusLabel).row();
                 }
@@ -1390,34 +1390,34 @@ public final class Reflecounum {
                 String descStr = "";
                 int currentTier = getTier();
             if (isEn()) {
-                if (currentTier == 0) descStr = "[gold]⚡ BASE STATS (MK1) ⚡[]\n• Shield HP: 5,000 HP | Absorb Rate: 50%\n• Reflect Chance: 60% | Recharge Cooldown: 5.0s";
-                else if (currentTier == 1) descStr = "[cyan]⚡ BASE STATS (MK2) ⚡[]\n• Shield HP: 7,500 HP | Absorb Rate: 80%\n• Reflect Chance: 75% | Recharge Cooldown: 5.0s";
-                else if (currentTier == 2) descStr = "[purple]⚡ BASE STATS (MK2B) ⚡[]\n• Shield HP: 15,000 HP | Absorb Rate: 40%\n• Reflect Chance: 100% ABSOLUTE | Recharge Cooldown: 2.0s";
+                if (currentTier == 0) descStr = "[gold]⚡ BASE STATS (MK1) ⚡[]\n• Shield HP: 5,000 HP | Absorb Rate: [gold]50%[]\n• Reflect Chance: [gold]60%[] | Recharge Cooldown: 5.0s";
+                else if (currentTier == 1) descStr = "[cyan]⚡ BASE STATS (MK2) ⚡[]\n• Shield HP: 7,500 HP | Absorb Rate: [gold]80%[]\n• Reflect Chance: [gold]75%[] | Recharge Cooldown: 5.0s";
+                else if (currentTier == 2) descStr = "[purple]⚡ BASE STATS (MK2B) ⚡[]\n• Shield HP: 15,000 HP | Absorb Rate: [gold]40%[]\n• Reflect Chance: [gold]100%[] ABSOLUTE | Recharge Cooldown: 2.0s";
 
                 int perk = this.getPerkTier();
                 if (perk > 0) {
                     descStr += "\n\n[gold]★ ACTIVATED SPECIAL PERK ★[]";
-                    if (perk == 1) descStr += "\n[yellow]• Perk 1: Shield radius +150%, Shield HP +50%, Heal 10% HP/0.5s for Units in 200px.[]";
-                    if (perk == 2) descStr += "\n[orange]• Perk 2: Shield radius +50%, Shield HP +90%, Auto rebuild walls & turrets in 350px (every 5s).[]";
-                    if (perk == 3) descStr += "\n[cyan]• Perk 3: Shield radius +30%, Shield HP +30%, Store 1000 Dmg shockwave 100 Dmg & heal 100 HP to allies.[]";
-                    if (perk == 4) descStr += "\n[purple]• Perk 4: Shield radius +100%, Shield HP +100%, Reflected bullets gain Homing & Pierce 4.[]";
-                    if (perk == 5) descStr += "\n[green]• Perk 5 (1%): Shield radius +200%, Shield HP +300%, Heal 10% HP/5s in 500px, Share 50% ally Dmg to shield.[]";
-                    if (perk == 6) descStr += "\n[red]• Perk 6 (1%): Shield radius +200%, Shield HP +300%, Store 1000 Dmg to fire 8 piercing bullets at highest HP target.[]";
+                    if (perk == 1) descStr += "\n[yellow]• Perk 1: Shield radius [green]+150%[], Shield HP [green]+50%[], Heal [gold]10%[] HP/0.5s for Units in 200px.[]";
+                    if (perk == 2) descStr += "\n[orange]• Perk 2: Shield radius [green]+50%[], Shield HP [green]+90%[], Auto rebuild walls & turrets in 350px (every 5s).[]";
+                    if (perk == 3) descStr += "\n[cyan]• Perk 3: Shield radius [green]+30%[], Shield HP [green]+30%[], Store 1000 Dmg shockwave 100 Dmg & heal 100 HP to allies.[]";
+                    if (perk == 4) descStr += "\n[purple]• Perk 4: Shield radius [green]+100%[], Shield HP [green]+100%[], Reflected bullets gain Homing & Pierce 4.[]";
+                    if (perk == 5) descStr += "\n[green]• Perk 5 ([gold]1%[]): Shield radius [green]+200%[], Shield HP [green]+300%[], Heal [gold]10%[] HP/5s in 500px, Share [gold]50%[] ally Dmg to shield.[]";
+                    if (perk == 6) descStr += "\n[red]• Perk 6 ([gold]1%[]): Shield radius [green]+200%[], Shield HP [green]+300%[], Store 1000 Dmg to fire 8 piercing bullets at highest HP target.[]";
                 }
             } else {
-                if (currentTier == 0) descStr = "[gold]⚡ THÔNG SỐ CƠ BẢN (MK1) ⚡[]\n• Độ bền khiên: 5,000 HP | Tỷ lệ hấp thụ: 50%\n• Tỷ lệ phản đạn: 60% | Tái nạp khi vỡ: 5.0s";
-                else if (currentTier == 1) descStr = "[cyan]⚡ THÔNG SỐ CƠ BẢN (MK2) ⚡[]\n• Độ bền khiên: 7,500 HP | Tỷ lệ hấp thụ: 80%\n• Tỷ lệ phản đạn: 75% | Tái nạp khi vỡ: 5.0s";
-                else if (currentTier == 2) descStr = "[purple]⚡ THÔNG SỐ CƠ BẢN (MK2B) ⚡[]\n• Độ bền khiên: 15,000 HP | Tỷ lệ hấp thụ: 40%\n• Tỷ lệ phản đạn: 100% TUYỆT ĐỐI | Tái nạp khi vỡ: 2.0s";
+                if (currentTier == 0) descStr = "[gold]⚡ BẢN THỂ GỐC (MK1) ⚡[]\n• Độ bền khiên: 5,000 HP | Tỷ lệ hấp thụ: [gold]50%[]\n• Tỷ lệ phản đạn: [gold]60%[] | Tái nạp khi vỡ: 5.0s";
+                else if (currentTier == 1) descStr = "[cyan]⚡ BẢN THỂ GỐC (MK2) ⚡[]\n• Độ bền khiên: 7,500 HP | Tỷ lệ hấp thụ: [gold]80%[]\n• Tỷ lệ phản đạn: [gold]75%[] | Tái nạp khi vỡ: 5.0s";
+                else if (currentTier == 2) descStr = "[purple]⚡ BẢN THỂ GỐC (MK2B) ⚡[]\n• Độ bền khiên: 15,000 HP | Tỷ lệ hấp thụ: [gold]40%[]\n• Tỷ lệ phản đạn: [gold]100%[] TUYỆT ĐỐI | Tái nạp khi vỡ: 2.0s";
 
                 int perk = this.getPerkTier();
                 if (perk > 0) {
                     descStr += "\n\n[gold]★ ĐÃ KÍCH HOẠT PHÚC LỢI ĐẶC BIỆT ★[]";
-                    if (perk == 1) descStr += "\n[yellow]• Phúc lợi 1: Bán kính khiên +150%, HP khiên +50%, Hồi 10% HP/0.5s cho Unit trong 200px.[]";
-                    if (perk == 2) descStr += "\n[orange]• Phúc lợi 2: Bán kính khiên +50%, HP khiên +90%, Tự động xây lại tường & pháo bị hủy hoàn toàn trong 350px (mỗi 5s).[]";
-                    if (perk == 3) descStr += "\n[cyan]• Phúc lợi 3: Bán kính khiên +30%, HP khiên +30%, Tích 1000 Dmg nổ sóng âm 100 Dmg & hồi 100 HP cho đồng minh.[]";
-                    if (perk == 4) descStr += "\n[purple]• Phúc lợi 4: Bán kính khiên +100%, HP khiên +100%, Đạn phản ngược có Truy đuổi & Xuyên 4.[]";
-                    if (perk == 5) descStr += "\n[green]• Phúc lợi 5 (1%): Bán kính khiên +200%, HP khiên +300%, Hồi 10% HP/5s trong 500px, Chia sẻ 50% Dmg từ đồng minh vào khiên.[]";
-                    if (perk == 6) descStr += "\n[red]• Phúc lợi 6 (1%): Bán kính khiên +200%, HP khiên +300%, Tích 1000 Dmg bắn 8 đạn xé gió mục tiêu HP cao nhất.[]";
+                    if (perk == 1) descStr += "\n[yellow]• Phúc lợi 1: Bán kính khiên [green]+150%[], HP khiên [green]+50%[], Hồi [gold]10%[] HP/0.5s cho Unit trong 200px.[]";
+                    if (perk == 2) descStr += "\n[orange]• Phúc lợi 2: Bán kính khiên [green]+50%[], HP khiên [green]+90%[], Tự động xây lại tường & pháo bị hủy hoàn toàn trong 350px (mỗi 5s).[]";
+                    if (perk == 3) descStr += "\n[cyan]• Phúc lợi 3: Bán kính khiên [green]+30%[], HP khiên [green]+30%[], Tích 1000 Dmg nổ sóng âm 100 Dmg & hồi 100 HP cho đồng minh.[]";
+                    if (perk == 4) descStr += "\n[purple]• Phúc lợi 4: Bán kính khiên [green]+100%[], HP khiên [green]+100%[], Đạn phản ngược có Truy đuổi & Xuyên 4.[]";
+                    if (perk == 5) descStr += "\n[green]• Phúc lợi 5 ([gold]1%[]): Bán kính khiên [green]+200%[], HP khiên [green]+300%[], Hồi [gold]10%[] HP/5s trong 500px, Chia sẻ [gold]50%[] Dmg từ đồng minh vào khiên.[]";
+                    if (perk == 6) descStr += "\n[red]• Phúc lợi 6 ([gold]1%[]): Bán kính khiên [green]+200%[], HP khiên [green]+300%[], Tích 1000 Dmg bắn 8 đạn xé gió mục tiêu HP cao nhất.[]";
                 }
             }
 

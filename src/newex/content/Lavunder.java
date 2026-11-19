@@ -768,7 +768,7 @@ public final class Lavunder {
                     " [white]• Tăng [green]+52.17% Máu[] (5,707) và mở rộng [green]+6.25% Tầm bắn[] (276.2 px).";
             Cell<Label> b1D = b1.add(b1Text);
             b1D.width(340f); b1D.get().setWrap(true); b1D.get().setAlignment(Align.left); b1.row();
-            b1.button(isEn ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]", () -> {
+            b1.button(isEn ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]", () -> {
                 CoreBuild core = team.core();
                 if (core != null && core.items.get(Items.copper) >= reqMK2.copper && core.items.get(Items.graphite) >= reqMK2.graphite) {
                     NexNet.take(core, Items.copper, reqMK2.copper);
@@ -776,7 +776,7 @@ public final class Lavunder {
                     configure(Integer.valueOf(2));
                     dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfo(isEn ? "[red]Not enough resources for MK2 branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2![]");
+                    Vars.ui.showInfo(isEn ? "[red]Not enough resources for MK2 branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]");
                 }
             }).size(180, 38);
 
@@ -797,7 +797,7 @@ public final class Lavunder {
                     " [white]• Giữ nguyên [yellow]Tầm bắn[] (260 px).";
             Cell<Label> b2D = b2.add(b2Text);
             b2D.width(340f); b2D.get().setWrap(true); b2D.get().setAlignment(Align.left); b2.row();
-            b2.button(isEn ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]", () -> {
+            b2.button(isEn ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]", () -> {
                 CoreBuild core = team.core();
                 if (core != null && core.items.get(Items.lead) >= reqMK3.lead && core.items.get(Items.silicon) >= reqMK3.silicon) {
                     NexNet.take(core, Items.lead, reqMK3.lead);
@@ -805,7 +805,7 @@ public final class Lavunder {
                     configure(Integer.valueOf(3));
                     dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfo(isEn ? "[red]Not enough resources for MK2B branch![]" : "[red]Không đủ tài nguyên cho nhánh MK2B![]");
+                    Vars.ui.showInfo(isEn ? "[red]Not enough resources for MK2B branch![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]");
                 }
             }).size(180, 38);
 

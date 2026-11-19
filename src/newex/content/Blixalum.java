@@ -309,7 +309,7 @@ public final class Blixalum {
                 + "• Critical: [yellow]80% Rate | 120% Crit DMG[]\n"
                 + "• [orange]Smart Speed Frequency:[] Automatically scans surrounding magnetic fields and surges firing speed according to enemy density within range")), 340);
             b1.row();
-            b1.button(t(v, "[green]KÍCH HOẠT MK2[]", "[green]ACTIVATE MK2[]"), () -> tryUpgrade(dialog, REQ_MK2, 1, v)).size(180, 38);
+            b1.button(t(v, "[green]TIẾN HÓA MK2[]", "[green]ACTIVATE MK2[]"), () -> tryUpgrade(dialog, REQ_MK2, 1, v)).size(180, 38);
 
             Table b2 = new Table();
             b2.background(Styles.black6);
@@ -327,7 +327,7 @@ public final class Blixalum {
                 + "• Critical: [yellow]80% Rate | 120% Crit DMG[]\n"
                 + "• [orange]Laser Tempest:[] Charges core energy matrix and automatically fires 4 focused Laser beams to incinerate targets every 5 seconds")), 340);
             b2.row();
-            b2.button(t(v, "[orange]KÍCH HOẠT MK2B[]", "[orange]ACTIVATE MK2B[]"), () -> tryUpgrade(dialog, REQ_MK2B, 2, v)).size(180, 38);
+            b2.button(t(v, "[orange]TIẾN HÓA MK2B[]", "[orange]ACTIVATE MK2B[]"), () -> tryUpgrade(dialog, REQ_MK2B, 2, v)).size(180, 38);
 
             branches.add(b1).width(340);
             branches.row();
@@ -369,7 +369,7 @@ public final class Blixalum {
                     + "• Magnetic Energy Charge: Requires 2s charging time before releasing shockwave bullets.\n"
                     + "• Adaptive Fire Rate: Automatically increases +10% fire rate per enemy within range (max +100%).");
             } else if (tier == 1) {
-                title += t(v, "[cyan]THÔNG SỐ NÂNG CẤP MK2[]", "[cyan]UPGRADE SPECS MK2[]");
+                title += t(v, "[cyan]TIẾN HÓA MK2[]", "[cyan]UPGRADE SPECS MK2[]");
                 desc = t(v,
                     "[cyan]⚡ THÔNG SỐ NÂNG CẤP MK2 ⚡[]\n"
                     + "[lightgray]Máu cấu trúc:[] [green]9,500 HP[]\n"
@@ -392,7 +392,7 @@ public final class Blixalum {
                     + "• Smart Frequency Expansion: Enhanced magnetic core optimizing auto-scan frequency.\n"
                     + "• Fire Rate Surge: Increases +10% fire rate per enemy in range (max +300%).");
             } else if (tier == 2) {
-                title += t(v, "[purple]THÔNG SỐ NÂNG CẤP MK2B[]", "[purple]UPGRADE SPECS MK2B[]");
+                title += t(v, "[purple]TIẾN HÓA MK2B[]", "[purple]UPGRADE SPECS MK2B[]");
                 desc = t(v,
                     "[purple]⚡ THÔNG SỐ NÂNG CẤP MK2B ⚡[]\n"
                     + "[lightgray]Máu cấu trúc:[] [green]9,500 HP[]\n"

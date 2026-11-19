@@ -515,9 +515,9 @@ public final class Lazash {
                     }).size(280f, 40f);
                 } else {
                     String txtA = "";
-                    if (perkA == 1) txtA = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1A\n• Ưu tiên bắn công trình máu giấy\n• Sát thương gốc +50%[]", "[green]✔ ACTIVATED: PERK 1A\n• Targets low-HP structures\n• Base Damage +50%[]");
-                    if (perkA == 2) txtA = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2A\n• Ưu tiên bắn công trình máu trâu\n• Tầm bắn +12%\n• Sát thương gốc & phụ +8%[]", "[green]✔ ACTIVATED: PERK 2A\n• Targets high-HP structures\n• Range +12%\n• Base & Sub Damage +8%[]");
-                    if (perkA == 3) txtA = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3A\n• Ưu tiên bắn Base/Lõi địch\n• Tăng 50% tốc độ bắn[]", "[green]✔ ACTIVATED: PERK 3A\n• Targets enemy Core/Base\n• Fire rate +50%[]");
+                    if (perkA == 1) txtA = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1A\n• Ưu tiên bắn công trình máu giấy\n• Uy lực gốc [green]+50%[][]", "[green]✔ ACTIVATED: PERK 1A\n• Targets low-HP structures\n• Base Damage [green]+50%[][]");
+                    if (perkA == 2) txtA = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2A\n• Ưu tiên bắn công trình máu trâu\n• Tầm bắn [green]+12%[]\n• Uy lực gốc & phụ [green]+8%[][]", "[green]✔ ACTIVATED: PERK 2A\n• Targets high-HP structures\n• Range [green]+12%[]\n• Base & Sub Damage [green]+8%[][]");
+                    if (perkA == 3) txtA = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3A\n• Ưu tiên bắn Base/Lõi địch\n• Tăng [gold]50%[] tốc độ bắn[]", "[green]✔ ACTIVATED: PERK 3A\n• Targets enemy Core/Base\n• Fire rate [green]+50%[][]");
 
                     Cell<Label> txtACell = boxA.add(txtA);
                     txtACell.width(340f).get().setWrap(true);
@@ -570,9 +570,9 @@ public final class Lazash {
                     }).size(280f, 40f);
                 } else {
                     String txtB = "";
-                    if (perkB == 1) txtB = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1B\n• Giảm 30% thời gian bắn nhát chém\n• Sát thương vSlashHitFx +50%[]", "[green]✔ ACTIVATED: PERK 1B\n• Slash delay reduced by 30%\n• Slash Damage +50%[]");
+                    if (perkB == 1) txtB = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1B\n• Giảm [gold]30%[] thời gian bắn nhát chém\n• Sát thương vSlashHitFx [green]+50%[][]", "[green]✔ ACTIVATED: PERK 1B\n• Slash delay reduced by [gold]30%[]\n• Slash Damage [green]+50%[][]");
                     if (perkB == 2) txtB = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2B\n• Bắn đủ 5 nhát chém -> Bắn loạn 100 viên cầu năng lượng[]", "[green]✔ ACTIVATED: PERK 2B\n• After 5 slashes -> Fires 100 energy orbs burst[]");
-                    if (perkB == 3) txtB = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3B\n• Kích thước diện rộng vSlashHitFx +150%\n• Sát thương vSlashHitFx +200%\n• Tốc độ bắn -50%[]", "[green]✔ ACTIVATED: PERK 3B\n• Slash AoE size +150%\n• Slash Damage +200%\n• Fire Rate -50%[]");
+                    if (perkB == 3) txtB = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3B\n• Kích thước diện rộng vSlashHitFx [green]+150%[]\n• Sát thương vSlashHitFx [green]+200%[]\n• Tốc độ bắn [orange]-50%[][]", "[green]✔ ACTIVATED: PERK 3B\n• Slash AoE size [green]+150%[]\n• Slash Damage [green]+200%[]\n• Fire Rate [orange]-50%[][]");
 
                     Cell<Label> txtBCell = boxB.add(txtB);
                     txtBCell.width(340f).get().setWrap(true);

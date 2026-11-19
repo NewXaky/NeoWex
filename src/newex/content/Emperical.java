@@ -606,7 +606,7 @@ public final class Emperical {
             b1D.get().setAlignment(Align.left);
             b1.row();
 
-            b1.button(vi ? "[green]KÍCH HOẠT MK2[]" : "[green]ACTIVATE MK2[]", () -> {
+            b1.button(vi ? "[green]TIẾN HÓA MK2[]" : "[green]ACTIVATE MK2[]", () -> {
                 CoreBuild core = team != null ? team.core() : null;
                 if (core != null &&
                     core.items.get(Items.copper) >= reqEmpericalMK2.copper &&
@@ -646,7 +646,7 @@ public final class Emperical {
             b2D.get().setAlignment(Align.left);
             b2.row();
 
-            b2.button(vi ? "[orange]KÍCH HOẠT MK2B[]" : "[orange]ACTIVATE MK2B[]", () -> {
+            b2.button(vi ? "[orange]TIẾN HÓA MK2B[]" : "[orange]ACTIVATE MK2B[]", () -> {
                 CoreBuild core = team != null ? team.core() : null;
                 if (core != null &&
                     core.items.get(Items.copper) >= reqEmpericalMK2B.copper &&

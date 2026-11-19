@@ -293,7 +293,7 @@ public final class DroneLauncher {
                 ? "[yellow]CORE STORAGE REQUIREMENTS:[]\n[cyan]MK2 Branch (Quantity Focus):[]\n" + common
                     + " • Silicon: " + s + si + "[] / " + MK2_COST[2] + "\n[purple]MK2B Branch (Empowerment Focus):[]\n" + common
                     + " • Titanium: " + tt + ti + "[] / " + MK2B_COST[2]
-                : "[yellow]YÊU CẦU TÀI NGUYÊN KHO LÕI:[]\n[cyan]Nhánh MK2 (Chuyên Số Lượng):[]\n" + common
+                : "[yellow]CỦA CẢI CẦN HIẾN TẾ:[]\n[cyan]Nhánh MK2 (Chuyên Số Lượng):[]\n" + common
                     + " • Silicon: " + s + si + "[] / " + MK2_COST[2] + "\n[purple]Nhánh MK2B (Chuyên Tăng Cường Chi Lực):[]\n" + common
                     + " • Titan: " + tt + ti + "[] / " + MK2B_COST[2];
         }
@@ -342,10 +342,10 @@ public final class DroneLauncher {
 
             Table all = new Table();
             all.add(branch(dialog, isEn, 1, t(isEn, "[cyan]===(MK2 CONFIGURATION)===[]", "[cyan]===(CẤU HÌNH MK2)===[]"), t1,
-                t(isEn, "[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"))).width(340);
+                t(isEn, "[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"))).width(340);
             all.row(); all.add().height(12).row();
             all.add(branch(dialog, isEn, 2, t(isEn, "[purple]===(MK2B CONFIGURATION)===[]", "[purple]===(CẤU HÌNH MK2B)===[]"), t2,
-                t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"))).width(340);
+                t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"))).width(340);
 
             ScrollPane scroll = new ScrollPane(all);
             scroll.setScrollingDisabled(true, false);
@@ -360,8 +360,8 @@ public final class DroneLauncher {
             if (tier == 0) {
                 title += t(isEn, "[yellow](MK1 - Default)[]", "[yellow](MK1 - Mặc định)[]");
                 desc = isEn
-                    ? "[gold]⚡ ORIGINAL STATUS (MK1) ⚡[]\n[lightgray]Turret Health:[] [green]3000 HP[]\n[lightgray]Max Drone Count:[] [yellow]4 Units[]\n[lightgray]Drone Type:[] Combat / Sword / Cargo Drone (50% Sword)"
-                    : "[gold]⚡ TRẠNG THÁI NGUYÊN BẢN (MK1) ⚡[]\n[lightgray]Máu pháo:[] [green]3000 HP[]\n[lightgray]Số lượng Drone tối đa:[] [yellow]4 Units[]\n[lightgray]Loại Drone:[] Combat / Sword / Cargo Drone (50% Sword)";
+                    ? "[gold]⚡ ORIGINAL STATUS (MK1) ⚡[]\n[lightgray]Turret Health:[] [green]3000 HP[]\n[lightgray]Max Drone Count:[] [yellow]4 Units[]\n[lightgray]Drone Type:[] Combat / Sword / Cargo Drone ([gold]50%[] Sword)"
+                    : "[gold]⚡ TRẠNG THÁI NGUYÊN BẢN (MK1) ⚡[]\n[lightgray]Máu pháo:[] [green]3000 HP[]\n[lightgray]Số lượng Drone tối đa:[] [yellow]4 Units[]\n[lightgray]Loại Drone:[] Combat / Sword / Cargo Drone ([gold]50%[] Sword)";
             } else if (tier == 1) {
                 title += t(isEn, "[cyan](MK2 - Quantity)[]", "[cyan](MK2 - Số Lượng)[]");
                 desc = isEn
@@ -370,8 +370,8 @@ public final class DroneLauncher {
             } else {
                 title += t(isEn, "[purple](MK2B - Enhancement)[]", "[purple](MK2B - Cường Hóa)[]");
                 desc = isEn
-                    ? "[purple]⚡ MK2B VARIANT CONFIG ⚡[]\n[lightgray]Turret Health:[] [green]6000 HP[]\n[lightgray]Turret Range:[] [gold]+120%[]\n[lightgray]Drone Count:[] [yellow]4 Units[]\n[lightgray]Drone Health & Armor:[] [green]+100%[]\n[lightgray]Movement Speed:[] [yellow]+20%[]\n[lightgray]Dash & Shooting Damage:[] [red]+100%[]"
-                    : "[purple]⚡ CẤU HÌNH BIẾN THỂ MK2B ⚡[]\n[lightgray]Máu pháo:[] [green]6000 HP[]\n[lightgray]Phạm vi pháo:[] [gold]+120%[]\n[lightgray]Số lượng Drone:[] [yellow]4 Units[]\n[lightgray]Máu & Giáp Drone:[] [green]+100%[]\n[lightgray]Tốc độ di chuyển:[] [yellow]+20%[]\n[lightgray]Sát thương Lướt & Bắn:[] [red]+100%[]";
+                    ? "[purple]⚡ MK2B VARIANT CONFIG ⚡[]\n[lightgray]Turret Health:[] [green]6000 HP[]\n[lightgray]Turret Range:[] [gold]+[gold]120%[][]\n[lightgray]Drone Count:[] [yellow]4 Units[]\n[lightgray]Drone Health & Armor:[] [green]+[gold]100%[][]\n[lightgray]Movement Speed:[] [yellow]+[gold]20%[][]\n[lightgray]Dash & Shooting Damage:[] [red]+[gold]100%[][]"
+                    : "[purple]⚡ CẤU HÌNH BIẾN THỂ MK2B ⚡[]\n[lightgray]Máu pháo:[] [green]6000 HP[]\n[lightgray]Phạm vi pháo:[] [gold]+[gold]120%[][]\n[lightgray]Số lượng Drone:[] [yellow]4 Units[]\n[lightgray]Máu & Giáp Drone:[] [green]+[gold]100%[][]\n[lightgray]Tốc độ di chuyển:[] [yellow]+[gold]20%[][]\n[lightgray]Sát thương Lướt & Bắn:[] [red]+[gold]100%[][]";
             }
             BaseDialog dialog = new BaseDialog(title);
             Table info = new Table();

@@ -407,7 +407,7 @@ public final class Persefer {
             return isEn
                 ? "[yellow]CORE STORAGE REQUIREMENTS:[]\n[cyan]MK2 Branch:[]\n • Thorium: " + col(th, MK2_THORIUM) + "\n • Silicon: " + col(si, MK2_SILICON)
                     + "\n[purple]MK2B Branch:[]\n • Surge Alloy: " + col(su, MK2B_SURGE) + "\n • Silicon: " + col(si, MK2B_SILICON) + "\n • Phase Fabric: " + col(ph, MK2B_PHASE)
-                : "[yellow]YÊU CẦU TÀI NGUYÊN KHO LÕI:[]\n[cyan]Nhánh MK2:[]\n • Thorium: " + col(th, MK2_THORIUM) + "\n • Silicon: " + col(si, MK2_SILICON)
+                : "[yellow]CỦA CẢI CẦN HIẾN TẾ:[]\n[cyan]Nhánh MK2:[]\n • Thorium: " + col(th, MK2_THORIUM) + "\n • Silicon: " + col(si, MK2_SILICON)
                     + "\n[purple]Nhánh MK2B:[]\n • Kim loại Surge: " + col(su, MK2B_SURGE) + "\n • Silicon: " + col(si, MK2B_SILICON) + "\n • Vải Phase: " + col(ph, MK2B_PHASE);
         }
 
@@ -445,18 +445,18 @@ public final class Persefer {
             Table b1 = new Table(); b1.background(Styles.black6); b1.margin(12);
             b1.add(t(isEn, "[cyan]===(MK2 - AA ENHANCEMENT)===[]", "[cyan]===(MK2 - CƯỜNG HÓA PHÒNG KHÔNG)===[]")).row();
             wrap(b1.add(t(isEn,
-                "[white]• Base bullet damage: [green]+50%[]\n• Crit chance: [orange]+15%[] | Crit damage: [yellow]+30%[]\n• Reduce Star bullet convert time to: [gold]10s[]\n• Air damage stack cap: [scarlet]2000%[]",
-                "[white]• Sát thương gốc đạn: [green]+50%[]\n• Tỉ lệ bạo kích: [orange]+15%[] | Sát thương bạo kích: [yellow]+30%[]\n• Giảm thời gian biến đổi đạn Star xuống: [gold]10 giây[]\n• Giới hạn cộng dồn sát thương không quân: [scarlet]2000%[]")), 340);
+                "[white]• Base bullet damage: [green]+[gold]50%[][]\n• Crit chance: [orange]+[gold]15%[][] | Crit damage: [yellow]+[gold]30%[][]\n• Reduce Star bullet convert time to: [gold]10s[]\n• Air damage stack cap: [scarlet]2000%[]",
+                "[white]• Uy lực gốc đạn: [green]+[gold]50%[][]\n• Tỉ lệ bạo kích: [orange]+[gold]15%[][] | Sát thương bạo kích: [yellow]+[gold]30%[][]\n• Giảm thời gian biến đổi đạn Star xuống: [gold]10 giây[]\n• Giới hạn cộng dồn sát thương không quân: [scarlet]2000%[]")), 340);
             b1.row();
-            b1.button(t(isEn, "[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"), () -> applyUpgrade(1, dialog, isEn)).size(180, 38);
+            b1.button(t(isEn, "[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"), () -> applyUpgrade(1, dialog, isEn)).size(180, 38);
 
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
             b2.add(t(isEn, "[purple]===(MK2B - DAMAGE MULTIPLIER)===[]", "[purple]===(MK2B - BỘI PHÁT SÁT THƯƠNG)===[]")).row();
             wrap(b2.add(t(isEn,
-                "[white]• Range & Lifetime: [green]+50%[]\n• Reduce Star bullet convert time to: [gold]10s[]\n• On hit: [gold]1% chance[] to stack buff (lasts 40s):\n  + Gain [orange]+1% Crit Chance[] (Max 100%)\n  + Gain [yellow]+2% Crit Damage[] (Max 200%)",
-                "[white]• Tầm bắn & Thời gian bay của đạn: [green]+50%[]\n• Giảm thời gian biến đổi đạn Star xuống: [gold]10 giây[]\n• Trúng đạn: [gold]1% cơ hội[] tích buff (tồn tại 40s):\n  + Tăng [orange]+1% tỉ lệ bạo kích[] (Tối đa 100%)\n  + Tăng [yellow]+2% sát thương bạo kích[] (Tối đa 200%)")), 340);
+                "[white]• Range & Lifetime: [green]+[gold]50%[][]\n• Reduce Star bullet convert time to: [gold]10s[]\n• On hit: [gold]1% chance[] to stack buff (lasts 40s):\n  + Gain [orange]+[gold]1%[] Crit Chance[] (Max [gold]100%[])\n  + Gain [yellow]+[gold]2%[] Crit Damage[] (Max [gold]200%[])",
+                "[white]• Tầm bắn & Thời gian bay của đạn: [green]+[gold]50%[][]\n• Giảm thời gian biến đổi đạn Star xuống: [gold]10 giây[]\n• Trúng đạn: [gold]1% cơ hội[] tích buff (tồn tại 40s):\n  + Tăng [orange]+[gold]1%[] tỉ lệ bạo kích[] (Tối đa [gold]100%[])\n  + Tăng [yellow]+[gold]2%[] sát thương bạo kích[] (Tối đa [gold]200%[])")), 340);
             b2.row();
-            b2.button(t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"), () -> applyUpgrade(2, dialog, isEn)).size(180, 38);
+            b2.button(t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), () -> applyUpgrade(2, dialog, isEn)).size(180, 38);
 
             branches.add(b1).width(340); branches.row();
             branches.add().height(12).row();
@@ -479,10 +479,10 @@ public final class Persefer {
             String desc = isEn
                 ? "[red]⚡ HALO AA SYSTEM ⚡[]\n[lightgray]Current Crit Chance:[] [orange]" + critRate + "%[]\n[lightgray]Current Crit Damage:[] [yellow]+" + critDmg + "%[]\n[lightgray]Star Ammo Convert Ratio:[] [gold]" + convertPct + "%[]\n\n"
                     + "• Default [scarlet]+150%[] extra damage against air targets.\n• [gold]5% chance[] per hit to add +5% air damage (Current: +" + bonusPct + "%).\n"
-                    + "• Normal fire for 2s, then converts to [gold]Star Ammo[] over the next " + transform + ".\n• [gold]Star Ammo deals +400% Shield Damage & Pierces Shield to deal -99 HP.[]\n"
+                    + "• Normal fire for 2s, then converts to [gold]Star Ammo[] over the next " + transform + ".\n• [gold]Star Ammo deals [green]+400%[] Shield Damage & Pierces Shield to deal -99 HP.[]\n"
                 : "[red]⚡ HỆ THỐNG PHÒNG KHÔNG HALO ⚡[]\n[lightgray]Tỉ lệ bạo kích hiện tại:[] [orange]" + critRate + "%[]\n[lightgray]Sát thương bạo kích hiện tại:[] [yellow]+" + critDmg + "%[]\n[lightgray]Tỉ lệ chuyển đổi đạn Star:[] [gold]" + convertPct + "%[]\n\n"
                     + "• Mặc định tăng [scarlet]+150%[] sát thương lên không quân.\n• [gold]5% cơ hội[] mỗi đạn trúng tăng +5% sát thương không quân (Đã tích: +" + bonusPct + "%).\n"
-                    + "• Bắn 2s đầu, sau đó chuyển đổi thành [gold]Đạn Star[] trong " + transform + " tiếp theo.\n• [gold]Đạn Star gây +400% Sát Thương Khiên & Xuyên Khiên trừ 99 HP.[]\n";
+                    + "• Bắn 2s đầu, sau đó chuyển đổi thành [gold]Đạn Star[] trong " + transform + " tiếp theo.\n• [gold]Đạn Star gây [green]+400%[] Sát Thương Khiên & Xuyên Khiên trừ 99 HP.[]\n";
 
             if (getTier() == 2) {
                 desc += isEn

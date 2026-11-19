@@ -101,16 +101,16 @@ public final class UnitSkillInfo {
         register(new SkillProfile(
             "Honivery",
             () -> Honivery.honivery,
-            "TINH QUANG TRẢM & COMBO CHÉM 8 NHÁT",
+            "TINH QUANG TRẢM · COMBO 8 NHÁT",
             DamageKind.SKILL_ATTACK,
             Color.valueOf("D0C2FF"),
-            "Tinh Quang Trảm: 8.0 giây | Combo 8 nhát: 2.75 giây (1.75 giây tung chiêu + 1 giây hồi)",
+            "Tinh Quang Trảm: [cyan]8.0s[] | Combo 8 nhát: [cyan]2.75s[] (1.75s tung chiêu + 1s hồi)",
             "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại); khi tung nhận Khiên Tinh Quang 5 giây: giảm 72% sát thương nhận vào, phản 70% sát thương về kẻ tấn công (28% +150% nội tại); sau nhát chém tạo Vòng Tinh Quang 5 giây, kẻ địch đứng trong vòng nhận 100% Tấn Công mỗi giây\n"
                 + "Combo 8 nhát: mỗi nhát tăng dần từ 50% đến 120% Tấn Công, nhát cuối chém vòng 360°\n"
                 + "Nhát chém đặc biệt (lốc xoáy phong kiếm ngọc lục bảo): 430% Tấn Công",
             "[Kỹ năng 1 - Tinh Quang Trảm] Tụ năng lượng vào Kiếm Sao 4 cánh và phóng ra sóng kiếm hình quạt 3 tầng xé rách không gian phía trước. Được tính là Đòn Đánh Kỹ Năng.\n"
                 + "[Kỹ năng 2 - Combo] Tung liên tiếp 8 nhát chém song tinh vân, nhát cuối là vòng chém 360°. Trong lúc tung có cơ hội phóng nhát chém đặc biệt: 2% khi bấm, +10% mỗi nhát chém trúng (tổng 12%), và chắc chắn phóng 1 nhát về phía mục tiêu khi hạ gục nó.",
-            "Tinh Hồn Thôn Phệ: Khi dùng Tinh Quang Trảm tiêu diệt mục tiêu, tăng vĩnh viễn +1% sát thương cho kỹ năng này (tối đa 999%), đồng thời cứ mỗi 10.000 HP tối đa của mục tiêu bị hạ gục sẽ cộng thêm +1%. Hạ gục bằng Combo 8 nhát cũng được tích.",
+            "[gold]Tinh Hồn Thôn Phệ[]: mỗi lần Tinh Quang Trảm hạ gục mục tiêu, kỹ năng này vĩnh viễn [green]+1%[] sát thương (tối đa [gold]999%[]). Cứ mỗi [cyan]10.000[] HP tối đa của mục tiêu bị hạ, cộng thêm [green]+1%[]. Hạ gục bằng Combo 8 nhát cũng được tính.",
             () -> "Cộng dồn hiện tại: [accent]+" + Honivery.getPassiveBonusPct() + "%[] / 999%",
             () -> "PC: Tinh Quang Trảm - phím [accent][" + Honivery.getSkillKey().value + "][] | Combo 8 nhát - phím [accent][" + HoniveryPvp.getSkillKey().value + "][] (đổi trong Cài đặt -> Phím kĩ năng)\n"
                 + "Mobile: nút CHÉM = Tinh Quang Trảm | nút COMBO = Combo 8 nhát"
@@ -124,10 +124,10 @@ public final class UnitSkillInfo {
             "THIÊN PHONG KIẾM KHÍ",
             DamageKind.SKILL_ATTACK,
             Color.valueOf("5AB4FF"),
-            "10.0 giây (Giảm 65% nếu chém hụt)",
-            "500% Tấn Công + 5% Máu Tối Đa",
-            "Vận khí tạo lưỡi liềm kiếm khí tầm rộng lướt chậm rồi bứt tốc cực đại, gây sát thương kỹ năng và khắc ấn làm chậm kẻ địch trúng chiêu.",
-            "Thu Kiếm Hồi Khí: Khi nhát chém kiếm khí kết thúc mà chém hụt hoàn toàn mục tiêu, lập tức giảm 65% thời gian hồi chiêu của kỹ năng.",
+            "[cyan]10.0s[] ([green]-65%[] nếu chém hụt)",
+            "[scarlet]500%[] Tấn Công + [green]5%[] Máu Tối Đa",
+            "Vận khí hóa lưỡi liềm kiếm khí tầm rộng, lướt chậm rồi bứt tốc cực đại. Ai trúng chiêu sẽ nhận sát thương kỹ năng và [accent]ấn làm chậm[].",
+            "[gold]Thu Kiếm Hồi Khí[]: chém hụt hoàn toàn thì kiếm khí quay về, hồi chiêu rút ngắn [green]65%[].",
             () -> "Hiệu ứng hồi chiêu khi hụt: [accent]-65% CD[] (còn 3.5 giây)",
             () -> "PC: Nhấn phím [accent][" + ArchuengPvp.getSkillKey().value + "][] (Mở ngắm -> Click hướng -> Tung) | Mobile: Bấm SKILL -> Chạm chọn hướng -> KHÓA -> TUNG"
         ));
@@ -137,16 +137,16 @@ public final class UnitSkillInfo {
         register(new SkillProfile(
             "Zeralion",
             () -> Zeralion.zeralion,
-            "PHÁO VAI 3 NHỊP & PHONG ẤN KHÓA MỤC TIÊU",
+            "PHÁO VAI 3 NHỊP · PHONG ẤN KHÓA MỤC TIÊU",
             DamageKind.BASIC_ATTACK,
             Color.valueOf("FFC933"),
-            "Nội tại: khóa 1.5 giây rồi bắn laser, hồi 8.0 giây",
+            "Nội tại: khóa [cyan]1.5s[] rồi bắn laser, hồi [cyan]8.0s[]",
             "Nhịp 1: 3 viên, mỗi viên 50% Tấn Công\n"
                 + "Nhịp 2: 2 viên, mỗi viên 125% Tấn Công + 10% Máu Hiện Tại\n"
                 + "Nhịp 3: 1 viên, 270% Tấn Công + 30% Máu Hiện Tại (tụ lực gần 1 giây)\n"
                 + "Đạn KHÔNG gây sát thương trực tiếp: nổ gây sát thương phạm vi, bán kính bằng hiệu ứng vụ nổ (khoảng 3.4 / 5.1 / 6.8 ô theo từng nhịp), càng xa tâm nổ sát thương càng giảm (còn 40% ở rìa).",
-            "Hai pháo vai bắn lần lượt chu kỳ 3 nhịp, nhịp sau mạnh hơn nhịp trước. Các viên bắn thẳng hàng nối tiếp nhau, mỗi viên chạm mục tiêu hoặc vật cản sẽ phát nổ vàng kim gây sát thương lan trong vùng. Được tính là Đòn Đánh Thường.",
-            "Phong Ấn Khóa Mục Tiêu: tự khóa mục tiêu gần nhất trong tầm 1.5 giây (người chơi có thể rê chuột để chọn mục tiêu), khóa xong bắn tia laser vàng kim cấm mục tiêu hành động 0.9 giây: không bắn, không di chuyển, không quay, không dùng kỹ năng (pilot vẫn hoạt động). Sau mỗi lần bắn phải hồi 8 giây; thời gian hồi hiện ở góc dưới bên phải màn hình.",
+            "Hai pháo vai bắn luân phiên theo chu kỳ 3 nhịp, nhịp sau dữ hơn nhịp trước. Đạn bay thẳng hàng nối đuôi nhau, chạm mục tiêu hay vật cản là nổ vàng kim lan khắp vùng. Tính là [accent]Đòn Đánh Thường[].",
+            "[gold]Phong Ấn Khóa Mục Tiêu[]: tự khóa kẻ gần nhất trong [cyan]1.5s[] (có thể rê chuột chọn mục tiêu), rồi bắn tia laser vàng kim giam chặt mục tiêu [scarlet]0.9s[]: không bắn, không chạy, không xoay, không dùng kỹ năng (pilot vẫn hoạt động). Sau mỗi phát hồi [cyan]8s[], thời gian hồi hiện ở góc dưới bên phải màn hình.",
             null,
             null
         ));
@@ -211,11 +211,11 @@ public final class UnitSkillInfo {
         Table body = new Table();
         body.top().left();
 
-        addSection(body, "CÔNG THỨC SÁT THƯƠNG", p.formulaText, Color.valueOf("FFE07D"));
-        addSection(body, "CHỦ ĐỘNG — MÔ TẢ KỸ NĂNG", p.activeDesc, p.accent);
+        addSection(body, "SÁT THƯƠNG TÍNH THẾ NÀO", p.formulaText, Color.valueOf("FFE07D"));
+        addSection(body, "TUYỆT KỸ", p.activeDesc, p.accent);
         addSection(body, "NỘI TẠI ĐẶC BIỆT", p.passiveDesc, Color.valueOf("7CE8FF"));
         if (p.keybindHint != null) {
-            addSection(body, "ĐIỀU KHIỂN & PHÍM TẮT", p.keybindHint.get(), Color.lightGray);
+            addSection(body, "RA CHIÊU & PHÍM TẮT", p.keybindHint.get(), Color.lightGray);
         }
 
         ScrollPane pane = new ScrollPane(body, Styles.noBarPane);

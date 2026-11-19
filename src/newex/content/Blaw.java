@@ -321,7 +321,7 @@ public final class Blaw {
             CoreBuild core = team.core();
             if (core == null) return t("[red]Team Core not found![]", "[red]Không tìm thấy Lõi Đội![]");
             int cu = core.items.get(Items.copper), le = core.items.get(Items.lead), ti = core.items.get(Items.titanium);
-            return t("[yellow]CORE VAULT RESOURCE REQUIREMENTS:[]\n", "[yellow]YÊU CẦU TÀI NGUYÊN KHO LÕI:[]\n")
+            return t("[yellow]CORE VAULT RESOURCE REQUIREMENTS:[]\n", "[yellow]CỦA CẢI CẦN HIẾN TẾ:[]\n")
                 + t("[cyan]MK2 Configuration Path[]\n", "[cyan]Nhánh Cấu Hình MK2[]\n")
                 + t(" • Copper: ", " • Đồng: ") + col(cu, REQ_MK2[0]) + cu + "[] / " + REQ_MK2[0] + "\n"
                 + t(" • Lead: ", " • Chì: ") + col(le, REQ_MK2[1]) + le + "[] / " + REQ_MK2[1] + "\n"
@@ -384,7 +384,7 @@ public final class Blaw {
                   "[white]• Tầm bắn: [green]663 px[]\n• Sát thương nổ nòng Hỏa: [green]+50%[]\n• Tốc độ nạp đạn: [green]+20%[]\n"
                     + "• Bạo kích: [green]80% Tỉ lệ | +120% ST Bạo kích[]\n• [orange]Cải Tiến Băng Hỏa:[] Nòng Băng đóng băng và xuyên 3 mục tiêu\n"
                     + "• Nòng Hỏa gây nổ lan 120 DMG\n• Tăng mạnh khả năng khuếch đại sát thương theo HP đối thủ"),
-                t("[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"), REQ_MK2, 1, dialog);
+                t("[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"), REQ_MK2, 1, dialog);
 
             Table b2 = branch("[purple]===(MK2B)===[]",
                 t("[white]• Health: [green]+150%[] (1,425 HP)\n• Range: [orange]309.4 px[]\n• Base Damage: [green]550 DMG[] / bullet\n"
@@ -393,7 +393,7 @@ public final class Blaw {
                   "[white]• Máu cấu trúc: [green]+150%[] (1,425 HP)\n• Tầm bắn: [orange]309.4 px[]\n• Sát thương gốc: [green]550 DMG[] / viên\n"
                     + "• Bạo kích: [green]80% Tỉ lệ | +120% ST Bạo kích[]\n• [orange]Cận Chiến Shotgun:[] Bắn tỏa chùm 20 viên đạn hỗn hợp Băng Hỏa cực đại\n"
                     + "• Tối ưu diệt Boss tầm gần kèm cơ chế Xả-Hồi"),
-                t("[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"), REQ_MK2B, 2, dialog);
+                t("[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"), REQ_MK2B, 2, dialog);
 
             branches.add(b1).width(340).row();
             branches.add().height(12).row();

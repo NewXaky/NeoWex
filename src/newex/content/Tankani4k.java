@@ -353,9 +353,9 @@ public final class Tankani4k {
                     + " [white]• Đạn nổ áp suất tạo vùng sát thương lan rộng tới [pink]150 pixel[].[]";
 
             Table all = new Table();
-            all.add(branch(dialog, isEn, 1, "[cyan]===(MK2)===[]", t1, t(isEn, "[green]ACTIVATE MK2[]", "[green]KÍCH HOẠT MK2[]"))).width(340);
+            all.add(branch(dialog, isEn, 1, "[cyan]===(MK2)===[]", t1, t(isEn, "[green]ACTIVATE MK2[]", "[green]TIẾN HÓA MK2[]"))).width(340);
             all.row(); all.add().height(12).row();
-            all.add(branch(dialog, isEn, 2, "[purple]===(MK2B)===[]", t2, t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]KÍCH HOẠT MK2B[]"))).width(340);
+            all.add(branch(dialog, isEn, 2, "[purple]===(MK2B)===[]", t2, t(isEn, "[orange]ACTIVATE MK2B[]", "[orange]TIẾN HÓA MK2B[]"))).width(340);
 
             ScrollPane scroll = new ScrollPane(all);
             scroll.setScrollingDisabled(true, false);
@@ -374,27 +374,27 @@ public final class Tankani4k {
                 + t(isEn, "[lightgray]Max HP Bonus DMG:[] [green]+", "[lightgray]ST thêm theo Max HP:[] [green]+")
                 + String.format("%.1f", (damageStack / 2) * 0.2f) + "% Max HP[]\n"
                 + (damageStack >= MAX_STACK ? t(isEn,
-                    "[cyan]⚡ Max damage reach: Triggers 40% armor pierce & Armor reduction (armorMultiplier = 1.5)![]\n",
-                    "[cyan]⚡ Đạt mức tối đa Sát thương: Kích hoạt đạn xuyên giáp 40% & Giảm hiệu quả giáp mục tiêu (armorMultiplier = 1.5)![]\n") : "");
+                    "[cyan]⚡ Max damage reach: Triggers [gold]40%[] armor pierce & Armor reduction (armorMultiplier = 1.5)![]\n",
+                    "[cyan]⚡ Đạt mức tối đa Sát thương: Kích hoạt đạn xuyên giáp [gold]40%[] & Giảm hiệu quả giáp mục tiêu (armorMultiplier = 1.5)![]\n") : "");
 
             String bd = t(isEn, " Damage[] (Base: ", " Sát thương[] (Gốc: ");
             String desc;
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
                 desc = t(isEn, "[gold]⚡ UNUPGRADED BASE STATS (MK1) ⚡[]\n[lightgray]Turret Health:[] [green]3913 HP[]\n[lightgray]Target Type:[] Ground & Air\n[lightgray]Single Target Damage:[] [red]",
-                    "[gold]⚡ THÔNG SỐ GỐC CHƯA NÂNG CẤP (MK1) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]3913 HP[]\n[lightgray]Trạng thái mục tiêu:[] Đất & Không\n[lightgray]Sát thương mục tiêu đơn:[] [red]")
+                    "[gold]⚡ THÔNG SỐ GỐC CHƯA NÂNG CẤP (MK1) ⚡[]\n[lightgray]Thân thép:[] [green]3913 HP[]\n[lightgray]Trạng thái mục tiêu:[] Đất & Không\n[lightgray]Sát thương mục tiêu đơn:[] [red]")
                     + getModifiedDamage(DMG) + bd + DMG + ")\n" + stack;
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
                 desc = t(isEn, "[cyan]⚡ AREA DAMAGE CONFIG (MK2) ⚡[]\n[lightgray]Turret Health:[] [green]5089 HP[]\n[lightgray]Splash Area:[] [orange]50 Pixels[]\n[lightgray]Direct Damage:[] [red]",
-                    "[cyan]⚡ CẤU HÌNH ĐẠN DIỆN RỘNG (MK2) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]5089 HP[]\n[lightgray]Vùng nổ lan (Splash):[] [orange]50 Pixel[]\n[lightgray]Sát thương trực diện:[] [red]")
+                    "[cyan]⚡ CẤU HÌNH ĐẠN DIỆN RỘNG (MK2) ⚡[]\n[lightgray]Thân thép:[] [green]5089 HP[]\n[lightgray]Vùng nổ lan (Splash):[] [orange]50 Pixel[]\n[lightgray]Sát thương trực diện:[] [red]")
                     + getModifiedDamage(DMG) + bd + DMG + ")\n"
                     + t(isEn, "[lightgray]Splash Damage:[] [yellow]", "[lightgray]Sát thương nổ lan:[] [yellow]")
                     + getModifiedDamage(SPLASH_MK2) + bd + SPLASH_MK2 + ")\n" + stack;
             } else {
                 title += "[purple](MK2B)[]";
-                desc = t(isEn, "[purple]⚡ ENHANCED LONG RANGE ARTILLERY CONFIG (MK2B) ⚡[]\n[lightgray]Turret Health:[] [green]6575 HP[]\n[lightgray]Range:[] [green]Double Base Range (x2 Range)[]\n[lightgray]Attack Speed:[] [red]40% Slower[]\n[lightgray]Target Type:[] Ground & Air\n[lightgray]Pressure Splash Area:[] [pink]150 Pixels[]\n[lightgray]Splash Damage (-20% Base):[] [orange]",
-                    "[purple]⚡ CẤU HÌNH PHÁO TẦM XA CƯỜNG HÓA (MK2B) ⚡[]\n[lightgray]Máu tháp pháo:[] [green]6575 HP[]\n[lightgray]Tầm bắn:[] [green]Gấp đôi tầm bắn gốc (x2 Range)[]\n[lightgray]Tốc độ bắn:[] [red]Chậm hơn 40%[]\n[lightgray]Trạng thái mục tiêu:[] Đất & Không\n[lightgray]Vùng nổ lan áp suất:[] [pink]150 Pixel[]\n[lightgray]Sát thương nổ lan (Đã giảm 20% gốc):[] [orange]")
+                desc = t(isEn, "[purple]⚡ ENHANCED LONG RANGE ARTILLERY CONFIG (MK2B) ⚡[]\n[lightgray]Turret Health:[] [green]6575 HP[]\n[lightgray]Range:[] [green]Double Base Range (x2 Range)[]\n[lightgray]Attack Speed:[] [red]40% Slower[]\n[lightgray]Target Type:[] Ground & Air\n[lightgray]Pressure Splash Area:[] [pink]150 Pixels[]\n[lightgray]Splash Damage ([orange]-20%[] Base):[] [orange]",
+                    "[purple]⚡ CẤU HÌNH PHÁO TẦM XA CƯỜNG HÓA (MK2B) ⚡[]\n[lightgray]Thân thép:[] [green]6575 HP[]\n[lightgray]Tầm vươn:[] [green]Gấp đôi tầm bắn gốc (x2 Range)[]\n[lightgray]Tốc độ bắn:[] [red]Chậm hơn [gold]40%[][]\n[lightgray]Trạng thái mục tiêu:[] Đất & Không\n[lightgray]Vùng nổ lan áp suất:[] [pink]150 Pixel[]\n[lightgray]Sát thương nổ lan (Đã giảm [gold]20%[] gốc):[] [orange]")
                     + getModifiedDamage(SPLASH_MK2B) + bd + SPLASH_MK2B + ")\n" + stack;
             }
 

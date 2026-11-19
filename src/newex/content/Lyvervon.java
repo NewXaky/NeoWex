@@ -404,7 +404,7 @@ public final class Lyvervon {
                 b1D.width(340f).get().setWrap(true);
                 b1D.get().setAlignment(Align.left);
                 b1.row();
-                b1.button(en ? "[green]ACTIVATE MK2[]" : "[green]KÍCH HOẠT MK2[]", () -> {
+                b1.button(en ? "[green]ACTIVATE MK2[]" : "[green]TIẾN HÓA MK2[]", () -> {
                     CoreBuild core = team.core();
                     if (core != null && core.items.get(Items.copper) >= reqMK2.copper && core.items.get(Items.silicon) >= reqMK2.silicon) {
                         NexNet.take(core, Items.copper, reqMK2.copper);
@@ -415,7 +415,7 @@ public final class Lyvervon {
                         dialog.hide();
                         deselect();
                     } else {
-                        Vars.ui.showInfo(en ? "[red]Not enough resources for MK2![]" : "[red]Không đủ tài nguyên cho nhánh MK2![]");
+                        Vars.ui.showInfo(en ? "[red]Not enough resources for MK2![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]");
                     }
                 }).size(180f, 38f);
 
@@ -436,7 +436,7 @@ public final class Lyvervon {
                 b2D.width(340f).get().setWrap(true);
                 b2D.get().setAlignment(Align.left);
                 b2.row();
-                b2.button(en ? "[orange]ACTIVATE MK2B[]" : "[orange]KÍCH HOẠT MK2B[]", () -> {
+                b2.button(en ? "[orange]ACTIVATE MK2B[]" : "[orange]TIẾN HÓA MK2B[]", () -> {
                     CoreBuild core = team.core();
                     if (core != null && core.items.get(Items.copper) >= reqMK3.copper && core.items.get(Items.lead) >= reqMK3.lead) {
                         NexNet.take(core, Items.copper, reqMK3.copper);
@@ -447,7 +447,7 @@ public final class Lyvervon {
                         dialog.hide();
                         deselect();
                     } else {
-                        Vars.ui.showInfo(en ? "[red]Not enough resources for MK2B![]" : "[red]Không đủ tài nguyên cho nhánh MK2B![]");
+                        Vars.ui.showInfo(en ? "[red]Not enough resources for MK2B![]" : "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]");
                     }
                 }).size(180f, 38f);
 

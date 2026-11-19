@@ -462,13 +462,13 @@ public final class Maxitoner {
             int perkA = this.perkA;
             String txtA = "";
                 if (isEn()) {
-                    if (perkA == 1) txtA = "[green]✔ ACTIVATED: PERK 1A\n• Range +50% (525px)\n• Nitoui explosion DMG +150%[]";
-                    if (perkA == 2) txtA = "[green]✔ ACTIVATED: PERK 2A\n• Fire rate +80%\n• Nitoui explosion spreads 7 stacks to nearby tankiest enemy[]";
-                    if (perkA == 3) txtA = "[green]✔ ACTIVATED: PERK 3A\n• Range +20%, Fire rate +20%, Explosion DMG +20%\n• Nitoui explosion shoots 9 extra lasers (50 Dmg)[]";
+                    if (perkA == 1) txtA = "[green]✔ ACTIVATED: PERK 1A\n• Range [green]+50%[] (525px)\n• Nitoui explosion DMG [green]+150%[][]";
+                    if (perkA == 2) txtA = "[green]✔ ACTIVATED: PERK 2A\n• Fire rate [green]+80%[]\n• Nitoui explosion spreads 7 stacks to nearby tankiest enemy[]";
+                    if (perkA == 3) txtA = "[green]✔ ACTIVATED: PERK 3A\n• Range [green]+20%[], Fire rate [green]+20%[], Explosion DMG [green]+20%[]\n• Nitoui explosion shoots 9 extra lasers (50 Dmg)[]";
                 } else {
-                    if (perkA == 1) txtA = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1A\n• Tầm bắn +50% (525px)\n• Sát thương nổ Nitoui +150%[]";
-                    if (perkA == 2) txtA = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2A\n• Tốc độ bắn +80%\n• Vụ nổ Nitoui lây 7 tầng cho kẻ địch trâu nhất gần đó[]";
-                    if (perkA == 3) txtA = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3A\n• Tầm bắn +20%, Tốc bắn +20%, Dmg nổ +20%\n• Vụ nổ Nitoui phóng thêm 9 tia laze (50 Dmg)[]";
+                    if (perkA == 1) txtA = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1A\n• Tầm bắn [green]+50%[] (525px)\n• Sát thương nổ Nitoui [green]+150%[][]";
+                    if (perkA == 2) txtA = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2A\n• Tốc độ bắn [green]+80%[]\n• Vụ nổ Nitoui lây 7 tầng cho kẻ địch trâu nhất gần đó[]";
+                    if (perkA == 3) txtA = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3A\n• Tầm bắn [green]+20%[], Tốc bắn [green]+20%[], Dmg nổ [green]+20%[]\n• Vụ nổ Nitoui phóng thêm 9 tia laze (50 Dmg)[]";
                 }
             String descA = isEn() ?
                     "Activate random upgrade to get 1 of 3 Perks A:\n" +
@@ -490,13 +490,13 @@ public final class Maxitoner {
             int perkB = this.perkB;
             String txtB = "";
                 if (isEn()) {
-                    if (perkB == 1) txtB = "[green]✔ ACTIVATED: PERK 1B\n• Fire rate +120%, HP +500% (1800 HP), Range -20%\n• Locks target on highest HP unit[]";
-                    if (perkB == 2) txtB = "[green]✔ ACTIVATED: PERK 2B\n• Range +260% (1260px), Fire rate -50%\n• Bullet hit instantly applies +3 Nitoui stacks[]";
-                    if (perkB == 3) txtB = "[green]✔ ACTIVATED: PERK 3B\n• Base DMG +2400% (250 Dmg), Shoots +2 extra bullets\n• HP -50% (150 HP), Reduces Nitoui explosion threshold to 7 stacks[]";
+                    if (perkB == 1) txtB = "[green]✔ ACTIVATED: PERK 1B\n• Fire rate [green]+120%[], HP [green]+500%[] (1800 HP), Range [orange]-20%[]\n• Locks target on highest HP unit[]";
+                    if (perkB == 2) txtB = "[green]✔ ACTIVATED: PERK 2B\n• Range [green]+260%[] (1260px), Fire rate [orange]-50%[]\n• Bullet hit instantly applies +3 Nitoui stacks[]";
+                    if (perkB == 3) txtB = "[green]✔ ACTIVATED: PERK 3B\n• Base DMG [green]+2400%[] (250 Dmg), Shoots +2 extra bullets\n• HP [orange]-50%[] (150 HP), Reduces Nitoui explosion threshold to 7 stacks[]";
                 } else {
-                    if (perkB == 1) txtB = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1B\n• Tốc bắn +120%, Máu +500% (1800 HP), Tầm bắn -20%\n• Khóa mục tiêu nhiều máu nhất[]";
-                    if (perkB == 2) txtB = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2B\n• Tầm bắn +260% (1260px), Tốc bắn -50%\n• Đạn trúng mục tiêu gắn ngay +3 tầng Nitoui[]";
-                    if (perkB == 3) txtB = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3B\n• Sát thương gốc +2400% (250 Dmg), Bắn +2 đạn phụ\n• Máu -50% (150 HP), Giảm mốc nổ Nitoui xuống 7 tầng[]";
+                    if (perkB == 1) txtB = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1B\n• Tốc bắn [green]+120%[], Máu [green]+500%[] (1800 HP), Tầm bắn [orange]-20%[]\n• Khóa mục tiêu nhiều máu nhất[]";
+                    if (perkB == 2) txtB = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2B\n• Tầm bắn [green]+260%[] (1260px), Tốc bắn [orange]-50%[]\n• Đạn trúng mục tiêu gắn ngay +3 tầng Nitoui[]";
+                    if (perkB == 3) txtB = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3B\n• Uy lực gốc [green]+2400%[] (250 Dmg), Bắn +2 đạn phụ\n• Máu [orange]-50%[] (150 HP), Giảm mốc nổ Nitoui xuống 7 tầng[]";
                 }
             String descB = isEn() ?
                     "Activate random upgrade to get 1 of 3 Perks B:\n" +
@@ -519,12 +519,12 @@ public final class Maxitoner {
             String txtC = "";
                 if (isEn()) {
                     if (perkC == 1) txtC = "[green]✔ ACTIVATED: PERK 1C\n• Shoots +5 extra bullets\n• Auto-fires 3 extra sub-bullets every 1 second[]";
-                    if (perkC == 2) txtC = "[green]✔ ACTIVATED: PERK 2C\n• Nitoui explosion radius +100% (200px)\n• Nitoui explosion spreads 2 stacks to enemies in radius[]";
-                    if (perkC == 3) txtC = "[green]✔ ACTIVATED: PERK 3C\n• Base bullet +500% Damage (60 Dmg), Pierces 20 targets, Homing\n• Hits cause 500 Dmg explosion (100px radius)[]";
+                    if (perkC == 2) txtC = "[green]✔ ACTIVATED: PERK 2C\n• Nitoui explosion radius [green]+100%[] (200px)\n• Nitoui explosion spreads 2 stacks to enemies in radius[]";
+                    if (perkC == 3) txtC = "[green]✔ ACTIVATED: PERK 3C\n• Base bullet [green]+500%[] Damage (60 Dmg), Pierces 20 targets, Homing\n• Hits cause 500 Dmg explosion (100px radius)[]";
                 } else {
                     if (perkC == 1) txtC = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1C\n• Bắn thêm +5 đạn phụ\n• Mỗi 1 giây tự động xả thêm 3 viên đạn phụ[]";
-                    if (perkC == 2) txtC = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2C\n• Phạm vi nổ Nitoui +100% (200px)\n• Nổ Nitoui lây ngay 2 tầng cho kẻ địch trong phạm vi[]";
-                    if (perkC == 3) txtC = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3C\n• Đạn gốc +500% Sát thương (60 Dmg), Xuyên 20 mục tiêu, Truy đuổi\n• Đạn trúng mục tiêu gây nổ 500 Dmg (Bán kính 100px)[]";
+                    if (perkC == 2) txtC = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2C\n• Phạm vi nổ Nitoui [green]+100%[] (200px)\n• Nổ Nitoui lây ngay 2 tầng cho kẻ địch trong phạm vi[]";
+                    if (perkC == 3) txtC = "[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3C\n• Đạn gốc [green]+500%[] Sát thương (60 Dmg), Xuyên 20 mục tiêu, Truy đuổi\n• Đạn trúng mục tiêu gây nổ 500 Dmg (Bán kính 100px)[]";
                 }
             String descC = isEn() ?
                     "Activate random upgrade to get 1 of 3 Perks C:\n" +
@@ -566,26 +566,26 @@ public final class Maxitoner {
             if (perkA > 0) {
                 descStr += isEn() ? "\n\n[yellow]★ ACTIVATED PERK A ★[]" : "\n\n[yellow]★ ĐÃ KÍCH HOẠT PHÚC LỢI A ★[]";
                 if (isEn()) {
-                    if (perkA == 1) descStr += "\n[green]• Perk 1A: Range +50% (525px), Nitoui explosion DMG +150%.[]";
-                    if (perkA == 2) descStr += "\n[green]• Perk 2A: Fire rate +80%, Nitoui explosion spreads 7 stacks to tankiest enemy.[]";
-                    if (perkA == 3) descStr += "\n[green]• Perk 3A: Range +20%, Fire rate +20%, Explosion DMG +20%, Shoots 9 lasers on explosion.[]";
+                    if (perkA == 1) descStr += "\n[green]• Perk 1A: Range [green]+50%[] (525px), Nitoui explosion DMG [green]+150%[].[]";
+                    if (perkA == 2) descStr += "\n[green]• Perk 2A: Fire rate [green]+80%[], Nitoui explosion spreads 7 stacks to tankiest enemy.[]";
+                    if (perkA == 3) descStr += "\n[green]• Perk 3A: Range [green]+20%[], Fire rate [green]+20%[], Explosion DMG [green]+20%[], Shoots 9 lasers on explosion.[]";
                 } else {
-                    if (perkA == 1) descStr += "\n[green]• Phúc lợi 1A: Tầm bắn +50% (525px), Dmg nổ Nitoui +150%.[]";
-                    if (perkA == 2) descStr += "\n[green]• Phúc lợi 2A: Tốc bắn +80%, Nổ Nitoui ngẫu nhiên lây 7 tầng cho kẻ địch trâu nhất.[]";
-                    if (perkA == 3) descStr += "\n[green]• Phúc lợi 3A: Tầm bắn +20%, Tốc bắn +20%, Dmg nổ +20%, Nổ Nitoui bắn 9 tia laze.[]";
+                    if (perkA == 1) descStr += "\n[green]• Phúc lợi 1A: Tầm bắn [green]+50%[] (525px), Dmg nổ Nitoui [green]+150%[].[]";
+                    if (perkA == 2) descStr += "\n[green]• Phúc lợi 2A: Tốc bắn [green]+80%[], Nổ Nitoui ngẫu nhiên lây 7 tầng cho kẻ địch trâu nhất.[]";
+                    if (perkA == 3) descStr += "\n[green]• Phúc lợi 3A: Tầm bắn [green]+20%[], Tốc bắn [green]+20%[], Dmg nổ [green]+20%[], Nổ Nitoui bắn 9 tia laze.[]";
                 }
             }
 
             if (perkB > 0) {
                 descStr += isEn() ? "\n\n[cyan]★ ACTIVATED PERK B ★[]" : "\n\n[cyan]★ ĐÃ KÍCH HOẠT PHÚC LỢI B ★[]";
                 if (isEn()) {
-                    if (perkB == 1) descStr += "\n[green]• Perk 1B: Fire rate +120%, HP +500% (1800 HP), Range -20%, Targets highest HP enemy.[]";
-                    if (perkB == 2) descStr += "\n[green]• Perk 2B: Range +260% (1260px), Fire rate -50%, Hit adds +3 Nitoui stacks.[]";
-                    if (perkB == 3) descStr += "\n[green]• Perk 3B: Base DMG +2400%, Shoots +2 extra bullets, HP -50%, Explosion threshold reduced to 7 stacks.[]";
+                    if (perkB == 1) descStr += "\n[green]• Perk 1B: Fire rate [green]+120%[], HP [green]+500%[] (1800 HP), Range [orange]-20%[], Targets highest HP enemy.[]";
+                    if (perkB == 2) descStr += "\n[green]• Perk 2B: Range [green]+260%[] (1260px), Fire rate [orange]-50%[], Hit adds +3 Nitoui stacks.[]";
+                    if (perkB == 3) descStr += "\n[green]• Perk 3B: Base DMG [green]+2400%[], Shoots +2 extra bullets, HP [orange]-50%[], Explosion threshold reduced to 7 stacks.[]";
                 } else {
-                    if (perkB == 1) descStr += "\n[green]• Phúc lợi 1B: Tốc bắn +120%, Máu +500% (1800 HP), Tầm bắn -20%, Nhắm địch trâu nhất.[]";
-                    if (perkB == 2) descStr += "\n[green]• Phúc lợi 2B: Tầm bắn +260% (1260px), Tốc bắn -50%, Bắn trúng +3 tầng Nitoui.[]";
-                    if (perkB == 3) descStr += "\n[green]• Phúc lợi 3B: Sát thương gốc +2400%, Bắn thêm 2 đạn, Máu -50%, Mốc nổ giảm còn 7 tầng.[]";
+                    if (perkB == 1) descStr += "\n[green]• Phúc lợi 1B: Tốc bắn [green]+120%[], Máu [green]+500%[] (1800 HP), Tầm bắn [orange]-20%[], Nhắm địch trâu nhất.[]";
+                    if (perkB == 2) descStr += "\n[green]• Phúc lợi 2B: Tầm bắn [green]+260%[] (1260px), Tốc bắn [orange]-50%[], Bắn trúng +3 tầng Nitoui.[]";
+                    if (perkB == 3) descStr += "\n[green]• Phúc lợi 3B: Uy lực gốc [green]+2400%[], Bắn thêm 2 đạn, Máu [orange]-50%[], Mốc nổ giảm còn 7 tầng.[]";
                 }
             }
 
@@ -593,12 +593,12 @@ public final class Maxitoner {
                 descStr += isEn() ? "\n\n[purple]★ ACTIVATED PERK C ★[]" : "\n\n[purple]★ ĐÃ KÍCH HOẠT PHÚC LỢI C ★[]";
                 if (isEn()) {
                     if (perkC == 1) descStr += "\n[green]• Perk 1C: Shoots +5 extra bullets, auto-fires 3 extra sub-bullets every 1s.[]";
-                    if (perkC == 2) descStr += "\n[green]• Perk 2C: Nitoui explosion radius +100% (200px), spreads 2 stacks to surrounding enemies.[]";
-                    if (perkC == 3) descStr += "\n[green]• Perk 3C: Base bullet +500% DMG (60 Dmg), Pierces 20 targets, Homing, 500 DMG explosion on hit.[]";
+                    if (perkC == 2) descStr += "\n[green]• Perk 2C: Nitoui explosion radius [green]+100%[] (200px), spreads 2 stacks to surrounding enemies.[]";
+                    if (perkC == 3) descStr += "\n[green]• Perk 3C: Base bullet [green]+500%[] DMG (60 Dmg), Pierces 20 targets, Homing, 500 DMG explosion on hit.[]";
                 } else {
                     if (perkC == 1) descStr += "\n[green]• Phúc lợi 1C: Bắn thêm +5 đạn, mỗi 1s tự bắn thêm 3 đạn phụ.[]";
-                    if (perkC == 2) descStr += "\n[green]• Phúc lợi 2C: Phạm vi nổ Nitoui +100% (200px), lây 2 tầng cho kẻ địch xung quanh.[]";
-                    if (perkC == 3) descStr += "\n[green]• Phúc lợi 3C: Đạn gốc +500% Dmg (60 Dmg), Xuyên 20 mục tiêu, Đuổi địch, Nổ 500 Dmg khi trúng.[]";
+                    if (perkC == 2) descStr += "\n[green]• Phúc lợi 2C: Phạm vi nổ Nitoui [green]+100%[] (200px), lây 2 tầng cho kẻ địch xung quanh.[]";
+                    if (perkC == 3) descStr += "\n[green]• Phúc lợi 3C: Đạn gốc [green]+500%[] Dmg (60 Dmg), Xuyên 20 mục tiêu, Đuổi địch, Nổ 500 Dmg khi trúng.[]";
                 }
             }
             BaseDialog dialog = new BaseDialog(title);

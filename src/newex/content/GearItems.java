@@ -56,12 +56,9 @@ final class GearItems {
     static final int S_WEAPON = 0, S_HELM = 1, S_ARMOR = 2, S_BOOTS = 3, S_RING = 4, S_CHARM = 5;
     static final int R_COMMON = 0, R_RARE = 1, R_EPIC = 2, R_LEGEND = 3, R_MYTHIC = 4, RARITIES = 5, R_SHOP = 5;
     static final int K_TP = 1, K_LUCK = 2, K_HASTE = 3;                 // loại vật phẩm cửa hàng: dịch chuyển / may mắn / tăng tốc (tiêu hao)
-    static final int SK_MOVE_ATK = 1, SK_KILL_SPD = 2, SK_KILL_SKILL_ATK = 3, SK_MIN_PT = 4, SK_DEATH_CDR = 5;
     static final int PORT_TICKS = 180, PORT_CD = 1800, HASTE_TICKS = 600;
-    static final int MOVE_ATK_STEP = 300, MOVE_ATK_MAX = 15, KILL_SPD_TICKS = 360, SKILL_ATK_MAX = 500;
-    static final float MIN_PT_TICKS = 3600f;
     static final float DROP_BONUS = 0.10f;                              // +10% (điểm phần trăm) tỉ lệ rơi mỗi Bùa May Mắn
-    static StatusEffect hasteStatus, killSpeedStatus;                   // tạo trong NewModePvp.loadStatuses()
+    static StatusEffect hasteStatus;                                    // tạo trong NewModePvp.loadStatuses()
 
     static final String[] SLOT_VI = {"Vũ khí", "Mũ", "Giáp", "Giày", "Nhẫn", "Bùa"};
     static final String[] SLOT_EN = {"Weapon", "Helm", "Armor", "Boots", "Ring", "Charm"};
@@ -77,7 +74,7 @@ final class GearItems {
     static final class Def {
         final int id, slot, rarity; final String vi, en; final String[] icons; final int[] mods; // mods: cặp {chỉ số, cấp}
         TextureRegion reg;
-        int kind, fixed, skill; String dvi, den, svi, sen;   // kind>0: vật phẩm cửa hàng; skill>0: kỹ năng nội tại khi lắp
+        int kind, fixed; String dvi, den;   // kind>0: vật phẩm cửa hàng; fixed = giá cố định; dvi/den = mô tả thay cho chỉ số
         Def(int id, int slot, int rarity, String vi, String en, String icons, int... mods) {
             this.id = id; this.slot = slot; this.rarity = rarity; this.vi = vi; this.en = en; this.icons = icons.split(","); this.mods = mods;
         }
@@ -85,7 +82,7 @@ final class GearItems {
 
     // chỉ số: 0 Máu, 1 Giáp, 2 Tấn công, 3 Tốc độ di chuyển, 4 Tốc độ bắn, 5 Tỉ lệ bạo kích, 6 ST bạo kích, 7 Xuyên giáp,
     // 8 Hồi máu, 9 ST % máu tối đa, 10 ST theo giáp, 11 Đẩy lùi, 12 Tầm bắn lính, 13 ST quái spawn ngẫu nhiên, 14 Giảm hồi máu
-    static final Def[] DEFS = new Def[64];
+    static final Def[] DEFS = new Def[48];
     static int n = 0;
     static void d(int slot, int rarity, String vi, String en, String icons, int... mods) { DEFS[n] = new Def(n, slot, rarity, vi, en, icons, mods); n++; }
     static {
@@ -144,31 +141,10 @@ final class GearItems {
             "Nội tại (cần lắp): +10% tỉ lệ kích hoạt rơi vật phẩm từ quái đợt.", "Passive (equip): +10% item drop chance from wave monsters.");
         shop("Nước Tăng Tốc", "Haste Potion", "pyratite,overdrive-projector", K_HASTE, 1,
             "Tiêu hao: +150% tốc độ di chuyển trong 10s. Nút ở góc dưới bên phải khi có trong túi.", "Consumable: +150% move speed for 10s. Button at bottom-right while in bag.");
-        // ---- Vật phẩm kỹ năng chế độ Chiến tranh (giữ ID sau 44 để tương thích dữ liệu lưu cũ)
-        sk(S_BOOTS, R_EPIC, "Giày Xung Phong", "Charge Boots", "plastanium-conveyor,titanium-conveyor", SK_MOVE_ATK,
-            "Kỹ năng: Khi di chuyển, mỗi 5s tăng 1% tấn công (tối đa 15%).",
-            "Skill: While moving, +1% attack every 5s (max 15%).", 3, 5, 2, 3);
-        sk(S_WEAPON, R_EPIC, "Song Đao Truy Kích", "Pursuit Blades", "swordoder,arc", SK_KILL_SPD,
-            "Kỹ năng: Khi tiêu diệt mục tiêu, nhận tăng tốc độ 50% trong 6s.",
-            "Skill: On kill, gain +50% speed for 6s.", 2, 6, 4, 4);
-        sk(S_RING, R_MYTHIC, "Nhẫn Huyết Chú", "Bloodspell Ring", "starlight,surge-alloy", SK_KILL_SKILL_ATK,
-            "Kỹ năng: Khi tiêu diệt mục tiêu, tăng 1% tấn công cho các kỹ năng của unit player (tối đa 500%).",
-            "Skill: On kill, +1% attack for player unit skills (max 500%).", 2, 6, 6, 6, 7, 4);
-        sk(S_CHARM, R_LEGEND, "Bùa Tài Lộc", "Fortune Charm", "surge-alloy,phase-fabric", SK_MIN_PT,
-            "Kỹ năng: Mỗi phút nhận 1 điểm.",
-            "Skill: Gain 1 point every minute.", 8, 3, 12, 3);
-        sk(S_ARMOR, R_LEGEND, "Giáp Phục Hận", "Vengeance Armor", "surge-wall-large,thorium-wall-large", SK_DEATH_CDR,
-            "Kỹ năng: Khi bị kẻ địch là player tiêu diệt, giảm 50% thời gian hồi sinh và hồi chiêu kỹ năng pilot.",
-            "Skill: When killed by an enemy player, -50% respawn time and pilot skill cooldown.", 0, 5, 1, 6);
     }
     static void shop(String vi, String en, String icons, int kind, int price, String dvi, String den) {
         Def x = new Def(n, S_CHARM, R_SHOP, vi, en, icons);
         x.kind = kind; x.fixed = price; x.dvi = dvi; x.den = den;
-        DEFS[n] = x; n++;
-    }
-    static void sk(int slot, int rarity, String vi, String en, String icons, int skill, String svi, String sen, int... mods) {
-        Def x = new Def(n, slot, rarity, vi, en, icons, mods);
-        x.skill = skill; x.svi = svi; x.sen = sen;
         DEFS[n] = x; n++;
     }
 
@@ -236,39 +212,15 @@ final class GearItems {
         st.gKey = key;
         Arrays.fill(st.gDelta, 0);
         boolean any = false;
-        int mask = 0;
         for (int s = 0, ns = slots(); s < ns; s++) {
             Def d = def(st.gEq[s]);
             if (d == null) continue;
-            if (d.skill > 0) mask |= (1 << d.skill);
             for (int i = 0; i + 1 < d.mods.length; i += 2) {
                 if (d.mods[i] >= 0 && d.mods[i] < st.gDelta.length) { st.gDelta[d.mods[i]] += d.mods[i + 1]; any = true; }
             }
         }
         st.gAny = any;
-        st.gSkills = mask;
     }
-    /** Kiểm tra người chơi có đang lắp vật phẩm mang kỹ năng sk không (chỉ ở chế độ Chiến tranh). */
-    static boolean hasSkill(NewModePvp.St st, int sk) {
-        if (st == null || !war()) return false;
-        refreshDelta(st);
-        return (st.gSkills & (1 << sk)) != 0;
-    }
-    /** Hệ số tấn công cộng thêm từ kỹ năng di chuyển (+1% mỗi 5s, tối đa +15%). */
-    static float moveAtkMul(NewModePvp.St st) {
-        if (st == null || st.gMoveAtk <= 0 || !hasSkill(st, SK_MOVE_ATK)) return 1f;
-        return 1f + Math.min(MOVE_ATK_MAX, st.gMoveAtk) / 100f;
-    }
-    /** Hệ số tấn công cộng thêm cho kỹ năng của unit player (+1% mỗi lần tiêu diệt, tối đa +500%). */
-    static float skillAtkMul(Unit owner) {
-        if (owner == null || !war()) return 1f;
-        Player op = NewModePvp.ownerPl(owner);
-        if (op == null) return 1f;
-        NewModePvp.St st = NewModePvp.byId.get(op.id);
-        if (st == null || st.gSkillAtk <= 0 || !hasSkill(st, SK_KILL_SKILL_ATK)) return 1f;
-        return 1f + Math.min(SKILL_ATK_MAX, st.gSkillAtk) / 100f;
-    }
-    static boolean hasDeathCdr(NewModePvp.St st) { return hasSkill(st, SK_DEATH_CDR); }
     /** Mảng cấp cộng thêm từ vật phẩm; null nếu không ở chế độ chiến tranh hoặc chưa lắp gì. */
     static int[] delta(NewModePvp.St st) {
         if (st == null || !war()) return null;
@@ -295,11 +247,10 @@ final class GearItems {
         for (int i = 0; i < st.gInv.size(); i++) { if (i > 0) sb.append(','); sb.append(st.gInv.get(i)); }
         sb.append(';');
         for (int i = 0; i < MAXSLOTS; i++) { if (i > 0) sb.append(','); sb.append(st.gEq[i]); }
-        if (st.gMoveAtk > 0 || st.gSkillAtk > 0) sb.append(';').append(st.gMoveAtk).append(',').append(st.gSkillAtk);
         return sb.toString();
     }
     static void dec(NewModePvp.St st, String s) {
-        st.gInv.clear(); Arrays.fill(st.gEq, -1); st.gKey = Integer.MIN_VALUE; st.gSkills = 0; st.gMoveAtk = 0; st.gSkillAtk = 0;
+        st.gInv.clear(); Arrays.fill(st.gEq, -1); st.gKey = Integer.MIN_VALUE;
         if (s == null || s.isEmpty()) return;
         try {
             String[] p = s.split(";", -1);
@@ -308,14 +259,9 @@ final class GearItems {
                 String[] q = p[1].split(",");
                 for (int i = 0; i < MAXSLOTS && i < q.length; i++) { int id = Integer.parseInt(q[i].trim()); st.gEq[i] = (def(id) != null && def(id).slot == i % TYPES) ? id : -1; }
             }
-            if (p.length > 2 && !p[2].isEmpty()) {
-                String[] r = p[2].split(",");
-                if (r.length > 0) st.gMoveAtk = clampI(Integer.parseInt(r[0].trim()), 0, MOVE_ATK_MAX);
-                if (r.length > 1) st.gSkillAtk = clampI(Integer.parseInt(r[1].trim()), 0, SKILL_ATK_MAX);
-            }
         } catch (Throwable ignored) {}
     }
-    static String sig(NewModePvp.St st) { return st == null ? "" : st.gInv + "|" + Arrays.toString(st.gEq) + "|" + st.gMoveAtk + "|" + st.gSkillAtk; }
+    static String sig(NewModePvp.St st) { return st == null ? "" : st.gInv + "|" + Arrays.toString(st.gEq); }
 
     // ------------------------------------------------------------------ rơi vật phẩm
     static Player playerById(int pid) {
@@ -375,7 +321,7 @@ final class GearItems {
         playFx(u, pid, d.rarity);
         NewModePvp.changed();
     }
-    static int power(Def d) { int p = 0; for (int i = 0; i + 1 < d.mods.length; i += 2) p += d.mods[i + 1]; return p + d.rarity * 3 + (d.skill > 0 ? 6 : 0); }
+    static int power(Def d) { int p = 0; for (int i = 0; i + 1 < d.mods.length; i += 2) p += d.mods[i + 1]; return p + d.rarity * 3; }
     /** Bot tự lắp vật phẩm tốt hơn vào ô tương ứng. */
     static void botAutoEquip(NewModePvp.St st) {
         for (int k = st.gInv.size() - 1; k >= 0; k--) {
@@ -650,7 +596,7 @@ final class GearItems {
         NexNet.sendTo(pl, "newex-gear-tp", "hs|" + HASTE_TICKS);
         NewModePvp.toast(pl, tr("[accent]Tăng tốc +150% trong 10s!", "[accent]+150% speed for 10s!"));
     }
-    /** Client nhận lệnh từ máy chủ: tp = đặt vị trí + bắt đầu hồi chiêu, hs/ks = áp trạng thái tăng tốc, pc = đồng bộ hồi chiêu pilot. */
+    /** Client nhận lệnh từ máy chủ: tp = đặt vị trí + bắt đầu hồi chiêu, hs = áp trạng thái tăng tốc. */
     static void onTpMsg(String s) {
         try {
             String[] a = s.split("\\|");
@@ -659,120 +605,7 @@ final class GearItems {
                 tpCdAt = Time.time;
                 if (u != null) { u.set(Float.parseFloat(a[1]), Float.parseFloat(a[2])); u.vel.setZero(); }
             } else if (a[0].equals("hs") && u != null && hasteStatus != null) u.apply(hasteStatus, Float.parseFloat(a[1]));
-            else if (a[0].equals("ks") && u != null && killSpeedStatus != null) u.apply(killSpeedStatus, Float.parseFloat(a[1]));
-            else if (a[0].equals("pc") && Vars.player != null && a.length >= 3) {
-                NewModePvp.PilotCd pc = NewModePvp.pilotCdFor(Integer.parseInt(a[1]));
-                if (pc != null) pc.at.put(Vars.player.id, Time.time - Float.parseFloat(a[2]));
-            }
         } catch (Throwable ignored) {}
-    }
-
-    // ------------------------------------------------------------------ kỹ năng nội tại / kích hoạt của vật phẩm Chiến tranh
-    static final HashMap<Integer, float[]> moveSt = new HashMap<>();                  // pid -> {lastX, lastY, accTicks}
-    static final HashMap<Integer, Float> minPtAcc = new HashMap<>();                  // pid -> tích lũy tick tới 60s
-    static final java.util.HashSet<Integer> pilotHalfNext = new java.util.HashSet<>(); // pid -> giảm 50% CD cho lần kích hoạt pilot tiếp theo
-
-    static void reset() {
-        carry.clear(); port.clear(); portCd.clear(); tpCdAt = -1e9f;
-        moveSt.clear(); minPtAcc.clear(); pilotHalfNext.clear();
-    }
-    static void tickUpdate() {
-        tickPort();
-        tickPassives();
-    }
-    /** Máy chủ: cập nhật kỹ năng di chuyển (+1% tấn công/5s, tối đa 15%) và kỹ năng mỗi phút +1 điểm. */
-    static void tickPassives() {
-        if (Vars.net.client() || !NewModePvp.isFull() || !war() || Vars.state.gameOver || Vars.state.isPaused()) return;
-        final float dt = Time.delta;
-        if (dt <= 0f) return;
-        NewModePvp.eachPl(pl -> {
-            if (pl == null) return;
-            NewModePvp.St st = NewModePvp.byId.get(pl.id);
-            if (st == null) return;
-            if (hasSkill(st, SK_MOVE_ATK)) {
-                Unit u = pl.unit();
-                if (u != null && u.isValid() && !u.dead()) {
-                    float[] ms = moveSt.get(pl.id);
-                    if (ms == null) {
-                        moveSt.put(pl.id, new float[]{u.x, u.y, 0f});
-                    } else {
-                        float d2 = Mathf.dst2(u.x, u.y, ms[0], ms[1]);
-                        ms[0] = u.x; ms[1] = u.y;
-                        boolean moved = (d2 > 0.04f && d2 < 40000f) || u.vel.len2() > 0.04f;
-                        if (moved && st.gMoveAtk < MOVE_ATK_MAX) {
-                            ms[2] += dt;
-                            if (ms[2] >= MOVE_ATK_STEP) {
-                                int add = (int) (ms[2] / MOVE_ATK_STEP);
-                                ms[2] -= add * MOVE_ATK_STEP;
-                                int nv = Math.min(MOVE_ATK_MAX, st.gMoveAtk + add);
-                                if (nv != st.gMoveAtk) { st.gMoveAtk = nv; NewModePvp.changed(); }
-                            }
-                        }
-                    }
-                }
-            } else {
-                moveSt.remove(pl.id);
-                if (st.gMoveAtk != 0) { st.gMoveAtk = 0; NewModePvp.changed(); }
-            }
-            if (hasSkill(st, SK_MIN_PT)) {
-                float acc = minPtAcc.getOrDefault(pl.id, 0f) + dt;
-                if (acc >= MIN_PT_TICKS) {
-                    int pts = (int) (acc / MIN_PT_TICKS);
-                    acc -= pts * MIN_PT_TICKS;
-                    st.pts += pts;
-                    NewModePvp.changed();
-                    if (!NewModePvp.isBotPl(pl)) NewModePvp.toast(pl, tr("[yellow]+" + pts + " điểm (Bùa Tài Lộc)!", "[yellow]+" + pts + " point (Fortune Charm)!"));
-                }
-                minPtAcc.put(pl.id, acc);
-            } else {
-                minPtAcc.remove(pl.id);
-            }
-        });
-    }
-    /** Máy chủ gọi khi bất kỳ unit địch nào bị killerPid hạ gục: kích hoạt tăng tốc 50%/6s và +1% tấn công kỹ năng unit player. */
-    static void onAnyKill(Unit victim, int killerPid) {
-        if (Vars.net.client() || victim == null || killerPid < 0 || !NewModePvp.isFull() || !war() || Vars.state.gameOver) return;
-        Player kp = playerById(killerPid);
-        if (kp == null || kp.team() == victim.team) return;
-        NewModePvp.St st = NewModePvp.byId.get(killerPid);
-        if (st == null) return;
-        if (hasSkill(st, SK_KILL_SPD) && killSpeedStatus != null) {
-            Unit ku = kp.unit();
-            if (ku != null && ku.isValid() && !ku.dead()) {
-                ku.apply(killSpeedStatus, KILL_SPD_TICKS);
-                NexNet.sendTo(kp, "newex-gear-tp", "ks|" + KILL_SPD_TICKS);
-            }
-        }
-        if (hasSkill(st, SK_KILL_SKILL_ATK) && st.gSkillAtk < SKILL_ATK_MAX) {
-            st.gSkillAtk = Math.min(SKILL_ATK_MAX, st.gSkillAtk + 1);
-            NewModePvp.changed();
-        }
-    }
-    /** Máy chủ gọi khi người chơi victim bị kẻ địch là player tiêu diệt: giảm 50% hồi chiêu kỹ năng pilot (đang hồi hoặc lần kế tiếp). */
-    static void onKilledByEnemyPlayer(Player victim, NewModePvp.St st) {
-        if (Vars.net.client() || victim == null || st == null || !hasDeathCdr(st)) return;
-        NewModePvp.PilotCd pc = NewModePvp.pilotCdFor(st.pi);
-        if (pc == null) return;
-        Float at = pc.at.get(victim.id);
-        float cd = ChaosMode.cd(pc.cd);
-        float elapsed = at != null ? (Time.time - at) : cd;
-        if (at != null && elapsed >= 0f && elapsed < cd) {
-            float newElapsed = cd - (cd - elapsed) * 0.5f;
-            pc.at.put(victim.id, Time.time - newElapsed);
-            NexNet.sendTo(victim, "newex-gear-tp", "pc|" + st.pi + "|" + newElapsed);
-        } else {
-            pilotHalfNext.add(victim.id);
-        }
-    }
-    /** Máy chủ gọi ngay sau khi kỹ năng pilot bắt đầu hồi chiêu để áp dụng giảm 50% CD đã nạp từ Giáp Phục Hận. */
-    static void afterPilotCdStart(int pid, int pi) {
-        if (Vars.net.client() || !pilotHalfNext.remove(pid)) return;
-        NewModePvp.PilotCd pc = NewModePvp.pilotCdFor(pi);
-        if (pc == null) return;
-        float half = ChaosMode.cd(pc.cd) * 0.5f;
-        pc.at.put(pid, Time.time - half);
-        Player p = playerById(pid);
-        if (p != null) NexNet.sendTo(p, "newex-gear-tp", "pc|" + pi + "|" + half);
     }
 
     // nút kỹ năng ở góc dưới bên phải (cạnh HUD hồi chiêu pilot)
@@ -925,7 +758,7 @@ final class GearItems {
     // ------------------------------------------------------------------ yêu cầu từ client
     static boolean hooked = false;
     static void define() {
-        if (!hooked) { hooked = true; Events.run(mindustry.game.EventType.Trigger.update, GearItems::tickUpdate); }
+        if (!hooked) { hooked = true; Events.run(mindustry.game.EventType.Trigger.update, GearItems::tickPort); }
         NewModePvp.onReq(REQ_GEAR, 120, (player, payload) -> {
             if (!war()) return;
             String[] a = payload.split("\\|");
@@ -1025,9 +858,7 @@ final class GearItems {
         row.margin(8);
         float iconSz = narrow ? 36 : 44;
         row.add(new Image(icon(d))).size(iconSz).padRight(10);
-        String body = d.dvi != null ? "[#7cfc00]" + tr(d.dvi, d.den) + "[]" : statText(d.mods);
-        if (d.svi != null) body += (body.isEmpty() ? "" : "\n") + "[#2ee6c8]" + tr(d.svi, d.sen) + "[]";
-        row.add(col(d.rarity) + name(d) + "[]  [lightgray]" + slotName(d.slot) + " · " + rarName(d.rarity) + "[]\n" + body).left().growX().wrap().minWidth(0);
+        row.add(col(d.rarity) + name(d) + "[]  [lightgray]" + slotName(d.slot) + " · " + rarName(d.rarity) + "[]\n" + (d.dvi != null ? "[#7cfc00]" + tr(d.dvi, d.den) + "[]" : statText(d.mods))).left().growX().wrap().minWidth(0);
         Table bt = row;
         if (narrow) { row.row(); bt = new Table(); }
         float bw = narrow ? 64 : 72;
@@ -1093,8 +924,8 @@ final class GearItems {
         Table hd = new Table(Styles.black6);
         hd.margin(8);
         hd.add("[accent]" + tr("Trang bị vật phẩm", "Item equipment") + "[]").left().row();
-        hd.add("[lightgray]" + tr("Hạ quái đợt để nhận vật phẩm rơi vào Túi đồ (càng hiếm càng khó rơi). Chạm một ô để mở Túi đồ rồi bấm Lắp. Vật phẩm cộng/trừ cấp chỉ số và một số vật phẩm có kỹ năng đặc biệt.",
-            "Kill wave monsters to get item drops in your Bag (rarer = lower chance). Tap a slot to open the Bag then press Equip. Items modify stat levels and some grant special skills.") + "[]").left().growX().wrap().minWidth(0).row();
+        hd.add("[lightgray]" + tr("Hạ quái đợt để nhận vật phẩm rơi vào Túi đồ (càng hiếm càng khó rơi). Chạm một ô để mở Túi đồ rồi bấm Lắp. Vật phẩm cộng/trừ cấp cho các chỉ số.",
+            "Kill wave monsters to get item drops in your Bag (rarer = lower chance). Tap a slot to open the Bag then press Equip. Items add/subtract stat levels.") + "[]").left().growX().wrap().minWidth(0).row();
         c.add(hd).width(W).pad(3).row();
         c.button(tr("Cửa hàng", "Shop"), Styles.flatBordert, GearItems::openShop).width(W - 8f).height(NewModePvp.btnH() * 0.9f).pad(3).row();
         c.button(tr("Chỉ số", "Stats"), Styles.flatBordert, NewModePvp::openStatsView).width(W - 8f).height(NewModePvp.btnH() * 0.9f).pad(3).row();
@@ -1110,7 +941,7 @@ final class GearItems {
 
         Table tot = new Table(Styles.black6);
         tot.margin(8);
-        tot.add("[accent]" + tr("Chỉ số & kỹ năng từ vật phẩm", "Bonus stats & skills from items") + "[]").left().row();
+        tot.add("[accent]" + tr("Chỉ số cộng thêm từ vật phẩm", "Bonus stats from items") + "[]").left().row();
         int[] g = delta(st);
         boolean any = false;
         if (g != null) for (int i = 0; i < g.length; i++) {
@@ -1120,26 +951,6 @@ final class GearItems {
             int lv = Math.max(floorOf(i), base + g[i]);
             tot.add("[white]" + tr(NewModePvp.STATS[i].vi, NewModePvp.STATS[i].en) + "[]  " + (g[i] > 0 ? "[#7cfc00]+" : "[scarlet]") + g[i] + "[]  [lightgray]→ " + NewModePvp.STATS[i].f.get(lv) + "[]")
                 .left().growX().wrap().minWidth(0).padTop(3).row();
-        }
-        if (hasSkill(st, SK_MOVE_ATK)) {
-            any = true;
-            tot.add("[#2ee6c8]" + tr("Xung phong (di chuyển): ", "Charge (moving): ") + "[#7cfc00]+" + st.gMoveAtk + "%[] [lightgray](" + tr("tối đa 15%", "max 15%") + ")[]").left().growX().wrap().minWidth(0).padTop(3).row();
-        }
-        if (hasSkill(st, SK_KILL_SPD)) {
-            any = true;
-            tot.add("[#2ee6c8]" + tr("Truy kích: ", "Pursuit: ") + "[lightgray]" + tr("tiêu diệt mục tiêu → +50% tốc độ trong 6s", "on kill → +50% speed for 6s") + "[]").left().growX().wrap().minWidth(0).padTop(3).row();
-        }
-        if (hasSkill(st, SK_KILL_SKILL_ATK)) {
-            any = true;
-            tot.add("[#2ee6c8]" + tr("Huyết chú (kỹ năng unit player): ", "Bloodspell (player unit skills): ") + "[#7cfc00]+" + st.gSkillAtk + "%[] [lightgray](" + tr("tối đa 500%", "max 500%") + ")[]").left().growX().wrap().minWidth(0).padTop(3).row();
-        }
-        if (hasSkill(st, SK_MIN_PT)) {
-            any = true;
-            tot.add("[#2ee6c8]" + tr("Tài lộc: ", "Fortune: ") + "[lightgray]" + tr("+1 điểm mỗi phút", "+1 point every minute") + "[]").left().growX().wrap().minWidth(0).padTop(3).row();
-        }
-        if (hasSkill(st, SK_DEATH_CDR)) {
-            any = true;
-            tot.add("[#2ee6c8]" + tr("Phục hận: ", "Vengeance: ") + "[lightgray]" + tr("bị player địch hạ → -50% hồi sinh & kỹ năng pilot", "killed by enemy player → -50% respawn & pilot skill CD") + "[]").left().growX().wrap().minWidth(0).padTop(3).row();
         }
         if (!any) tot.add("[lightgray]" + tr("Chưa lắp vật phẩm nào.", "No items equipped yet.") + "[]").left().row();
         c.add(tot).width(W).pad(3).row();

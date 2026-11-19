@@ -216,8 +216,8 @@ public final class Therdum {
 
             if (perkA == 0) {
                 boxA.add(t(
-                    "Kích hoạt giao thức nâng cấp ngẫu nhiên nhận 1 trong 3 phúc lợi A:\n • [green]Phúc lợi 1A:[] +50% Sát thương, Tầm bắn +50% (157.5px), +10 Viên đạn.\n • [green]Phúc lợi 2A:[] +20% Sát thương, Tầm bắn +20% (126px), +5 Dmg lan (10px).\n • [green]Phúc lợi 3A:[] +200% Sát thương, Tầm bắn -30% (73.5px), Nạp đạn nhanh (2s -> 1s).",
-                    "Activate upgrade protocol to randomly get 1 of 3 Perk A choices:\n • [green]Perk 1A:[] +50% Damage, Range +50% (157.5px), +10 Bullets.\n • [green]Perk 2A:[] +20% Damage, Range +20% (126px), +5 Splash Dmg (10px).\n • [green]Perk 3A:[] +200% Damage, Range -30% (73.5px), Fast Reload (2s -> 1s)."
+                    "Kích hoạt giao thức nâng cấp ngẫu nhiên nhận 1 trong 3 phúc lợi A:\n • [green]Phúc lợi 1A:[] [green]+50%[] Sát thương, Tầm bắn [green]+50%[] (157.5px), +10 Viên đạn.\n • [green]Phúc lợi 2A:[] [green]+20%[] Sát thương, Tầm bắn [green]+20%[] (126px), +5 Dmg lan (10px).\n • [green]Phúc lợi 3A:[] [green]+200%[] Sát thương, Tầm bắn [orange]-30%[] (73.5px), Nạp đạn nhanh (2s -> 1s).",
+                    "Activate upgrade protocol to randomly get 1 of 3 Perk A choices:\n • [green]Perk 1A:[] [green]+50%[] Damage, Range [green]+50%[] (157.5px), +10 Bullets.\n • [green]Perk 2A:[] [green]+20%[] Damage, Range [green]+20%[] (126px), +5 Splash Dmg (10px).\n • [green]Perk 3A:[] [green]+200%[] Damage, Range [orange]-30%[] (73.5px), Fast Reload (2s -> 1s)."
                 )).width(340f).get().setWrap(true);
                 ((arc.scene.ui.Label) boxA.getCells().peek().get()).setAlignment(Align.left);
                 boxA.row();
@@ -244,9 +244,9 @@ public final class Therdum {
                 }).size(280f, 40f);
             } else {
                 String txt = "";
-                if (perkA == 1) txt = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1A\n• Sát thương +50% (36)\n• Tầm bắn +50% (157.5px)\n• Số đạn +10 (50 viên)[]", "[green]✔ ACTIVATED: PERK 1A\n• Damage +50% (36)\n• Range +50% (157.5px)\n• Bullets +10 (50 count)[]");
-                if (perkA == 2) txt = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2A\n• Sát thương +20% (28.8)\n• Tầm bắn +20% (126px)\n• Gây thêm 5 Dmg lan (Phạm vi 10px)[]", "[green]✔ ACTIVATED: PERK 2A\n• Damage +20% (28.8)\n• Range +20% (126px)\n• +5 Splash Dmg (10px Radius)[]");
-                if (perkA == 3) txt = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3A\n• Sát thương +200% (72)\n• Tầm bắn -30% (73.5px)\n• Tốc độ nạp đạn tăng 100% (2s -> 1s)[]", "[green]✔ ACTIVATED: PERK 3A\n• Damage +200% (72)\n• Range -30% (73.5px)\n• Reload Speed +100% (2s -> 1s)[]");
+                if (perkA == 1) txt = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 1A\n• Sát thương [green]+50%[] (36)\n• Tầm bắn [green]+50%[] (157.5px)\n• Số đạn +10 (50 viên)[]", "[green]✔ ACTIVATED: PERK 1A\n• Damage [green]+50%[] (36)\n• Range [green]+50%[] (157.5px)\n• Bullets +10 (50 count)[]");
+                if (perkA == 2) txt = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 2A\n• Sát thương [green]+20%[] (28.8)\n• Tầm bắn [green]+20%[] (126px)\n• Gây thêm 5 Dmg lan (Phạm vi 10px)[]", "[green]✔ ACTIVATED: PERK 2A\n• Damage [green]+20%[] (28.8)\n• Range [green]+20%[] (126px)\n• +5 Splash Dmg (10px Radius)[]");
+                if (perkA == 3) txt = t("[green]✔ ĐÃ KÍCH HOẠT: PHÚC LỢI 3A\n• Sát thương [green]+200%[] (72)\n• Tầm bắn [orange]-30%[] (73.5px)\n• Tốc độ nạp đạn tăng [gold]100%[] (2s -> 1s)[]", "[green]✔ ACTIVATED: PERK 3A\n• Damage [green]+200%[] (72)\n• Range [orange]-30%[] (73.5px)\n• Reload Speed [green]+100%[] (2s -> 1s)[]");
                 boxA.add(txt).width(340f).get().setWrap(true);
                 ((arc.scene.ui.Label) boxA.getCells().peek().get()).setAlignment(Align.left);
             }
@@ -262,20 +262,20 @@ public final class Therdum {
 
         private void openInfoDialog() {
             String desc = t(
-                "[gold]⚡ THÔNG SỐ CƠ BẢN PHÁO THERDUM (MK1) ⚡[]\n• Máu: 17,000 | Tầm bắn: 105px (13.1 ô) | Sát thương gốc: 24.0\n• Cơ chế: Bắn shotgun tỏa 40 viên đạn, lifetime đạn tự điều chỉnh chuẩn theo tầm bắn.\n• Nâng cấp: Nâng cấp trực tiếp chỉ số và kỹ năng qua hệ thống Phúc lợi A.",
+                "[gold]⚡ BẢN THỂ GỐC PHÁO THERDUM (MK1) ⚡[]\n• Máu: 17,000 | Tầm vươn: 105px (13.1 ô) | Uy lực gốc: 24.0\n• Cơ chế: Bắn shotgun tỏa 40 viên đạn, lifetime đạn tự điều chỉnh chuẩn theo tầm bắn.\n• Nâng cấp: Nâng cấp trực tiếp chỉ số và kỹ năng qua hệ thống Phúc lợi A.",
                 "[gold]⚡ THERDUM TURRET BASIC STATS (MK1) ⚡[]\n• Health: 17,000 | Range: 105px (13.1 tiles) | Base Damage: 24.0\n• Mechanism: Shotgun spread firing 40 bullets, bullet lifetime auto-adjusts to range.\n• Upgrades: Directly upgrade stats and skills via Perk A system.");
 
             if (perkA > 0) {
                 desc += t("\n\n[yellow]★ ĐÃ KÍCH HOẠT PHÚC LỢI A ★[]", "\n\n[yellow]★ PERK A ACTIVATED ★[]");
                 if (perkA == 1) desc += t(
-                    "\n[green]• Phúc lợi 1A: Sát thương +50% (36), Tầm bắn +50% (157.5px), Số đạn +10 (50 viên).[]\n[white]• Tăng quy mô hỏa lực diện rộng và khoảng cách áp chế.[]",
-                    "\n[green]• Perk 1A: Damage +50% (36), Range +50% (157.5px), Bullets +10 (50 count).[]\n[white]• Increases wide-area firepower and suppression distance.[]");
+                    "\n[green]• Phúc lợi 1A: Sát thương [green]+50%[] (36), Tầm bắn [green]+50%[] (157.5px), Số đạn +10 (50 viên).[]\n[white]• Tăng quy mô hỏa lực diện rộng và khoảng cách áp chế.[]",
+                    "\n[green]• Perk 1A: Damage [green]+50%[] (36), Range [green]+50%[] (157.5px), Bullets +10 (50 count).[]\n[white]• Increases wide-area firepower and suppression distance.[]");
                 if (perkA == 2) desc += t(
-                    "\n[green]• Phúc lợi 2A: Sát thương +20% (28.8), Tầm bắn +20% (126px).[]\n[white]• Đạn gây thêm 5 Dmg lan trong phạm vi 10px quanh mục tiêu.[]",
-                    "\n[green]• Perk 2A: Damage +20% (28.8), Range +20% (126px).[]\n[white]• Bullets deal +10 splash damage in 10px radius around target.[]");
+                    "\n[green]• Phúc lợi 2A: Sát thương [green]+20%[] (28.8), Tầm bắn [green]+20%[] (126px).[]\n[white]• Đạn gây thêm 5 Dmg lan trong phạm vi 10px quanh mục tiêu.[]",
+                    "\n[green]• Perk 2A: Damage [green]+20%[] (28.8), Range [green]+20%[] (126px).[]\n[white]• Bullets deal +10 splash damage in 10px radius around target.[]");
                 if (perkA == 3) desc += t(
-                    "\n[green]• Phúc lợi 3A: Sát thương +200% (72), Tầm bắn -30% (73.5px), Nạp đạn nhanh +100% (1s).[]\n[white]• Biến thành pháo cận chiến siêu sát thương với tốc độ xả đạn cực nhanh.[]",
-                    "\n[green]• Perk 3A: Damage +200% (72), Range -30% (73.5px), Fast Reload +100% (1s).[]\n[white]• Transforms into ultra-high damage melee turret with extreme burst rate.[]");
+                    "\n[green]• Phúc lợi 3A: Sát thương [green]+200%[] (72), Tầm bắn [orange]-30%[] (73.5px), Nạp đạn nhanh [green]+100%[] (1s).[]\n[white]• Biến thành pháo cận chiến siêu sát thương với tốc độ xả đạn cực nhanh.[]",
+                    "\n[green]• Perk 3A: Damage [green]+200%[] (72), Range [orange]-30%[] (73.5px), Fast Reload [green]+100%[] (1s).[]\n[white]• Transforms into ultra-high damage melee turret with extreme burst rate.[]");
             }
 
             BaseDialog dialog = new BaseDialog(t(" Thông số pháo Therdum Mk1 ", " Therdum Mk1 Stats "));

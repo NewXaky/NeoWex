@@ -377,7 +377,7 @@ public final class Nucleytor {
                 " [white]• Optimized cooling, retains charge longer when idle.[]\n" +
                 " [white]• Enhanced armor, [green]+50% HP[].[]"), 340);
             b1.row();
-            b1.button(isVN() ? "[green]KÍCH HOẠT MK2[]" : "[green]ACTIVATE MK2[]", () -> {
+            b1.button(isVN() ? "[green]TIẾN HÓA MK2[]" : "[green]ACTIVATE MK2[]", () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.titanium) >= REQ_MK2[0] && core.items.get(Items.silicon) >= REQ_MK2[1]) {
                     NexNet.take(core, Items.titanium, REQ_MK2[0]); NexNet.take(core, Items.silicon, REQ_MK2[1]);
@@ -385,7 +385,7 @@ public final class Nucleytor {
                     configure(Integer.valueOf(1));
                     dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfo(isVN() ? "[red]Không đủ tài nguyên cho nhánh MK2![]" : "[red]Not enough resources for MK2![]");
+                    Vars.ui.showInfo(isVN() ? "[red]Kho lõi chưa đủ của cải cho nhánh MK2![]" : "[red]Not enough resources for MK2![]");
                 }
             }).size(180, 38);
 
@@ -403,7 +403,7 @@ public final class Nucleytor {
                 " [white]• Range reaches [green]551.2 px[].[]\n" +
                 " [white]• Removes piercing and homing capabilities completely.[]"), 340);
             b2.row();
-            b2.button(isVN() ? "[orange]KÍCH HOẠT MK2B[]" : "[orange]ACTIVATE MK2B[]", () -> {
+            b2.button(isVN() ? "[orange]TIẾN HÓA MK2B[]" : "[orange]ACTIVATE MK2B[]", () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.titanium) >= REQ_MK2B[0] && core.items.get(Items.silicon) >= REQ_MK2B[1] && core.items.get(Items.plastanium) >= REQ_MK2B[2]) {
                     NexNet.take(core, Items.titanium, REQ_MK2B[0]); NexNet.take(core, Items.silicon, REQ_MK2B[1]); NexNet.take(core, Items.plastanium, REQ_MK2B[2]);
@@ -411,7 +411,7 @@ public final class Nucleytor {
                     configure(Integer.valueOf(2));
                     dialog.hide(); deselect();
                 } else {
-                    Vars.ui.showInfo(isVN() ? "[red]Không đủ tài nguyên cho nhánh MK2B![]" : "[red]Not enough resources for MK2B![]");
+                    Vars.ui.showInfo(isVN() ? "[red]Kho lõi chưa đủ của cải cho nhánh MK2B![]" : "[red]Not enough resources for MK2B![]");
                 }
             }).size(180, 38);
 

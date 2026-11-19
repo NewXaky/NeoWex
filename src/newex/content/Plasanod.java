@@ -421,11 +421,11 @@ public final class Plasanod {
 
                         String perkName = "";
                         if (resultPerk == 1) perkName = isEn() ? "[yellow]PERK 1[]" : "[yellow]PHÚC LỢI 1[]";
-                        else if (resultPerk == 2) perkName = isEn() ? "[orange]PERK 2 (+50% Range)[]" : "[orange]PHÚC LỢI 2 (+50% Tầm xa)[]";
+                        else if (resultPerk == 2) perkName = isEn() ? "[orange]PERK 2 (+50% Range)[]" : "[orange]PHÚC LỢI 2 ([green]+50%[] Tầm xa)[]";
                         else if (resultPerk == 3) perkName = isEn() ? "[cyan]PERK 3[]" : "[cyan]PHÚC LỢI 3[]";
-                        else if (resultPerk == 4) perkName = isEn() ? "[purple]PERK 4 (+50% Range)[]" : "[purple]PHÚC LỢI 4 (+50% Tầm xa)[]";
-                        else if (resultPerk == 5) perkName = isEn() ? "[green]★ PERK 5 (1% SUPER RARE) ★[]" : "[green]★ PHÚC LỢI 5 (1% SIÊU HIẾM) ★[]";
-                        else perkName = isEn() ? "[red]★ PERK 6 (1% SUPER RARE) ★[]" : "[red]★ PHÚC LỢI 6 (1% SIÊU HIẾM) ★[]";
+                        else if (resultPerk == 4) perkName = isEn() ? "[purple]PERK 4 (+50% Range)[]" : "[purple]PHÚC LỢI 4 ([green]+50%[] Tầm xa)[]";
+                        else if (resultPerk == 5) perkName = isEn() ? "[green]★ PERK 5 ([gold]1%[] SUPER RARE) ★[]" : "[green]★ PHÚC LỢI 5 ([gold]1%[] SIÊU HIẾM) ★[]";
+                        else perkName = isEn() ? "[red]★ PERK 6 ([gold]1%[] SUPER RARE) ★[]" : "[red]★ PHÚC LỢI 6 ([gold]1%[] SIÊU HIẾM) ★[]";
                         Vars.ui.showInfo(trP("won") + perkName);
                         dialog.hide();
                         deselect();

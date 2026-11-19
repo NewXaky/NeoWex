@@ -336,10 +336,10 @@ public final class Heliyron {
             Table b1 = new Table(); b1.background(Styles.black6); b1.margin(12);
             b1.add(t(v, "[cyan]===(CẤU HÌNH MK2)===[]", "[cyan]===(MK2 CONFIG)===[]")).row();
             wrap(b1.add(t(v,
-                " [white]• Máu: [green]+50%[] (lên 5,438 HP)\n [white]• Sát thương gốc: [lightgray]150[]\n [white]• Phạm vi bắn: [orange]+3.6%[] (lên 570 px)\n [white]• Nội tại: [yellow]+50% Sát thương[] với mỗi [red]10% HP mất[]\n [white]• Cơ chế: Mất [red]1% HP[] khi trúng địch | 40% cơ hội bắn thêm 8 đạn phụ (4 thẳng 80% SD, 4 chéo 80% SD tầm xa)",
-                " [white]• Health: [green]+50%[] (up to 5,438 HP)\n [white]• Base Damage: [lightgray]150[]\n [white]• Range: [orange]+3.6%[] (up to 570 px)\n [white]• Passive: [yellow]+50% Damage[] per [red]10% missing HP[]\n [white]• Mechanism: Lose [red]1% HP[] on hit | 40% chance for 8 extra bullets (4 straight 80% DMG, 4 diagonal long-range)")), 340);
+                " [white]• Máu: [green]+[gold]50%[][] (lên 5,438 HP)\n [white]• Uy lực gốc: [lightgray]150[]\n [white]• Phạm vi bắn: [orange]+[gold]3.6%[][] (lên 570 px)\n [white]• Nội tại: [yellow]+[gold]50%[] Sát thương[] với mỗi [red]10% HP mất[]\n [white]• Cơ chế: Mất [red]1% HP[] khi trúng địch | [gold]40%[] cơ hội bắn thêm 8 đạn phụ (4 thẳng [gold]80%[] SD, 4 chéo [gold]80%[] SD tầm xa)",
+                " [white]• Health: [green]+[gold]50%[][] (up to 5,438 HP)\n [white]• Base Damage: [lightgray]150[]\n [white]• Range: [orange]+[gold]3.6%[][] (up to 570 px)\n [white]• Passive: [yellow]+[gold]50%[] Damage[] per [red]10% missing HP[]\n [white]• Mechanism: Lose [red]1% HP[] on hit | [gold]40%[] chance for 8 extra bullets (4 straight [gold]80%[] DMG, 4 diagonal long-range)")), 340);
             b1.row();
-            b1.button(t(v, "[green]KÍCH HOẠT MK2[]", "[green]ACTIVATE MK2[]"), () -> {
+            b1.button(t(v, "[green]TIẾN HÓA MK2[]", "[green]ACTIVATE MK2[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_MK2[0] && core.items.get(Items.lead) >= REQ_MK2[1]) {
                     NexNet.take(core, Items.copper, REQ_MK2[0]); NexNet.take(core, Items.lead, REQ_MK2[1]);
@@ -353,10 +353,10 @@ public final class Heliyron {
             Table b2 = new Table(); b2.background(Styles.black6); b2.margin(12);
             b2.add(t(v, "[purple]===(CẤU HÌNH MK2B)===[]", "[purple]===(MK2B CONFIG)===[]")).row();
             wrap(b2.add(t(v,
-                " [white]• Máu: [green]+80%[] (lên 6,525 HP)\n [white]• Sát thương gốc: [lightgray]150[] (Đạn tự dẫn đường 12%)\n [white]• Phạm vi bắn: [orange]+1.8%[] (lên 560 px)\n [white]• Nội tại Cuồng Bạo: Khi Máu [red]< 50% HP[] -> [yellow]+200% Tốc bắn (x3)[]\n [white]• Cơ chế: Mất [red]1% HP[] khi trúng địch | 40% cơ hội bắn thêm 8 đạn phụ (4 thẳng 80% SD, 4 chéo 80% SD tầm xa)",
-                " [white]• Health: [green]+80%[] (up to 6,525 HP)\n [white]• Base Damage: [lightgray]150[] (12% Homing)\n [white]• Range: [orange]+1.8%[] (up to 560 px)\n [white]• Berserk Passive: When HP [red]< 50%[] -> [yellow]+200% Fire Rate (x3)[]\n [white]• Mechanism: Lose [red]1% HP[] on hit | 40% chance for 8 extra bullets (4 straight 80% DMG, 4 diagonal long-range)")), 340);
+                " [white]• Máu: [green]+[gold]80%[][] (lên 6,525 HP)\n [white]• Uy lực gốc: [lightgray]150[] (Đạn tự dẫn đường [gold]12%[])\n [white]• Phạm vi bắn: [orange]+[gold]1.8%[][] (lên 560 px)\n [white]• Nội tại Cuồng Bạo: Khi Máu [red]< [gold]50%[] HP[] -> [yellow]+[gold]200%[] Tốc bắn (x3)[]\n [white]• Cơ chế: Mất [red]1% HP[] khi trúng địch | [gold]40%[] cơ hội bắn thêm 8 đạn phụ (4 thẳng [gold]80%[] SD, 4 chéo [gold]80%[] SD tầm xa)",
+                " [white]• Health: [green]+[gold]80%[][] (up to 6,525 HP)\n [white]• Base Damage: [lightgray]150[] ([gold]12%[] Homing)\n [white]• Range: [orange]+[gold]1.8%[][] (up to 560 px)\n [white]• Berserk Passive: When HP [red]< [gold]50%[][] -> [yellow]+[gold]200%[] Fire Rate (x3)[]\n [white]• Mechanism: Lose [red]1% HP[] on hit | [gold]40%[] chance for 8 extra bullets (4 straight [gold]80%[] DMG, 4 diagonal long-range)")), 340);
             b2.row();
-            b2.button(t(v, "[orange]KÍCH HOẠT MK2B[]", "[orange]ACTIVATE MK2B[]"), () -> {
+            b2.button(t(v, "[orange]TIẾN HÓA MK2B[]", "[orange]ACTIVATE MK2B[]"), () -> {
                 Building core = team.core();
                 if (core != null && core.items.get(Items.copper) >= REQ_MK2B[0] && core.items.get(Items.lead) >= REQ_MK2B[1] && core.items.get(Items.titanium) >= REQ_MK2B[2]) {
                     NexNet.take(core, Items.copper, REQ_MK2B[0]); NexNet.take(core, Items.lead, REQ_MK2B[1]); NexNet.take(core, Items.titanium, REQ_MK2B[2]);
@@ -400,18 +400,18 @@ public final class Heliyron {
             if (tier == 0) {
                 title += "[yellow](MK1)[]";
                 desc = t(v,
-                    "[gold]⚡ THÔNG SỐ HELIYRON MK1 ⚡[]\n[lightgray]Máu tối đa:[] [green]3,625 HP[]\n[lightgray]Sát thương gốc:[] [orange]150[]\n[lightgray]Phạm vi bắn:[] [orange]550 px[]\n\n",
+                    "[gold]⚡ THÔNG SỐ HELIYRON MK1 ⚡[]\n[lightgray]Máu tối đa:[] [green]3,625 HP[]\n[lightgray]Uy lực gốc:[] [orange]150[]\n[lightgray]Phạm vi bắn:[] [orange]550 px[]\n\n",
                     "[gold]⚡ HELIYRON MK1 STATS ⚡[]\n[lightgray]Max Health:[] [green]3,625 HP[]\n[lightgray]Base Damage:[] [orange]150[]\n[lightgray]Range:[] [orange]550 px[]\n\n") + mech(v, false, false);
             } else if (tier == 1) {
                 title += "[cyan](MK2)[]";
                 desc = t(v,
-                    "[cyan]⚡ THÔNG SỐ HELIYRON MK2 ⚡[]\n[lightgray]Máu tối đa:[] [green]5,438 HP[] [lime](+50%)[]\n[lightgray]Sát thương gốc:[] [orange]150[]\n[lightgray]Phạm vi bắn:[] [orange]570 px[] [lime](+3.6%)[]\n\n",
-                    "[cyan]⚡ HELIYRON MK2 STATS ⚡[]\n[lightgray]Max Health:[] [green]5,438 HP[] [lime](+50%)[]\n[lightgray]Base Damage:[] [orange]150[]\n[lightgray]Range:[] [orange]570 px[] [lime](+3.6%)[]\n\n") + mech(v, false, true);
+                    "[cyan]⚡ THÔNG SỐ HELIYRON MK2 ⚡[]\n[lightgray]Máu tối đa:[] [green]5,438 HP[] [lime]([green]+50%[])[]\n[lightgray]Uy lực gốc:[] [orange]150[]\n[lightgray]Phạm vi bắn:[] [orange]570 px[] [lime]([green]+3.6%[])[]\n\n",
+                    "[cyan]⚡ HELIYRON MK2 STATS ⚡[]\n[lightgray]Max Health:[] [green]5,438 HP[] [lime]([green]+50%[])[]\n[lightgray]Base Damage:[] [orange]150[]\n[lightgray]Range:[] [orange]570 px[] [lime]([green]+3.6%[])[]\n\n") + mech(v, false, true);
             } else if (tier == 2) {
                 title += "[purple](MK2B)[]";
                 desc = t(v,
-                    "[purple]⚡ THÔNG SỐ HELIYRON MK2B ⚡[]\n[lightgray]Máu tối đa:[] [green]6,525 HP[] [lime](+80%)[]\n[lightgray]Sát thương gốc:[] [orange]150[] [cyan](Đạn tự dẫn đường 12%)[]\n[lightgray]Phạm vi bắn:[] [orange]560 px[] [lime](+1.8%)[]\n\n",
-                    "[purple]⚡ HELIYRON MK2B STATS ⚡[]\n[lightgray]Max Health:[] [green]6,525 HP[] [lime](+80%)[]\n[lightgray]Base Damage:[] [orange]150[] [cyan](12% Homing)[]\n[lightgray]Range:[] [orange]560 px[] [lime](+1.8%)[]\n\n") + mech(v, true, false);
+                    "[purple]⚡ THÔNG SỐ HELIYRON MK2B ⚡[]\n[lightgray]Máu tối đa:[] [green]6,525 HP[] [lime]([green]+80%[])[]\n[lightgray]Uy lực gốc:[] [orange]150[] [cyan](Đạn tự dẫn đường [gold]12%[])[]\n[lightgray]Phạm vi bắn:[] [orange]560 px[] [lime]([green]+1.8%[])[]\n\n",
+                    "[purple]⚡ HELIYRON MK2B STATS ⚡[]\n[lightgray]Max Health:[] [green]6,525 HP[] [lime]([green]+80%[])[]\n[lightgray]Base Damage:[] [orange]150[] [cyan]([gold]12%[] Homing)[]\n[lightgray]Range:[] [orange]560 px[] [lime]([green]+1.8%[])[]\n\n") + mech(v, true, false);
             }
             BaseDialog dialog = new BaseDialog(title);
             Table info = new Table();
