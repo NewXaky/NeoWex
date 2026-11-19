@@ -228,12 +228,12 @@ public class NewModePvp {
         return m == 0 ? tr("1. Dồn lực", "1. Focus") : m == 1 ? tr("2. Đa đạn", "2. Multi-shot") : tr("3. Hiệp đồng", "3. Synergy");
     }
     static String tmDesc(int m) {
-        return m == 0 ? tr("Lắp từ 2 pháo: mỗi pháo lắp thêm +" + (int) TM_ATK1_PCT + "% Tấn công cho CHÍNH pháo đó (không tăng cho unit).",
-                "With 2+ turrets: each extra turret mounted gives +" + (int) TM_ATK1_PCT + "% attack to that turret only (not the unit).")
-            : m == 1 ? tr("Lắp nhiều pháo thì mỗi pháo bắn nhiều đạn hơn (tối đa " + TM_MULTI_MAX + " đạn mỗi lần bắn).",
-                "More turrets mounted = each turret fires more bullets (up to " + TM_MULTI_MAX + " per shot).")
-            : tr("Lắp từ 2 pháo: mỗi pháo lắp thêm +" + (int) TM_ATK3_PCT + "% Tấn công cho CHÍNH pháo đó (không tăng cho unit).",
-                "With 2+ turrets: each extra turret mounted gives +" + (int) TM_ATK3_PCT + "% attack to that turret only (not the unit).");
+        return m == 0 ? tr("[scarlet]Dồn lực[]: càng nhiều nòng, mỗi nòng càng dữ. Từ pháo thứ 2: [scarlet]+" + (int) TM_ATK1_PCT + "%[] tấn công cho [accent]chính nòng đó[].",
+                "[scarlet]Focus[]: more barrels, fiercer barrels. From the 2nd turret: [scarlet]+" + (int) TM_ATK1_PCT + "%[] attack to [accent]that turret[].")
+            : m == 1 ? tr("[gold]Đa đạn[]: mỗi pháo thêm vào là một loạt đạn dày hơn, tối đa [gold]" + TM_MULTI_MAX + "[] viên mỗi lượt.",
+                "[gold]Multi-shot[]: every extra turret thickens the volley, up to [gold]" + TM_MULTI_MAX + "[] bullets a shot.")
+            : tr("[sky]Hiệp đồng[]: các nòng tiếp sức nhau. Từ pháo thứ 2: [scarlet]+" + (int) TM_ATK3_PCT + "%[] tấn công cho [accent]chính nòng đó[].",
+                "[sky]Synergy[]: barrels feed each other. From the 2nd turret: [scarlet]+" + (int) TM_ATK3_PCT + "%[] attack to [accent]that turret[].");
     }
     static arc.scene.ui.layout.Cell<arc.scene.ui.TextButton> bigBtn(Table t, String text, arc.graphics.Color col, Runnable r, float h, float minW) {
         arc.scene.ui.layout.Cell<arc.scene.ui.TextButton> c = t.button(text, r).height(h).minWidth(minW);
@@ -412,21 +412,21 @@ public class NewModePvp {
         Stat(String vi, String en, Func<Integer, String> f) { this.vi = vi; this.en = en; this.f = f; }
     }
     static final Stat[] STATS = {
-        new Stat("Máu", "Health", l -> "+" + (l * HP_PCT) + "%  +" + (l * HP_FLAT) + " " + tr("máu", "HP")),
-        new Stat("Giáp", "Armor", l -> "+" + (l * ARM_FLAT) + " " + tr("giáp", "armor") + "  -" + Strings.fixed(armorCut(l), 1) + "% " + tr("sát thương nhận", "damage taken")),
-        new Stat("Tấn công", "Attack", l -> "+" + (l * ATK_PCT) + "%  +" + Strings.fixed(l * ATK_FLAT, 1) + " " + tr("sát thương/phát", "dmg/hit")),
+        new Stat("Máu", "Health", l -> "[green]+" + (l * HP_PCT) + "%[] · [green]+" + (l * HP_FLAT) + "[] " + tr("máu", "HP")),
+        new Stat("Giáp", "Armor", l -> "[sky]+" + (l * ARM_FLAT) + "[] " + tr("giáp", "armor") + " · [green]-" + Strings.fixed(armorCut(l), 1) + "%[] " + tr("sát thương nhận", "damage taken")),
+        new Stat("Tấn công", "Attack", l -> "[scarlet]+" + (l * ATK_PCT) + "%[] · [scarlet]+" + Strings.fixed(l * ATK_FLAT, 1) + "[] " + tr("mỗi phát", "per hit")),
         new Stat("Tốc độ di chuyển", "Move speed", l -> speedStat(l)),
-        new Stat("Tốc độ bắn", "Fire rate", l -> "+" + (l * 6) + "%"),
-        new Stat("Tỉ lệ bạo kích", "Crit chance", l -> (l * 2) + "%"),
-        new Stat("Sát thương bạo kích", "Crit damage", l -> (150 + l * 12) + "%"),
-        new Stat("Xuyên giáp", "Armor pierce", l -> (l * 5) + "%"),
-        new Stat("Hồi máu", "Regeneration", l -> "+" + Strings.fixed(l * REGEN_PCT, 2) + tr("% máu tối đa mỗi giây (khi máu dưới 99%)", "% max HP per second (when below 99% HP)")),
-        new Stat("Sát thương % máu tối đa", "Max HP % damage", l -> "+" + Strings.fixed(l * DMG_PCT_MAXHP, 2) + "% " + tr("máu tối đa của mục tiêu mỗi lần trúng", "of target max HP per hit")),
-        new Stat("Sát thương theo giáp", "Armor-based damage", l -> "+" + Strings.fixed(l * DMG_PER_ARMOR * 10, 1) + "% " + tr("mỗi 10 giáp hiện tại", "per 10 current armor")),
-        new Stat("Đẩy lùi", "Knockback", l -> "+" + Strings.fixed(l * KNOCK_PER, 2) + " " + tr("lực đẩy lùi", "knockback")),
-        new Stat("Tầm bắn & đạn của lính", "Soldier range & bullet life", l -> "+" + (l * RANGE_PCT) + "% " + tr("tầm bắn & tốc độ bay đạn", "range & bullet speed") + "  +" + (l * LIFE_PCT) + "% " + tr("thời gian tồn tại đạn", "bullet lifetime")),
-        new Stat("Sát thương quái spawn ngẫu nhiên", "Random-spawn monster damage", l -> "+" + (l * WRAND_DMG_PCT) + "% " + tr("sát thương khi đánh trúng quái từ đợt spawn ngẫu nhiên", "damage when hitting monsters from random spawn waves")),
-        new Stat("Giảm hồi máu", "Heal reduction", l -> Math.min(HEAL_CUT_MAX, l * HEAL_CUT_PCT) + "% " + tr("giảm hồi máu của mục tiêu trong ", "healing reduction on target for ") + (HEAL_CUT_TICKS / 60) + tr("s khi đạn trúng (tối đa ", "s on hit (max ") + HEAL_CUT_MAX + "%)")
+        new Stat("Tốc độ bắn", "Fire rate", l -> "[cyan]+" + (l * 6) + "%[]"),
+        new Stat("Tỉ lệ bạo kích", "Crit chance", l -> "[gold]" + (l * 2) + "%[]"),
+        new Stat("Sát thương bạo kích", "Crit damage", l -> "[gold]" + (150 + l * 12) + "%[]"),
+        new Stat("Xuyên giáp", "Armor pierce", l -> "[orange]" + (l * 5) + "%[]"),
+        new Stat("Hồi máu", "Regeneration", l -> "[green]+" + Strings.fixed(l * REGEN_PCT, 2) + "%[] " + tr("máu tối đa/giây (dưới 99% máu)", "max HP/s (below 99% HP)")),
+        new Stat("Sát thương % máu tối đa", "Max HP % damage", l -> "[scarlet]+" + Strings.fixed(l * DMG_PCT_MAXHP, 2) + "%[] " + tr("máu tối đa của địch mỗi đòn", "of enemy max HP per hit")),
+        new Stat("Sát thương theo giáp", "Armor-based damage", l -> "[scarlet]+" + Strings.fixed(l * DMG_PER_ARMOR * 10, 1) + "%[] " + tr("mỗi 10 giáp đang có", "per 10 armor you hold")),
+        new Stat("Đẩy lùi", "Knockback", l -> "[cyan]+" + Strings.fixed(l * KNOCK_PER, 2) + "[] " + tr("lực hất văng", "knockback")),
+        new Stat("Tầm bắn & đạn của lính", "Soldier range & bullet life", l -> "[cyan]+" + (l * RANGE_PCT) + "%[] " + tr("tầm & tốc đạn", "range & bullet speed") + " · [cyan]+" + (l * LIFE_PCT) + "%[] " + tr("đạn bay lâu hơn", "bullet lifetime")),
+        new Stat("Sát thương quái spawn ngẫu nhiên", "Random-spawn monster damage", l -> "[scarlet]+" + (l * WRAND_DMG_PCT) + "%[] " + tr("sát thương lên quái spawn ngẫu nhiên", "damage to random-wave monsters")),
+        new Stat("Giảm hồi máu", "Heal reduction", l -> "[purple]-" + Math.min(HEAL_CUT_MAX, l * HEAL_CUT_PCT) + "%[] " + tr("hồi máu địch trong ", "enemy healing for ") + (HEAL_CUT_TICKS / 60) + tr("s sau mỗi phát trúng (tối đa ", "s per hit (max ") + HEAL_CUT_MAX + "%)")
     };
     /** Hai chi so dau (Mau, Giap) khong gioi han; JS: STATS[i].mx khong ton tai nen cac chi so khac = STAT_MAX. */
     static boolean statUnlimited(int i) { return i == 0 || i == 1 || ChaosMode.unlimited(); }
@@ -458,25 +458,25 @@ public class NewModePvp {
     }
     static String roleDesc(String id) {
         String s = roleDescBase(id);
-        if (THERDUM_ID.equals(id)) s += tr(". Nội tại: sát thương tối đa nhận vào mỗi hit là " + THERDUM_HIT_CAP, ". Passive: max damage taken per hit is " + THERDUM_HIT_CAP);
-        if (LUSTRE_ID.equals(id)) s += tr(". Mỗi lustre trang bị thêm không bắn thêm tia, chỉ +" + LUSTRE_ATK_PCT + "% tấn công", ". Extra copies fire no extra beams, only +" + LUSTRE_ATK_PCT + "% attack each");
+        if (THERDUM_ID.equals(id)) s += tr(". [sky]Bất khuất[]: mỗi đòn đánh chỉ lấy tối đa [scarlet]" + THERDUM_HIT_CAP + "[] máu", ". [sky]Unyielding[]: no hit can take more than [scarlet]" + THERDUM_HIT_CAP + "[] HP");
+        if (LUSTRE_ID.equals(id)) s += tr(". Thêm lustre chỉ thêm [scarlet]+" + LUSTRE_ATK_PCT + "%[] tấn công, không thêm tia", ". Extra copies add only [scarlet]+" + LUSTRE_ATK_PCT + "%[] attack, no extra beams");
         if ("duo".equals(id) || "breach".equals(id))
-            s += tr(". Thêm: +" + LIGHT_SPD_PCT + "% tốc độ di chuyển (không cộng dồn)", ". Also: +" + LIGHT_SPD_PCT + "% move speed (does not stack)");
+            s += tr(". Nhẹ như gió: [cyan]+" + LIGHT_SPD_PCT + "%[] tốc chạy (không cộng dồn)", ". Light as wind: [cyan]+" + LIGHT_SPD_PCT + "%[] move speed (no stacking)");
         return s;
     }
     static String roleDescBase(String id) {
-        if (SMITE_ID.equals(id)) return tr("Trang bị: +" + ROLE_ATK_PCT + "% tấn công (tối đa " + ROLE_ATK_MAX + "%). Giảm 50% tốc độ bắn. Mỗi pháo trang bị thêm không bắn thêm đạn, chỉ +" + SMITE_ATK_PCT + "% tấn công",
-            "Equipped: +" + ROLE_ATK_PCT + "% attack (max " + ROLE_ATK_MAX + "%). -50% fire rate. Extra copies fire no extra bullets, only +" + SMITE_ATK_PCT + "% attack each");
+        if (SMITE_ID.equals(id)) return tr("Một đòn trừng phạt: [scarlet]+" + ROLE_ATK_PCT + "%[] tấn công (trần " + ROLE_ATK_MAX + "%), đổi lại [orange]-50%[] tốc bắn. Thêm pháo chỉ thêm [scarlet]+" + SMITE_ATK_PCT + "%[] tấn công",
+            "One punishing blow: [scarlet]+" + ROLE_ATK_PCT + "%[] attack (cap " + ROLE_ATK_MAX + "%), at the cost of [orange]-50%[] fire rate. Extra copies add only [scarlet]+" + SMITE_ATK_PCT + "%[] attack");
         if (MALIGN_ID.equals(id)) {
             int sp = Math.round((1 - MALIGN_SPEED_MUL) * 100), rl = Math.round((1 - MALIGN_RELOAD_MUL) * 100), lf = Math.round((1 - MALIGN_LIFE_MUL) * 100);
-            return tr("Trang bị: -" + sp + "% tốc độ di chuyển, +" + MALIGN_ATK_PCT + "% tấn công, -" + rl + "% tốc độ bắn, -" + lf + "% thời gian tồn tại của đạn",
-                "Equipped: -" + sp + "% move speed, +" + MALIGN_ATK_PCT + "% attack, -" + rl + "% fire rate, -" + lf + "% bullet lifetime");
+            return tr("Sức mạnh có giá của nó: [scarlet]+" + MALIGN_ATK_PCT + "%[] tấn công, đổi lại [orange]-" + sp + "%[] tốc chạy, [orange]-" + rl + "%[] tốc bắn, [orange]-" + lf + "%[] tuổi thọ đạn",
+                "Power has a price: [scarlet]+" + MALIGN_ATK_PCT + "%[] attack, paid with [orange]-" + sp + "%[] move speed, [orange]-" + rl + "%[] fire rate, [orange]-" + lf + "%[] bullet lifetime");
         }
         String r = TURRET_ROLES.get(id);
-        if (ROLE_ATTACK.equals(r)) return tr("Trang bị: +" + ROLE_ATK_PCT + "% tấn công (tối đa " + ROLE_ATK_MAX + "%)", "Equipped: +" + ROLE_ATK_PCT + "% attack (max " + ROLE_ATK_MAX + "%)");
-        if (ROLE_BRAWLER.equals(r)) return tr("Trang bị: +" + ROLE_HP_PCT + "% máu (tối đa " + ROLE_HP_MAX + "%)", "Equipped: +" + ROLE_HP_PCT + "% HP (max " + ROLE_HP_MAX + "%)");
-        if (ROLE_DEFENSE.equals(r)) return tr("Trang bị: +" + ROLE_ARM_PCT + "% giáp, +" + ROLE_ARM_FLAT + " giáp, -" + ROLE_CUT_PCT + "% sát thương nhận (tối đa " + ROLE_CUT_CAP + "%)",
-            "Equipped: +" + ROLE_ARM_PCT + "% armor, +" + ROLE_ARM_FLAT + " armor, -" + ROLE_CUT_PCT + "% damage taken (max " + ROLE_CUT_CAP + "%)");
+        if (ROLE_ATTACK.equals(r)) return tr("Lưỡi kiếm sắc: [scarlet]+" + ROLE_ATK_PCT + "%[] tấn công (trần " + ROLE_ATK_MAX + "%)", "A sharper blade: [scarlet]+" + ROLE_ATK_PCT + "%[] attack (cap " + ROLE_ATK_MAX + "%)");
+        if (ROLE_BRAWLER.equals(r)) return tr("Da dày thịt chắc: [green]+" + ROLE_HP_PCT + "%[] máu (trần " + ROLE_HP_MAX + "%)", "Thick hide: [green]+" + ROLE_HP_PCT + "%[] HP (cap " + ROLE_HP_MAX + "%)");
+        if (ROLE_DEFENSE.equals(r)) return tr("Bức tường sống: [sky]+" + ROLE_ARM_PCT + "%[] giáp, [sky]+" + ROLE_ARM_FLAT + "[] giáp, [green]-" + ROLE_CUT_PCT + "%[] sát thương nhận (trần " + ROLE_CUT_CAP + "%)",
+            "A living wall: [sky]+" + ROLE_ARM_PCT + "%[] armor, [sky]+" + ROLE_ARM_FLAT + "[] armor, [green]-" + ROLE_CUT_PCT + "%[] damage taken (cap " + ROLE_CUT_CAP + "%)");
         return "";
     }
 
@@ -495,7 +495,7 @@ public class NewModePvp {
         /** Chiến tranh: túi vật phẩm (id mẫu), 6 ô trang bị (-1 = trống) và cache cấp cộng thêm (không lưu). */
         ArrayList<Integer> gInv = new ArrayList<>(); int[] gEq = GearItems.newEq();
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
-        int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE; boolean gAny = false;
+        int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false;
         void padStats() { if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length); }
     }
 
@@ -2551,6 +2551,7 @@ public class NewModePvp {
         pilotFxAt.put(id, Time.time);
         try { Call.effect(Fx.spawnShockwave, ox, oy, 0, Color.white); Call.effect(Fx.spawnShockwave, nx, ny, 0, Color.white); } catch (Throwable err) {}
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "x"); } catch (Throwable err) {}
+        GearItems.afterPilotCdStart(id, PILOT_XAKY);
     }
     static float xakyNeoRampPct(Unit unit, Player pl) {
         if (pl == null) pl = ownerPl(unit);
@@ -2881,6 +2882,7 @@ public class NewModePvp {
         pilotFxAt.put(id, Time.time);
         try { Call.effect(vanhauShieldFx, unit.x, unit.y, 0, Color.white); } catch (Throwable err) {}
         try { if (Vars.net.server()) Call.clientPacketReliable(PFX_KIND, id + "v"); } catch (Throwable err) {}
+        GearItems.afterPilotCdStart(id, PILOT_VANHAU);
     }
 
     static void empixFx(int id, boolean cd) {
@@ -2940,6 +2942,7 @@ public class NewModePvp {
                 pl.unit(nu);
                 prevUnit.put(pl.id, nu);
                 empixFx(id, true);
+                GearItems.afterPilotCdStart(id, PILOT_EMPIX);
                 try { Fx.healWaveMend.at(x, y, nu.hitSize); } catch (Throwable err) {}
                 toast(pl, tr("[accent]Empixeand Pilot đã hồi sinh bạn khi chạm 0 máu! (hồi chiêu 5 phút)", "[accent]Empixeand Pilot revived you at 0 HP! (5 min cooldown)"));
             } catch (Throwable err) { logOnce("empixrevive", "empix revive failed: " + err, false); }
@@ -3021,6 +3024,7 @@ public class NewModePvp {
         if (empixOn) dm *= 1 + EMPIX_ATK_PCT * ChaosMode.pilotK();
         if (histOn) dm *= 1 + HIST_STAT_PCT;
         if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT * ChaosMode.pilotK() + xakyNeoRampPct(unit, pl);
+        dm *= GearItems.moveAtkMul(stOwn);
         unit.damageMultiplier *= dm;
         boolean isServer = !Vars.net.client();
         if (empixOn && isServer) empixHeal(unit);
@@ -3079,6 +3083,7 @@ public class NewModePvp {
             @Override public void update(Unit unit, StatusEntry entry) { super.update(unit, entry); applyStats(unit); }
         };
         GearItems.hasteStatus = new StatusEffect("pvp-gear-haste") {{ speedMultiplier = 2.5f; permanent = false; show = true; color = Color.valueOf("2ee6c8"); }};
+        GearItems.killSpeedStatus = new StatusEffect("pvp-gear-killspd") {{ speedMultiplier = 1.5f; permanent = false; show = true; color = Color.valueOf("7df9ff"); }};
         buffStatus.permanent = true; buffStatus.show = false;
         equipStatus = new StatusEffect("pvp-equip");
         equipStatus.permanent = true; equipStatus.show = false;
@@ -3395,14 +3400,16 @@ public class NewModePvp {
         }
         try { Unit u = pl.unit(); if (u != null && u.isValid()) { try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); } } } catch (Throwable err) {}
     }
-    static void startRespawnLock(Player pl) {
+    static void startRespawnLock(Player pl) { startRespawnLock(pl, false); }
+    static void startRespawnLock(Player pl, boolean killedByEnemyPl) {
         St st = bind(pl);
         int tier = activeTier(st);
         int sec = RESPAWN_SEC[Math.min(RESPAWN_SEC.length, Math.max(1, tier)) - 1];
+        boolean half = killedByEnemyPl && GearItems.hasDeathCdr(st);
+        if (half) sec = Math.max(1, Math.round(sec * 0.5f));
         int ticks = Math.max(0, sec * 60 - 60);
-        if (ticks <= 0) return;
-        respawnLock.put(pl.id, (float) ticks);
-        toast(pl, tr("[scarlet]Hồi sinh sau ", "[scarlet]Respawn in ") + sec + tr(" giây", " s"));
+        if (ticks > 0) respawnLock.put(pl.id, (float) ticks);
+        if (ticks > 0 || half) toast(pl, tr("[scarlet]Hồi sinh sau ", "[scarlet]Respawn in ") + sec + tr(" giây", " s") + (half ? tr(" [accent](-50%)[]", " [accent](-50%)[]") : ""));
     }
     /** Map ngoai: bam "bien ve" lan 1 -> drone vanilla (xay dung), lan 2 -> unit PvP, lap lai. */
     static void extSwap(Player pl, St st, Unit u) {
@@ -5130,9 +5137,15 @@ public class NewModePvp {
                 if (sk != null && sk.team() != u.team) { float skx = killExp(u) * KILL_EXP_PCT / 100f; if (skx > 0) addExp(sk, skx); }
             }
             Player dp = u.getPlayer();
+            BotCtx dBot = dp == null ? botUnitOf(u) : null;
+            Player gearKiller = (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) ? GearItems.playerById(krGear.pid) : null;
+            boolean killedByEnemyPl = gearKiller != null && gearKiller.team() != u.team && isPvpTeam(gearKiller.team());
             lastHitBy.remove(u.id);
             if (dp != null && isFull() && isPvpTeam(u.team)) {
-                startRespawnLock(dp);
+                startRespawnLock(dp, killedByEnemyPl);
+                if (killedByEnemyPl) {
+                    try { GearItems.onKilledByEnemyPlayer(dp, byId.get(dp.id)); } catch (Throwable err) {}
+                }
                 deadUnit.put(dp.id, u.id);
                 spawnBuff.remove(dp.id);
                 Player killer = pvpKiller(u);
@@ -5142,8 +5155,13 @@ public class NewModePvp {
                     float kx = killExp(u) * KILL_EXP_PCT / 100f;
                     if (kx > 0) addExp(killer, kx);
                 }
+            } else if (dBot != null && killedByEnemyPl && isFull() && isPvpTeam(u.team)) {
+                try { GearItems.onKilledByEnemyPlayer(dBot.botPl, byId.get(dBot.botPl.id)); } catch (Throwable err) {}
             }
         } catch (Throwable err) {}
+        if (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) {
+            try { GearItems.onAnyKill(u, krGear.pid); } catch (Throwable err) { logOnce("gear-kill", "gear kill skill failed: " + err, false); }
+        }
         if (u.team == Vars.state.rules.waveTeam) {
             try { GearItems.onWaveKill(u, krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS ? krGear.pid : -1); } catch (Throwable err) { logOnce("gear-drop", "gear drop failed: " + err, false); }
             final float gained = killExp(u);
@@ -5169,7 +5187,7 @@ public class NewModePvp {
         bonusWaveT = 0; matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldRecs.clear(); shieldEnded = false; shieldSyncT = 0;
         shieldView = new ShieldView(); shieldFlash.clear(); shieldSeenHit.clear();
         vanhauField.clear();
-        ChaosMode.reset();
+        ChaosMode.reset(); GearItems.reset();
         resetUiState();
         respawnLock.clear(); deadUnit.clear(); spawnBuff.clear(); swapPending.clear(); prevUnit.clear(); extPvp.clear();
         barrackT.clear(); rally.clear(); soldiers.clear(); soldierOwner.clear(); mountSt.clear(); lastHitBy.clear(); teamHit.clear();
@@ -5512,9 +5530,21 @@ public class NewModePvp {
         } catch (Throwable err) { return 0f; }
     }
 
+    /** Hệ số tăng tấn công cho kỹ năng unit player (từ vật phẩm chế độ Chiến tranh, tối đa +500%). */
+    public static float skillAtkMul(Unit owner) {
+        try { return GearItems.skillAtkMul(owner); } catch (Throwable err) { return 1f; }
+    }
+
     /** Skill gây sát thương lên unit địch: đã tính Xuyên giáp, % máu tối đa, bonus quái spawn ngẫu nhiên, Đẩy lùi. Gọi ở server/host. */
     public static void skillDamage(Unit owner, Unit tgt, float dmg, float fromX, float fromY) {
         if (tgt == null) return;
+        dmg *= skillAtkMul(owner);
+        if (owner != null && owner.team != tgt.team) {
+            try {
+                Player op = ownerPl(owner);
+                if (op != null) { Hit h = new Hit(); h.pid = op.id; h.t = Time.time; lastHitBy.put(tgt.id, h); }
+            } catch (Throwable err) {}
+        }
         skillDamageCore(owner, tgt, tgt.team, dmg);
         try { Honivery.reflectOnHit(tgt, owner, dmg); } catch (Throwable err) {} // khiên Tinh Quang của Honivery phản sát thương skill
         try {
@@ -5529,6 +5559,7 @@ public class NewModePvp {
     /** Skill gây sát thương lên công trình địch (không đẩy lùi). */
     public static void skillDamage(Unit owner, Building tgt, float dmg) {
         if (tgt == null) return;
+        dmg *= skillAtkMul(owner);
         skillDamageCore(owner, tgt, tgt.team, dmg);
     }
 
@@ -5556,7 +5587,7 @@ public class NewModePvp {
         winning = false; seenBoth = false; byId = new HashMap<>(); teamsCache = null;
         mindustry.game.Rules r = Vars.state.rules;
         r.tags.put(TAG_ACTIVE, "1");
-        ChaosMode.stampTag(); GearItems.stampTag(); ChaosMode.reset();
+        ChaosMode.stampTag(); GearItems.stampTag(); ChaosMode.reset(); GearItems.reset();
         store = new LinkedHashMap<>();
         r.tags.put(TAG_STORE, "{}");
         matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldEnded = false;
@@ -5860,8 +5891,8 @@ public class NewModePvp {
         St st = localState();
         if (st == null) { c.add(tr("Đang đồng bộ dữ liệu...", "Syncing data...")).pad(20).row(); return; }
         final float W = pnl.innerW();
-        h.add("[lightgray]" + tr("Chỉ số hiện tại (đã gồm cộng/trừ từ vật phẩm trang bị). Trang này chỉ để xem, không có nút nâng cấp.",
-            "Current stats (includes item bonuses/penalties). View only, no upgrade button here.") + "[]").growX().wrap().minWidth(0).pad(6).row();
+        h.add("[lightgray]" + tr("Chỉ số hiện tại (đã gồm cộng/trừ từ vật phẩm trang bị; xem kỹ năng vật phẩm ở tab Trang bị). Trang này chỉ để xem, không có nút nâng cấp.",
+            "Current stats (includes item bonuses/penalties; see item skills in the Gear tab). View only, no upgrade button here.") + "[]").growX().wrap().minWidth(0).pad(6).row();
         for (int i = 0; i < STATS.length; i++) {
             if (i == STAT_ARMY || !statVisible(i)) continue;
             statRowView(c, st, i, W);
@@ -5881,28 +5912,28 @@ public class NewModePvp {
         Block blk = def.block;
         String kind = def.kind;
         String rng = numStr(Math.round(turretRange(def) / Vars.tilesize * 10f) / 10f);
-        String rangeTxt = tr(" Tầm: " + rng + " ô.", " Range: " + rng + " tiles.");
-        String autoTxt = FORCE_AUTO_AIM.get(def.id) != null ? tr(" [sky]Tự động bắn (không điều khiển được).[]", " [sky]Auto-fire (not player-controlled).[]") : "";
-        if (!def.mount) autoTxt += tr(" [gray]Chỉ xây được, không thể lắp lên unit.[]", " [gray]Build only, cannot be mounted on a unit.[]");
+        String rangeTxt = tr(" Tầm [cyan]" + rng + "[] ô.", " Range [cyan]" + rng + "[] tiles.");
+        String autoTxt = FORCE_AUTO_AIM.get(def.id) != null ? tr(" [sky]Tự động nhả đạn.[]", " [sky]Fires on its own.[]") : "";
+        if (!def.mount) autoTxt += tr(" [gray]Chỉ để xây, không lắp lên unit.[]", " [gray]Build only, can't be mounted.[]");
         if (kind.equals("tractor")) {
             String dps = numStr(Math.round(fldF(blk, "damage", 0f) * 60 * 10) / 10f), force = numStr(fldF(blk, "force", 0f));
-            return tr("Tia kéo: kéo máy bay lại gần, gây " + dps + " sát thương/giây, lực kéo " + force + "." + rangeTxt,
-                "Tractor beam: pulls air units closer, deals " + dps + " dmg/s, force " + force + "." + rangeTxt) + autoTxt;
+            return tr("Kéo kẻ trên không về phía mình, [scarlet]" + dps + "[] sát thương/giây, lực kéo [cyan]" + force + "[]." + rangeTxt,
+                "Drags airborne foes in: [scarlet]" + dps + "[] dmg/s, pull [cyan]" + force + "[]." + rangeTxt) + autoTxt;
         }
         if (kind.equals("point")) {
             String rl = numStr(fldF(blk, "reload", 0f)), bd = numStr(fldF(blk, "bulletDamage", 0f));
-            return tr("Phòng thủ điểm: bắn hạ đạn địch, mỗi " + rl + " tick trừ " + bd + " sát thương đạn." + rangeTxt,
-                "Point defense: shoots down enemy bullets, every " + rl + " ticks removes " + bd + " bullet damage." + rangeTxt) + autoTxt;
+            return tr("Bắn hạ đạn địch giữa không trung: mỗi [cyan]" + rl + "[] tick gọt [scarlet]" + bd + "[] sát thương đạn." + rangeTxt,
+                "Swats enemy bullets from the air: every [cyan]" + rl + "[] ticks strips [scarlet]" + bd + "[] bullet damage." + rangeTxt) + autoTxt;
         }
         if (kind.equals("laser")) {
             String sd = numStr(Math.round(fldF(blk, "shootDuration", 0f) / 6f) / 10f), rl = numStr(Math.round(fldF(blk, "reload", 0f) / 6f) / 10f);
-            return tr("Laser liên tục " + sd + "s rồi nạp lại " + rl + "s." + rangeTxt, "Continuous laser for " + sd + "s, then recharges " + rl + "s." + rangeTxt) + autoTxt;
+            return tr("Tia sáng xối [scarlet]" + sd + "s[], nghỉ [cyan]" + rl + "s[] rồi lại bùng lên." + rangeTxt, "A beam pours for [scarlet]" + sd + "s[], rests [cyan]" + rl + "s[], then blazes again." + rangeTxt) + autoTxt;
         }
-        if (kind.equals("cont")) return tr("Tia bắn liên tục khi có mục tiêu." + rangeTxt, "Fires a continuous beam while a target is in range." + rangeTxt) + autoTxt;
+        if (kind.equals("cont")) return tr("Tia liên tục, không buông khi còn mục tiêu." + rangeTxt, "A relentless beam that never lets go." + rangeTxt) + autoTxt;
         ArrayList<String> parts = new ArrayList<>();
-        if (fldB(blk, "targetGround", true)) parts.add(tr("bộ binh", "ground"));
-        if (fldB(blk, "targetAir", true)) parts.add(tr("máy bay", "air"));
-        return (parts.size() > 0 ? tr("Bắn: ", "Targets: ") + String.join(", ", parts) + "." : tr("Pháo tiêu chuẩn.", "Standard turret.")) + rangeTxt + autoTxt;
+        if (fldB(blk, "targetGround", true)) parts.add(tr("mặt đất", "ground"));
+        if (fldB(blk, "targetAir", true)) parts.add(tr("trên không", "air"));
+        return (parts.size() > 0 ? tr("Khắc chế: [accent]", "Hunts: [accent]") + String.join(" + ", parts) + "[]." : tr("Pháo tiêu chuẩn.", "Standard turret.")) + rangeTxt + autoTxt;
     }
     static int turretDmg(Def def) {
         try {
@@ -6134,19 +6165,19 @@ public class NewModePvp {
     }
     static ArrayList<PilotDef> pilotList() {
         ArrayList<PilotDef> l = new ArrayList<>();
-        l.add(new PilotDef(PILOT_XIKI, "Xiki Pilot", "+5% EXP mỗi lần nhận EXP. Khi lên cấp: +5% EXP cấp mới và +500 EXP, kèm hoạt ảnh icon.",
-            "+5% EXP on every EXP gain. On level up: +5% of new level EXP and +500 EXP, with an icon animation.", 1));
-        l.add(new PilotDef(PILOT_EMPIX, "Empixeand Pilot", "+5% tấn công và +5% máu. Tụt 50% máu: hồi đầy máu 1 lần; chạm 0 máu: hồi đầy máu thêm 1 lần (hồi chiêu 5 phút sau khi dùng cả 2).",
-            "+5% attack and +5% HP. At 50% HP: instantly fully heal once; at 0 HP: fully heal again once (5 min cooldown after both).", EMPIX_MIN_LEVEL));
-        l.add(new PilotDef(PILOT_XAKY, "Xaky Pilot", "-20% máu, +20% tốc độ di chuyển. Từ cấp " + XAKY_MIN_LEVEL + ": khi nhận sát thương sẽ Dash theo hướng di chuyển (hồi chiêu 5s). Bộ binh dừng cách tường/công trình 1 ô, không quân bay xuyên.",
-            "-20% HP, +20% move speed. From level " + XAKY_MIN_LEVEL + ": taking damage makes you Dash in your move direction (5s cooldown). Ground units stop 1 tile short of walls/buildings; air units fly through.", 1));
-        l.add(new PilotDef(PILOT_HIST, "HistekaIMsp Pilot", "Mạnh toàn diện, không điểm yếu! +1 cấp cho mọi thẻ ở trang chỉ số.", "All-rounder, no weakness! +1 level on every stat card in the stats page.", 1));
+        l.add(new PilotDef(PILOT_XIKI, "Xiki Pilot", "Mỗi giọt kinh nghiệm đều nở hoa: [green]+5%[] EXP mỗi lần nhận. Lên cấp là thưởng lớn: [green]+5%[] EXP cấp mới và [gold]+500[] EXP, kèm hoạt ảnh icon.",
+            "Every drop of EXP blooms: [green]+5%[] on each gain. Level-ups pay out: [green]+5%[] of the new level's EXP and [gold]+500[] EXP, with an icon animation.", 1));
+        l.add(new PilotDef(PILOT_EMPIX, "Empixeand Pilot", "Hai mạng trong một: [scarlet]+5%[] tấn công, [green]+5%[] máu. Tụt còn [orange]50%[] máu: hồi đầy một lần. Chạm đáy [scarlet]0[] máu: sống lại, hồi đầy thêm một lần. Dùng cả hai thì nghỉ 5 phút.",
+            "Two lives in one: [scarlet]+5%[] attack, [green]+5%[] HP. Fall to [orange]50%[] HP: full heal once. Hit [scarlet]0[]: rise again with another full heal. Using both costs a 5 min cooldown.", EMPIX_MIN_LEVEL));
+        l.add(new PilotDef(PILOT_XAKY, "Xaky Pilot", "Mong manh nhưng nhanh như gió: [orange]-20%[] máu, [cyan]+20%[] tốc chạy. Từ cấp " + XAKY_MIN_LEVEL + ": bị đánh là Dash theo hướng chạy (hồi chiêu [cyan]5s[]). Bộ binh dừng cách tường 1 ô, không quân bay xuyên qua.",
+            "Fragile but swift as wind: [orange]-20%[] HP, [cyan]+20%[] move speed. From level " + XAKY_MIN_LEVEL + ": getting hit triggers a Dash in your move direction ([cyan]5s[] cooldown). Ground units stop 1 tile before walls; air units fly through.", 1));
+        l.add(new PilotDef(PILOT_HIST, "HistekaIMsp Pilot", "Không điểm yếu, chỉ có điểm mạnh! [gold]+1[] cấp cho mọi thẻ ở trang chỉ số.", "No weakness, only strengths! [gold]+1[] level on every stat card.", 1));
         l.add(new PilotDef(PILOT_XAKYNEO, "Xaky(Neo) Pilot",
-            "+5% tấn công (mỗi phút +0,1%, tối đa +100%). +1 điểm tỉ lệ bạo kích, sát thương bạo kích & hồi máu. +35% sát thương lên mục tiêu trên 50% máu. Kết liễu mục tiêu dưới 16% máu (bản thân mất 9% máu tối đa; áp dụng cả đạn pháo trang bị và pháo xây). Khi lắp pháo therdum, hiệu ứng bất lợi từ kết liễu (tụt máu) đảo ngược thành hồi máu tức thì. Kết liễu còn tạo vụ nổ bán kính, sát thương 200% tấn công + 50% giáp + 50% máu.",
-            "+5% attack (ramps +0,1%/min, up to +100%). +1 point to crit chance, crit damage & regeneration. +35% damage to targets above 50% HP. Executes targets below 16% HP (costs 9% of your own max HP; applies to unit, mounted and built turret bullets). While a therdum turret is equipped, the execute drawback (HP loss) is reversed into an instant heal. Execute also causes an explosion with a radius, dealing 200% attack + 50% armor + 50% HP.", 1));
+            "Càng đánh càng điên: [scarlet]+5%[] tấn công, mỗi phút thêm [scarlet]+0,1%[] (tối đa [gold]+100%[]). [gold]+1[] điểm bạo kích, sát thương bạo kích và hồi máu. [scarlet]+35%[] sát thương lên mục tiêu trên 50% máu. Kết liễu mục tiêu dưới [scarlet]16%[] máu, đổi lại mất [orange]9%[] máu tối đa của mình (áp dụng cho đạn pháo lắp và pháo xây). Khi lắp therdum, cái giá đó hóa thành hồi máu tức thì. Mỗi cú kết liễu nổ tung, gây [scarlet]200%[] tấn công + [sky]50%[] giáp + [green]50%[] máu.",
+            "The longer the fight, the wilder: [scarlet]+5%[] attack, plus [scarlet]+0,1%[] each minute (up to [gold]+100%[]). [gold]+1[] point to crit chance, crit damage and regen. [scarlet]+35%[] damage to targets above 50% HP. Execute targets below [scarlet]16%[] HP, costing [orange]9%[] of your own max HP (works on mounted and built turret bullets). With therdum equipped, that cost becomes an instant heal. Every execute detonates for [scarlet]200%[] attack + [sky]50%[] armor + [green]50%[] HP.", 1));
         l.add(new PilotDef(PILOT_VANHAU, "VanHau Pilot",
-            "Máu dưới 70%: tự tạo khiên lực (như khối tạo khiên) bao quanh unit, chặn đạn địch, độ bền 120% máu tối đa (hồi chiêu 3 phút), tồn tại đến khi bị phá. Chỉ số hồi máu ưu tiên hồi độ bền khiên khi khiên còn tồn tại.",
-            "Below 70% HP: auto-creates a force-field shield (like a force projector) around you that blocks enemy bullets, 120% max HP durability (3 min cooldown), lasting until broken. HP regen stat heals the shield first while it's up.", 1));
+            "Lá chắn cuối cùng: dưới [orange]70%[] máu, tự dựng khiên lực chặn đạn địch, bền [sky]120%[] máu tối đa, tồn tại đến khi vỡ (hồi chiêu [cyan]3 phút[]). Chỉ số hồi máu sẽ ưu tiên vá khiên trước.",
+            "The last bastion: below [orange]70%[] HP, a force shield rises and blocks enemy bullets, [sky]120%[] max HP durability, lasting until broken ([cyan]3 min[] cooldown). HP regen mends the shield first.", 1));
         return l;
     }
     static String pilotStatus(St st, PilotDef d) {
@@ -6646,7 +6677,7 @@ public class NewModePvp {
         viewUp = new ArrayList[]{new ArrayList<Object>(recentUp[0]), new ArrayList<Object>(recentUp[1]), new ArrayList<Object>(recentUp[2]), new ArrayList<Object>(recentUp[3])};
         final boolean warUi = GearItems.war();   // Chiến tranh: tab 2 là TRANG BỊ vật phẩm; trang CHỈ SỐ chỉ có khi bật Hỗn loạn
         p.tabs(new String[]{tr("UNIT", "UNIT"), warUi ? tr("TRANG BỊ", "GEAR") : tr("CHỈ SỐ", "STATS"), tr("PHÁO", "TURRETS"), tr("LÍNH", "ARMY")}, upTab, ix -> upTab = ix);
-        p.bigTabs(new String[]{tr("Chọn unit điều khiển", "Pick your unit"), warUi ? tr("Lắp vật phẩm rơi từ quái", "Equip monster drops") : tr("Dùng điểm để mạnh hơn", "Spend points"), tr("Mua & lắp pháo", "Buy & mount turrets"), tr("Thuê lính giữ lõi", "Hire army")},
+        p.bigTabs(new String[]{tr("Chọn unit điều khiển", "Pick your unit"), warUi ? tr("Lắp vật phẩm & kỹ năng", "Equip items & skills") : tr("Dùng điểm để mạnh hơn", "Spend points"), tr("Mua & lắp pháo", "Buy & mount turrets"), tr("Thuê lính giữ lõi", "Hire army")},
             ix -> { St s = localState(); if (ix != 1 || s == null) return ""; if (warUi) return s.gInv.size() > 0 ? "[accent]" + s.gInv.size() + "[]" : ""; return s.pts > 0 ? "[scarlet]+" + s.pts + "[]" : ""; });
         p.onBuild(() -> buildDialog(p));
         final String[] lastVer = {curVer()};
