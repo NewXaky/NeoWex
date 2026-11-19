@@ -105,11 +105,15 @@ public final class UnitSkillInfo {
             DamageKind.SKILL_ATTACK,
             Color.valueOf("D0C2FF"),
             "Tinh Quang Trảm: [cyan]8.0s[] | Combo 8 nhát: [cyan]2.75s[] (1.75s tung chiêu + 1s hồi)",
-            "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại); khi tung nhận Khiên Tinh Quang 5 giây: giảm 72% sát thương nhận vào, phản 70% sát thương về kẻ tấn công (28% +150% nội tại); sau nhát chém tạo Vòng Tinh Quang 5 giây, kẻ địch đứng trong vòng nhận 100% Tấn Công mỗi giây\n"
-                + "Combo 8 nhát: mỗi nhát tăng dần từ 50% đến 120% Tấn Công, nhát cuối chém vòng 360°\n"
-                + "Nhát chém đặc biệt (lốc xoáy phong kiếm ngọc lục bảo): 430% Tấn Công",
-            "[Kỹ năng 1 - Tinh Quang Trảm] Tụ năng lượng vào Kiếm Sao 4 cánh và phóng ra sóng kiếm hình quạt 3 tầng xé rách không gian phía trước. Được tính là Đòn Đánh Kỹ Năng.\n"
-                + "[Kỹ năng 2 - Combo] Tung liên tiếp 8 nhát chém song tinh vân, nhát cuối là vòng chém 360°. Trong lúc tung có cơ hội phóng nhát chém đặc biệt: 2% khi bấm, +10% mỗi nhát chém trúng (tổng 12%), và chắc chắn phóng 1 nhát về phía mục tiêu khi hạ gục nó.",
+            "[gold]Tinh Quang Trảm[]: [scarlet]90%[] Tấn Công + [green]10%[] Máu Hiện Tại (nhân với % Nội Tại)\n"
+                + "[sky]Khiên Tinh Quang[] [cyan]6s[]: giảm [green]72%[] sát thương nhận, phản [scarlet]70%[] về kẻ tấn công ([scarlet]28%[] +150% nội tại)\n"
+                + "[gold]Vòng Tinh Quang[] [cyan]5s[]: địch trong vòng nhận [scarlet]100%[] Tấn Công mỗi giây và chậm [orange]-50%[]\n"
+                + "[gold]Combo 8 nhát[]: mỗi nhát tăng dần [scarlet]50% → 120%[] Tấn Công, nhát cuối xoay [cyan]360°[]\n"
+                + "[gold]Nhát đặc biệt[] (lốc xoáy phong kiếm ngọc lục bảo): [scarlet]430%[] Tấn Công",
+            "[gold]Kỹ năng 1 · Tinh Quang Trảm[]\n"
+                + "Dồn năng lượng vào Kiếm Sao 4 cánh, tung sóng kiếm hình quạt 3 tầng xé toạc không gian phía trước. Tính là [accent]Đòn Đánh Kỹ Năng[].\n"
+                + "[gold]Kỹ năng 2 · Combo[]\n"
+                + "8 nhát song tinh vân nối nhau, nhát cuối quét vòng [cyan]360°[]. Trong lúc chém có cơ hội tung nhát đặc biệt: [gold]2%[] khi bấm, [green]+10%[] mỗi nhát trúng (tổng [gold]12%[]), và [green]chắc chắn[] tung một nhát về phía mục tiêu khi hạ gục nó.",
             "[gold]Tinh Hồn Thôn Phệ[]: mỗi lần Tinh Quang Trảm hạ gục mục tiêu, kỹ năng này vĩnh viễn [green]+1%[] sát thương (tối đa [gold]999%[]). Cứ mỗi [cyan]10.000[] HP tối đa của mục tiêu bị hạ, cộng thêm [green]+1%[]. Hạ gục bằng Combo 8 nhát cũng được tính.",
             () -> "Cộng dồn hiện tại: [accent]+" + Honivery.getPassiveBonusPct() + "%[] / 999%",
             () -> "PC: Tinh Quang Trảm - phím [accent][" + Honivery.getSkillKey().value + "][] | Combo 8 nhát - phím [accent][" + HoniveryPvp.getSkillKey().value + "][] (đổi trong Cài đặt -> Phím kĩ năng)\n"
@@ -141,10 +145,10 @@ public final class UnitSkillInfo {
             DamageKind.BASIC_ATTACK,
             Color.valueOf("FFC933"),
             "Nội tại: khóa [cyan]1.5s[] rồi bắn laser, hồi [cyan]8.0s[]",
-            "Nhịp 1: 3 viên, mỗi viên 50% Tấn Công\n"
-                + "Nhịp 2: 2 viên, mỗi viên 125% Tấn Công + 10% Máu Hiện Tại\n"
-                + "Nhịp 3: 1 viên, 270% Tấn Công + 30% Máu Hiện Tại (tụ lực gần 1 giây)\n"
-                + "Đạn KHÔNG gây sát thương trực tiếp: nổ gây sát thương phạm vi, bán kính bằng hiệu ứng vụ nổ (khoảng 3.4 / 5.1 / 6.8 ô theo từng nhịp), càng xa tâm nổ sát thương càng giảm (còn 40% ở rìa).",
+            "[gold]Nhịp 1[]: 3 viên, mỗi viên [scarlet]50%[] Tấn Công\n"
+                + "[gold]Nhịp 2[]: 2 viên, mỗi viên [scarlet]125%[] Tấn Công + [green]10%[] Máu Hiện Tại\n"
+                + "[gold]Nhịp 3[]: 1 viên, [scarlet]270%[] Tấn Công + [green]30%[] Máu Hiện Tại (tụ lực gần 1 giây)\n"
+                + "Đạn [orange]không[] gây sát thương trực tiếp: nổ lan, bán kính theo nhịp khoảng [cyan]3.4 / 5.1 / 6.8[] ô, càng xa tâm càng yếu (còn [orange]40%[] ở rìa).",
             "Hai pháo vai bắn luân phiên theo chu kỳ 3 nhịp, nhịp sau dữ hơn nhịp trước. Đạn bay thẳng hàng nối đuôi nhau, chạm mục tiêu hay vật cản là nổ vàng kim lan khắp vùng. Tính là [accent]Đòn Đánh Thường[].",
             "[gold]Phong Ấn Khóa Mục Tiêu[]: tự khóa kẻ gần nhất trong [cyan]1.5s[] (có thể rê chuột chọn mục tiêu), rồi bắn tia laser vàng kim giam chặt mục tiêu [scarlet]0.9s[]: không bắn, không chạy, không xoay, không dùng kỹ năng (pilot vẫn hoạt động). Sau mỗi phát hồi [cyan]8s[], thời gian hồi hiện ở góc dưới bên phải màn hình.",
             null,

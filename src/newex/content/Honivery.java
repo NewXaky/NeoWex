@@ -96,24 +96,28 @@ public final class Honivery {
     static final float HP_RATIO = 0.10f;     // 10% HP hiện tại
     static final int MAX_PASSIVE_PCT = 999;  // giới hạn nội tại 999%
 
-    // ---- Khiên Tinh Quang (dùng Tinh Quang Trảm): giảm 72% sát thương nhận, phản 28% (+150% nội tại = 70%), 5 giây ----
-    static final float AEGIS_T = 300f;
+    // ---- Khiên Tinh Quang (dùng Tinh Quang Trảm): giảm 72% sát thương nhận, phản 28% (+150% nội tại = 70%), 6 giây ----
+    static final float AEGIS_T = 360f;
     static final float AEGIS_REDUCE = 0.72f;
     static final float AEGIS_REFLECT_BASE = 0.28f;
     static final float AEGIS_REFLECT_BONUS = 1.5f;                                   // nội tại: chỉ số phản sát thương +150%
     static final float AEGIS_REFLECT = AEGIS_REFLECT_BASE * (1f + AEGIS_REFLECT_BONUS); // = 0.70
 
-    // ---- Vòng Tinh Quang: sau khi chém xong tạo vòng tròn, kẻ địch đứng trong vòng nhận 100% Tấn công mỗi nhịp ----
+    // ---- Vòng Tinh Quang: sau khi chém xong tạo vòng tròn, kẻ địch đứng trong vòng nhận 100% Tấn công mỗi nhịp & chậm 50% ----
     static final float ZONE_T = 300f;          // tồn tại 5 giây
     static final float ZONE_TICK = 60f;        // 1 nhịp / giây
     static final float ZONE_ATK_RATIO = 1.0f;  // 100% tấn công mỗi nhịp
-    static final float ZONE_RADIUS = SLASH_RANGE;
+    static final float ZONE_RADIUS = SLASH_RANGE * 2f;
+    static final float ZONE_SLOW = 0.5f;       // giảm 50% tốc độ di chuyển trong vòng
+    static final Color ZONE_RING = Color.valueOf("E05CFF");
+    static final Color ZONE_FILL = Color.valueOf("A25BE8");
+    static final Color ZONE_SOFT = Color.valueOf("E8C4FF");
     static final ArrayList<StarZone> zones = new ArrayList<>();
     static class StarZone {
         int uid, team;
-        float x, y, t, tick, dmg;
+        float x, y, t, tick, slowT, dmg;
     }
-    public static StatusEffect aegis;
+    public static StatusEffect aegis, zoneSlow;
     static final HashMap<Integer, Float> aegisStart = new HashMap<>(); // uid -> thời điểm tung (mọi máy đều nhận CAST) để vẽ nhịp khiên mỗi giây
 
     static boolean netOk = false, initialized = false;
@@ -281,6 +285,11 @@ public final class Honivery {
                 drawAegis(unit, this);
             }
         };
+        zoneSlow = new StatusEffect("honivery-zone-slow") {{
+            speedMultiplier = ZONE_SLOW;
+            color = Color.valueOf("C77DFF");
+            show = false;
+        }};
 
         final Effect hitFx = hitBulletFx(5f, 8, 10f);
         final Effect despawnFx = hitBulletFx(12f, 10, 18f);
@@ -426,7 +435,7 @@ public final class Honivery {
         float atk = BASE_ATK * Math.max(0.1f, u.damageMultiplier);
         float raw = atk * ATK_RATIO + Math.max(0f, u.health) * HP_RATIO;
         float mult = 1f + Math.min(MAX_PASSIVE_PCT, Math.max(0, passivePct)) / 100f;
-        return raw * mult;
+        return raw * mult * NewModePvp.skillAtkMul(u);
     }
 
     static void onSkillReq(Player player, String payload) {
@@ -588,13 +597,24 @@ public final class Honivery {
         }
     }
 
-    /** Vòng Tinh Quang: mỗi nhịp gây 100% Tấn công lên mọi kẻ địch (và công trình địch) đứng trong vòng. Sát thương chỉ tính ở server/host. */
+    /** Vòng Tinh Quang: mỗi nhịp gây 100% Tấn công & làm chậm 50% mọi kẻ địch (và công trình địch) đứng trong vòng. Sát thương chỉ tính ở server/host. */
     static void updateZones() {
         for (int i = zones.size() - 1; i >= 0; i--) {
             StarZone z = zones.get(i);
             z.t += Time.delta;
             if (z.t >= ZONE_T) { zones.remove(i); continue; }
             if (Vars.net.client()) continue;
+            z.slowT += Time.delta;
+            if (z.slowT >= 10f && zoneSlow != null) {
+                z.slowT = 0f;
+                final Team team = Team.get(z.team);
+                final StarZone zf = z;
+                Units.nearbyEnemies(team, z.x - ZONE_RADIUS, z.y - ZONE_RADIUS, ZONE_RADIUS * 2f, ZONE_RADIUS * 2f, e -> {
+                    if (!e.dead && Mathf.dst(zf.x, zf.y, e.x, e.y) <= ZONE_RADIUS + e.hitSize / 2f) {
+                        e.apply(zoneSlow, 24f);
+                    }
+                });
+            }
             z.tick += Time.delta;
             if (z.tick < ZONE_TICK) continue;
             z.tick -= ZONE_TICK;
@@ -616,27 +636,176 @@ public final class Honivery {
         }
     }
 
+    static final float[] ornX = new float[40];
+    static final float[] ornY = new float[40];
+    static final float[] ornW = new float[40];
+
+    static void drawOrnament(float cx, float cy, float r, float startAng, float spanDeg, float amp, float phase, int dir, float alpha, float scale) {
+        float lastR = r;
+        for (int i = 0; i <= 22; i++) {
+            float f = i / 22f;
+            float ang = startAng + dir * spanDeg * f;
+            float rr = r + amp * Mathf.sin(f * Mathf.PI * 2f + phase) * (0.4f + f * 0.6f);
+            ornX[i] = cx + Angles.trnsx(ang, rr);
+            ornY[i] = cy + Angles.trnsy(ang, rr);
+            ornW[i] = 0.35f + 1.9f * (float) Math.pow(Mathf.sin(f * Mathf.PI), 0.8f);
+            lastR = rr;
+        }
+        for (int i = 1; i <= 8; i++) {
+            float f = i / 8f;
+            float ang = startAng + dir * (spanDeg + f * 10f / scale);
+            float rr = lastR - f * f * 11f * scale;
+            ornX[22 + i] = cx + Angles.trnsx(ang, rr);
+            ornY[22 + i] = cy + Angles.trnsy(ang, rr);
+            ornW[22 + i] = 1f * (1f - f) + 0.25f;
+        }
+        int total = 30;
+        for (int pass = 0; pass < 3; pass++) {
+            float wMul = pass == 0 ? 2.6f : pass == 1 ? 1f : 0.4f;
+            Draw.color(pass == 2 ? ZONE_SOFT : ZONE_RING, (pass == 0 ? 0.2f : pass == 1 ? 0.9f : 0.8f) * alpha);
+            for (int i = 0; i < total; i++) {
+                Lines.stroke(Math.max(0.3f, ornW[i] * wMul * scale));
+                Lines.line(ornX[i], ornY[i], ornX[i + 1], ornY[i + 1]);
+            }
+        }
+    }
+
+    static void star5(float x, float y, float r, float rot, boolean fill) {
+        float ir = r * 0.45f;
+        for (int i = 0; i < 5; i++) {
+            float a = rot + i * 72f;
+            float ox = x + Angles.trnsx(a, r), oy = y + Angles.trnsy(a, r);
+            float lx = x + Angles.trnsx(a - 36f, ir), ly = y + Angles.trnsy(a - 36f, ir);
+            float rx = x + Angles.trnsx(a + 36f, ir), ry = y + Angles.trnsy(a + 36f, ir);
+            if (fill) {
+                Fill.tri(x, y, lx, ly, ox, oy);
+                Fill.tri(x, y, ox, oy, rx, ry);
+            } else {
+                Lines.line(lx, ly, ox, oy);
+                Lines.line(ox, oy, rx, ry);
+            }
+        }
+    }
+
     static void drawZones() {
         if (zones.isEmpty()) return;
         for (StarZone z : zones) {
-            float fin = Mathf.clamp(z.t / ZONE_T), fade = Mathf.clamp((ZONE_T - z.t) / 40f) * Mathf.clamp(z.t / 12f);
-            float pulse = 0.5f + 0.5f * Mathf.sin(Time.time * 0.12f);
+            float t = z.t;
+            long seed = (long) z.uid * 7919L + (long) (z.x * 13f + z.y * 17f);
+            float fade = Mathf.clamp((ZONE_T - t) / 50f) * Mathf.clamp(t / 20f);
+            float open = Interp.pow3Out.apply(Mathf.clamp(t / 30f));
+            float nebula = Mathf.clamp(t / 110f);
+            float pulse = 0.5f + 0.5f * Mathf.sin(t * 0.06f);
+
             Draw.z(Layer.flyingUnit - 2f);
             Draw.blend(Blending.additive);
-            Draw.color(VOID_PURPLE, 0.10f * fade + 0.05f * pulse * fade);
-            Fill.circle(z.x, z.y, ZONE_RADIUS);
-            Draw.color(HONIVERY_COLOR, 0.85f * fade);
-            Lines.stroke(2.4f);
-            Lines.circle(z.x, z.y, ZONE_RADIUS);
-            Draw.color(STAR_CYAN, 0.55f * fade);
-            Lines.stroke(1.4f);
-            Lines.circle(z.x, z.y, ZONE_RADIUS * (0.55f + 0.1f * pulse));
-            // sao 4 cánh xoay ở tâm + nhịp sóng mỗi giây
-            drawStar4(z.x, z.y, ZONE_RADIUS * 0.45f, Time.time * 0.8f, STAR_GOLD, 0.35f * fade);
-            float wave = Mathf.clamp(z.tick / ZONE_TICK);
-            Draw.color(Color.white, (1f - wave) * 0.5f * fade);
-            Lines.stroke(2f);
-            Lines.circle(z.x, z.y, ZONE_RADIUS * wave);
+
+            if (t < 40f) {
+                float p = t / 40f;
+                float ep = Interp.pow3Out.apply(p);
+                Draw.color(ZONE_SOFT, (1f - p) * 0.55f);
+                Lines.stroke((3.5f * (1f - p) + 0.5f) * 2f);
+                Lines.circle(z.x, z.y, ZONE_RADIUS * (0.15f + 0.95f * ep));
+                Draw.color(Color.white, (1f - p) * (1f - p) * 0.45f);
+                Fill.circle(z.x, z.y, (ZONE_RADIUS * 0.5f) * (1f - p * 0.5f));
+            }
+
+            try { Drawf.light(z.x, z.y, ZONE_RADIUS * 1.3f * open, ZONE_FILL, 0.55f * fade); } catch (Throwable ignored) {}
+
+            for (int i = 0; i < 7; i++) {
+                Draw.color(ZONE_FILL, (0.016f + 0.026f * nebula) * fade * (0.6f + 0.4f * pulse));
+                Fill.circle(z.x, z.y, ZONE_RADIUS * open * (1f - i * 0.12f));
+            }
+
+            for (int i = 0; i < 5; i++) {
+                float a = t * 0.01f * (1f + i * 0.3f) + i * 1.7f;
+                Draw.color(ZONE_FILL, 0.05f * nebula * fade);
+                Fill.circle(z.x + Mathf.cos(a) * ZONE_RADIUS * 0.4f, z.y + Mathf.sin(a * 1.3f) * ZONE_RADIUS * 0.35f, ZONE_RADIUS * 0.38f);
+            }
+
+            Draw.color(ZONE_SOFT, 0.05f * nebula * fade * (0.7f + 0.3f * pulse));
+            Fill.circle(z.x, z.y, ZONE_RADIUS * 0.28f);
+
+            float rot = t * 0.12f;
+            float ringProg = Mathf.clamp(t / 50f);
+            for (int i = 0; i < 96; i++) {
+                float f = i / 96f;
+                if (f > ringProg) break;
+                float ang = rot + f * 360f;
+                float a = (0.55f + 0.35f * Mathf.sin(t * 0.08f - i * 0.5f)) * fade;
+                Draw.color(ZONE_RING, Math.max(0f, a));
+                Fill.circle(z.x + Angles.trnsx(ang, ZONE_RADIUS * open), z.y + Angles.trnsy(ang, ZONE_RADIUS * open), (i % 3 == 0 ? 1.9f : 1.2f) * 2f);
+            }
+
+            fxRand.setSeed(seed);
+            for (int i = 0; i < 7; i++) {
+                float startAng = rot + i * (360f / 7f) + fxRand.range(10f);
+                float span = 30f + fxRand.random(34f);
+                float amp = 4f + fxRand.random(6f);
+                float phase = fxRand.random(6.28f);
+                int dir = fxRand.chance(0.5) ? 1 : -1;
+                float prog = Mathf.clamp((t - 6f - i * 5f) / 32f);
+                if (prog > 0f) {
+                    drawOrnament(z.x, z.y, ZONE_RADIUS * open, startAng, span * prog, amp * 2f, phase, dir, fade, 2f);
+                }
+            }
+
+            float bubFade = Mathf.clamp((t - 40f) / 80f);
+            for (int i = 0; i < 12; i++) {
+                fxRand.setSeed(seed * 57L + i * 313L);
+                float p = (t * 0.0035f * (0.6f + fxRand.random(0.8f)) + fxRand.random(1f)) % 1f;
+                float a = Mathf.sin(p * Mathf.PI) * bubFade * fade;
+                float ang = fxRand.random(360f);
+                float dist = ZONE_RADIUS * 0.8f * (float) Math.sqrt(fxRand.random(1f)) * open;
+                float br = (12f + fxRand.random(20f)) * 2f;
+                float bx = z.x + Angles.trnsx(ang, dist) + Mathf.sin(t * 0.02f + i) * 8f * 2f;
+                float by = z.y + Angles.trnsy(ang, dist) + p * ZONE_RADIUS * 0.55f;
+                Draw.color(Color.valueOf("F4E6FF"), 0.17f * a);
+                Fill.circle(bx, by, br);
+                Draw.color(Color.valueOf("F4E6FF"), 0.3f * a);
+                Lines.stroke(1.2f);
+                Lines.circle(bx, by, br);
+                Draw.color(Color.white, 0.1f * a);
+                Fill.circle(bx - br * 0.25f, by + br * 0.25f, br * 0.45f);
+            }
+
+            for (int i = 0; i < 48; i++) {
+                fxRand.setSeed(seed * 31L + i * 977L);
+                float p = (t * (0.004f + fxRand.random(0.0045f)) + fxRand.random(1f)) % 1f;
+                float ang = fxRand.random(360f);
+                float dist = ZONE_RADIUS * 0.95f * (float) Math.sqrt(fxRand.random(1f)) * open;
+                float px = z.x + Angles.trnsx(ang, dist) + Mathf.sin(t * 0.035f + i) * 5f * 2f;
+                float py = z.y + Angles.trnsy(ang, dist) + p * ZONE_RADIUS * 0.8f;
+                float a = Math.min(1f, Mathf.sin(p * Mathf.PI) * 1.6f) * fade;
+                float sz = (2.4f + fxRand.random(6f)) * 2f;
+                float srot = 90f + Mathf.sin(t * 0.05f + i) * 20f;
+                switch (i % 5) {
+                    case 0:
+                    case 4:
+                        Draw.color(Color.valueOf("D9A8FF"), (i % 5 == 0 ? 0.75f : 0.5f) * a);
+                        star5(px, py, sz, srot, true);
+                        break;
+                    case 1:
+                        Draw.color(ZONE_SOFT, 0.85f * a);
+                        Lines.stroke(0.9f);
+                        star5(px, py, sz * 1.1f, srot, false);
+                        break;
+                    case 2:
+                        Draw.color(ZONE_SOFT, 0.8f * a);
+                        Lines.stroke(1.3f);
+                        Lines.arc(px, py, sz, 0.55f, ang + t * 0.4f);
+                        Lines.arc(px, py, sz * 0.7f, 0.45f, ang + t * 0.4f + 20f);
+                        break;
+                    default:
+                        Draw.color(Color.white, 0.9f * a);
+                        Lines.stroke(0.8f);
+                        Lines.line(px - sz * 1.6f, py, px + sz * 1.6f, py);
+                        Lines.line(px, py - sz * 1.6f, px, py + sz * 1.6f);
+                        Fill.circle(px, py, 0.9f);
+                        break;
+                }
+            }
+
             Draw.blend();
             Draw.reset();
         }
@@ -738,7 +907,7 @@ public final class Honivery {
             if (s.t >= SLASH_T) {
                 StarZone z = new StarZone();
                 z.uid = s.uid; z.team = s.team; z.x = s.x; z.y = s.y;
-                z.dmg = BASE_ATK * Math.max(0.1f, caster != null ? caster.damageMultiplier : 1f) * ZONE_ATK_RATIO;
+                z.dmg = BASE_ATK * Math.max(0.1f, caster != null ? caster.damageMultiplier : 1f) * ZONE_ATK_RATIO * NewModePvp.skillAtkMul(caster);
                 zones.add(z);
                 if (!Vars.headless) {
                     try { SfxCompat.at("lasercharge2", z.x, z.y, 1.2f, 0.9f); } catch (Throwable ignored) {}
