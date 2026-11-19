@@ -309,6 +309,14 @@ public class NewModePvp {
     static final int SPD_PCT = 4;
     /** speed của unit tính bằng đơn vị/tick -> ô/giây: 60 tick / 8 đơn vị mỗi ô. */
     static final float TILES_PER_SPEED = 60f / 8f;
+    /** Tốc độ di chuyển thực tế (ô/s) của unit đang điều khiển ở cấp l: hiện tổng và phần tăng thêm so với gốc. */
+    static String speedStat(int l) {
+        float base = 0.55f;
+        try { if (Vars.player != null && Vars.player.unit() != null && Vars.player.unit().type != null) base = Math.max(0.1f, Vars.player.unit().type.speed); } catch (Throwable err) {}
+        float mult = Math.max(0.2f, (1 + l * SPD_PCT / 100f) * (1 + l * SPD_FLAT / base));
+        float total = base * mult * TILES_PER_SPEED, add = base * (mult - 1f) * TILES_PER_SPEED;
+        return Strings.fixed(total, 2) + " " + tr("ô/s", "tiles/s") + "  (" + (add >= 0 ? "+" : "") + Strings.fixed(add, 2) + ")";
+    }
     static final float SPD_FLAT = 0.01f;
     static final float REGEN_PCT = 0.25f;
     static final float REGEN_THRESHOLD = 0.99f;
@@ -407,7 +415,7 @@ public class NewModePvp {
         new Stat("Máu", "Health", l -> "+" + (l * HP_PCT) + "%  +" + (l * HP_FLAT) + " " + tr("máu", "HP")),
         new Stat("Giáp", "Armor", l -> "+" + (l * ARM_FLAT) + " " + tr("giáp", "armor") + "  -" + Strings.fixed(armorCut(l), 1) + "% " + tr("sát thương nhận", "damage taken")),
         new Stat("Tấn công", "Attack", l -> "+" + (l * ATK_PCT) + "%  +" + Strings.fixed(l * ATK_FLAT, 1) + " " + tr("sát thương/phát", "dmg/hit")),
-        new Stat("Tốc độ di chuyển", "Move speed", l -> "+" + (l * SPD_PCT) + "%  +" + Strings.fixed(l * SPD_FLAT * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s")),
+        new Stat("Tốc độ di chuyển", "Move speed", l -> speedStat(l)),
         new Stat("Tốc độ bắn", "Fire rate", l -> "+" + (l * 6) + "%"),
         new Stat("Tỉ lệ bạo kích", "Crit chance", l -> (l * 2) + "%"),
         new Stat("Sát thương bạo kích", "Crit damage", l -> (150 + l * 12) + "%"),

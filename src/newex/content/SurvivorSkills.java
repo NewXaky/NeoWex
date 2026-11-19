@@ -502,7 +502,7 @@ public final class SurvivorSkills {
         SkillSrc src = def.src;
         List<BulletType> list = new ArrayList<>();
         float reach = Float.MAX_VALUE;
-        List<Variant> variants = src.variants != null ? src.variants : List.of((Variant) null);
+        List<Variant> variants = src.variants != null ? src.variants : java.util.Collections.singletonList((Variant) null); // List.of không nhận null -> crash
         try {
             for (Variant v : variants) {
                 SkillSrc o = merged(src, v);
