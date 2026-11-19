@@ -159,6 +159,8 @@ public class NewModePvp {
     static final String REQ_UNIT = "newex-pvp-unit";
     static final String REQ_TMODE = "newex-pvp-tmode";
     static final String REQ_PILOT = "newex-pvp-pilot";
+    static final String REQ_PILOT_UP = "newex-pvp-pup";
+    static final int PILOT_MAX_LV = 10, PILOT_COUNT = 7;
     static final int PILOT_XIKI = 1;
     static final int PILOT_XAKY = 3;
     static final int PILOT_HIST = 4;
@@ -487,6 +489,7 @@ public class NewModePvp {
         float exp = 0;
         int[] s = new int[STATS.length];
         int[] kc = {0, 0, 0};
+        int[] plv = new int[PILOT_COUNT];
         ArrayList<String> d = new ArrayList<>();
         ArrayList<Integer> p = new ArrayList<>();
         Object eqC, hs, xns;
@@ -496,7 +499,7 @@ public class NewModePvp {
         ArrayList<Integer> gInv = new ArrayList<>(); int[] gEq = GearItems.newEq();
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
         int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false;
-        void padStats() { if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length); }
+        void padStats() { if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length); if (plv == null || plv.length < PILOT_COUNT) plv = plv == null ? new int[PILOT_COUNT] : Arrays.copyOf(plv, PILOT_COUNT); }
     }
 
     static LinkedHashMap<String, St> store = new LinkedHashMap<>();
@@ -772,7 +775,9 @@ public class NewModePvp {
                     .append(",\"exp\":").append(Float.isNaN(s.exp) ? 0f : s.exp).append(",\"pts\":").append(s.pts).append(",\"u\":").append(s.u).append(",\"tm\":").append(s.tm).append(",\"s\":");
                 arr(sb, s.s); sb.append(",\"d\":"); strs(sb, s.d); sb.append(",\"p\":"); ints(sb, s.p);
                 sb.append(",\"b\":").append(s.b).append(",\"pi\":").append(s.pi).append(",\"kc\":"); arr(sb, s.kc);
-                sb.append(",\"w\":").append(s.w).append(",\"wl\":").append(s.wl).append(",\"cmd\":").append(s.cmd).append(",\"ch\":\"").append(ChaosMode.enc(s)).append("\",\"gr\":\"").append(GearItems.enc(s)).append("\"}");
+                sb.append(",\"w\":").append(s.w).append(",\"wl\":").append(s.wl).append(",\"cmd\":").append(s.cmd).append(",\"ch\":\"").append(ChaosMode.enc(s)).append("\",\"gr\":\"").append(GearItems.enc(s)).append("\",\"plv\":");
+                arr(sb, s.plv != null ? s.plv : new int[PILOT_COUNT]);
+                sb.append('}');
             }
             tags.put(TAG_STORE, sb.append('}').toString());
         } catch (Throwable err) { logOnce("persiststore", "persist store failed: " + err, false); }
@@ -799,6 +804,7 @@ public class NewModePvp {
         s.w = o.getInt("w", WALL_NONE); s.wl = o.getInt("wl", 0); s.cmd = o.getInt("cmd", 0);
         ChaosMode.dec(s, o.getString("ch", ""));
         GearItems.dec(s, o.getString("gr", ""));
+        s.plv = readInts(o.get("plv"), PILOT_COUNT, s.plv);
         return s;
     }
     static void restoreStore() {
@@ -824,7 +830,9 @@ public class NewModePvp {
             sb.append('"').append(e.getKey()).append("\":[").append(s.lv).append(',').append((int) Math.floor(s.exp)).append(',').append(s.pts).append(',');
             arr(sb, s.s); sb.append(','); strs(sb, s.d); sb.append(',').append(s.u).append(','); ints(sb, s.p);
             sb.append(',').append(s.b).append(',').append(s.pi).append(','); arr(sb, s.kc);
-            sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\",").append(s.tm).append(",\"").append(GearItems.enc(s)).append("\"]");
+            sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\",").append(s.tm).append(",\"").append(GearItems.enc(s)).append("\",");
+            arr(sb, s.plv != null ? s.plv : new int[PILOT_COUNT]);
+            sb.append(']');
         }
         sb.append("},\"cr\":").append(ChaosMode.round).append(",\"th\":").append(ChaosMode.hideFlag ? 1 : 0).append("}");
         if (Vars.net.server()) { try { Call.clientPacketReliable(SYNC_KIND, sb.toString()); } catch (Throwable err) {} }
@@ -851,6 +859,7 @@ public class NewModePvp {
                 if (a.size > 13) ChaosMode.dec(s, a.get(13).asString());
                 if (a.size > 14) s.tm = a.get(14).asInt();
                 if (a.size > 15) GearItems.dec(s, a.get(15).asString());
+                if (a.size > 16) s.plv = readInts(a.get(16), PILOT_COUNT, s.plv);
                 n.put(Integer.parseInt(a.name), s);
             }
             byId = n;
@@ -2998,12 +3007,15 @@ public class NewModePvp {
         if (isPl && unit.type == UnitTypes.reign) tHp *= REIGN_HP_MUL;
         float hpT = (tHp * (1 + s[0] * HP_PCT / 100f) + s[0] * HP_FLAT) * (1 + ChaosMode.capRole(ROLE_HP_MAX, rc.brl * ROLE_HP_PCT) / 100f);
         int pi = isPl ? stOwn.pi : 0;
+        int pLv = isPl ? pilotLv(stOwn, pi) : 0;
+        float pK = ChaosMode.pilotK();
         boolean empixOn = pi == PILOT_EMPIX;
-        if (empixOn) hpT *= 1 + EMPIX_HP_PCT * ChaosMode.pilotK();
+        if (empixOn) hpT *= 1 + EMPIX_HP_PCT * pK;
         boolean xakyOn = pi == PILOT_XAKY;
-        if (xakyOn) hpT *= Math.max(0.1f, 1 - (1 - XAKY_HP_MUL) * ChaosMode.pilotK());
+        if (xakyOn) hpT *= Math.max(0.1f, 1 - (1 - XAKY_HP_MUL) * pK);
         boolean histOn = pi == PILOT_HIST;
         if (histOn) hpT *= 1 + HIST_STAT_PCT;
+        if (pLv > 0) hpT *= 1 + pilotHpPct(pLv) / 100f * pK;
         hpT *= ChaosMode.hpMul();
         hpT = Math.max(Math.min(20f, tHp), hpT);   // vật phẩm trừ máu không được làm máu tối đa âm
         boolean xakyNeoOn = pi == PILOT_XAKYNEO, vanhauOn = pi == PILOT_VANHAU;
@@ -3014,6 +3026,7 @@ public class NewModePvp {
         }
 
         unit.armor = (unit.type.armor + s[1] * ARM_FLAT) * (1 + rc.def * ROLE_ARM_PCT / 100f) + rc.def * ROLE_ARM_FLAT;
+        if (pLv > 0) unit.armor += pilotArmAdd(pLv) * pK;
         if (histOn) unit.armor *= 1 + HIST_STAT_PCT;
         float cut = ChaosMode.capCut((float) ROLE_CUT_CAP, armorCut(s[1]) + rc.def * ROLE_CUT_PCT);
         if (ChaosMode.noArmor()) { unit.armor = 0f; cut = 0f; }
@@ -3021,9 +3034,10 @@ public class NewModePvp {
 
         float dm = Math.max(0.1f, 1 + s[2] * ATK_PCT / 100f) * (1 + ChaosMode.capRole(ROLE_ATK_MAX, rc.atk * ROLE_ATK_PCT) / 100f);
         dm *= ChaosMode.critMul(s[5], s[6]);
-        if (empixOn) dm *= 1 + EMPIX_ATK_PCT * ChaosMode.pilotK();
+        if (empixOn) dm *= 1 + EMPIX_ATK_PCT * pK;
         if (histOn) dm *= 1 + HIST_STAT_PCT;
-        if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT * ChaosMode.pilotK() + xakyNeoRampPct(unit, pl);
+        if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT * pK + xakyNeoRampPct(unit, pl);
+        if (pLv > 0) dm *= 1 + pilotAtkPct(pLv) / 100f * pK;
         dm *= GearItems.moveAtkMul(stOwn);
         unit.damageMultiplier *= dm;
         boolean isServer = !Vars.net.client();
@@ -3031,13 +3045,15 @@ public class NewModePvp {
         float base = Math.max(0.1f, unit.type.speed);
         unit.speedMultiplier *= Math.max(0.2f, (1 + s[3] * SPD_PCT / 100f) * (1 + s[3] * SPD_FLAT / base));
         if (isPl && unit.type == UnitTypes.disrupt) unit.speedMultiplier *= DISRUPT_SPEED_MUL;
-        if (xakyOn) unit.speedMultiplier *= 1 + (XAKY_SPD_MUL - 1) * ChaosMode.pilotK();
+        if (xakyOn) unit.speedMultiplier *= 1 + (XAKY_SPD_MUL - 1) * pK;
         if (histOn) unit.speedMultiplier *= 1 + HIST_STAT_PCT;
+        if (pLv > 0) unit.speedMultiplier *= 1 + pilotSpdPct(pLv) / 100f * pK;
         if (inOwnTerritory(unit)) {
             unit.speedMultiplier *= TERRITORY_SPEED_MUL;
             territoryFx(unit.x, unit.y, unit.hitSize);
         }
         unit.reloadMultiplier *= Math.max(0.2f, 1 + s[4] * 0.06f);
+        if (pLv > 0) unit.reloadMultiplier *= 1 + pilotRldPct(pLv) / 100f * pK;
         if (histOn) {
             unit.reloadMultiplier *= 1 + HIST_STAT_PCT;
             if (isServer && unit.health > 0) {
@@ -5271,6 +5287,20 @@ public class NewModePvp {
             toast(player, pilotToast(k));
             changed();
         });
+        onReq(REQ_PILOT_UP, 60, (player, payload) -> {
+            St st = reqState(player); if (st == null) return;
+            Integer k0 = leadInt(payload);
+            if (k0 == null || k0 <= 0 || !validPilot(k0)) return;
+            st.padStats();
+            int cur = st.plv[k0];
+            if (cur >= PILOT_MAX_LV) return;
+            int cost = pilotUpCost(cur);
+            if (st.pts < cost) return;
+            st.pts -= cost;
+            st.plv[k0] = cur + 1;
+            toast(player, tr("[accent]Cường hóa pilot lên Cấp " + st.plv[k0] + "/" + PILOT_MAX_LV + "!", "[accent]Upgraded pilot to Lv " + st.plv[k0] + "/" + PILOT_MAX_LV + "!"));
+            changed();
+        });
         onReq(REQ_UNIT, 400, (player, payload) -> {
             St st = reqState(player);
             if (st == null) { Log.info("[NexPvp] doi unit: bi bo qua (khong co trang thai / dung xa loi)"); return; }
@@ -6180,14 +6210,189 @@ public class NewModePvp {
             "The last bastion: below [orange]70%[] HP, a force shield rises and blocks enemy bullets, [sky]120%[] max HP durability, lasting until broken ([cyan]3 min[] cooldown). HP regen mends the shield first.", 1));
         return l;
     }
+    static int pilotLv(St st, int pi) { return st == null || st.plv == null || pi <= 0 || pi >= st.plv.length ? 0 : Math.min(PILOT_MAX_LV, Math.max(0, st.plv[pi])); }
+    static int pilotUpCost(int curLv) { return 1; }
+    // Mỗi cấp 1..10 tăng nhẹ chỉ số cho pilot khi đang được chiêu mộ (tổng ở cấp 10: +9% ATK, +9% HP, +3 Giáp, +5% Tốc chạy, +5% Tốc bắn)
+    static final float[] PILOT_LV_ATK = {0f, 2f, 0f, 0f, 0f, 0f, 3f, 0f, 0f, 0f, 4f};
+    static final float[] PILOT_LV_HP  = {0f, 0f, 2f, 0f, 0f, 0f, 0f, 3f, 0f, 0f, 4f};
+    static final float[] PILOT_LV_ARM = {0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 2f, 0f, 0f};
+    static final float[] PILOT_LV_SPD = {0f, 0f, 0f, 0f, 2f, 0f, 0f, 0f, 0f, 3f, 0f};
+    static final float[] PILOT_LV_RLD = {0f, 0f, 0f, 0f, 0f, 2f, 0f, 0f, 0f, 3f, 0f};
+    static float pilotAtkPct(int lv) { float v = 0f; for (int i = 1; i <= Math.min(PILOT_MAX_LV, lv); i++) v += PILOT_LV_ATK[i]; return v; }
+    static float pilotHpPct(int lv)  { float v = 0f; for (int i = 1; i <= Math.min(PILOT_MAX_LV, lv); i++) v += PILOT_LV_HP[i];  return v; }
+    static float pilotArmAdd(int lv) { float v = 0f; for (int i = 1; i <= Math.min(PILOT_MAX_LV, lv); i++) v += PILOT_LV_ARM[i]; return v; }
+    static float pilotSpdPct(int lv) { float v = 0f; for (int i = 1; i <= Math.min(PILOT_MAX_LV, lv); i++) v += PILOT_LV_SPD[i]; return v; }
+    static float pilotRldPct(int lv) { float v = 0f; for (int i = 1; i <= Math.min(PILOT_MAX_LV, lv); i++) v += PILOT_LV_RLD[i]; return v; }
+    static String pilotTierLabel(int lv) {
+        if (lv >= 10) return "[#ff79c6]" + tr("THẦN THOẠI", "MYTHIC") + "[]";
+        if (lv >= 7) return "[gold]" + tr("HUYỀN THOẠI", "LEGENDARY") + "[]";
+        if (lv >= 4) return "[#c084fc]" + tr("SỬ THI", "EPIC") + "[]";
+        if (lv >= 1) return "[#5dade2]" + tr("HIẾM", "RARE") + "[]";
+        return "[lightgray]" + tr("CƠ BẢN", "BASE") + "[]";
+    }
+    static String pilotLvTitle(int lv) {
+        switch (lv) {
+            case 1: return tr("[scarlet]+2% Tấn Công[]", "[scarlet]+2% Attack[]");
+            case 2: return tr("[green]+2% Máu Tối Đa[]", "[green]+2% Max HP[]");
+            case 3: return tr("[sky]+1 Giáp[]", "[sky]+1 Armor[]");
+            case 4: return tr("[cyan]+2% Tốc Độ Di Chuyển[]", "[cyan]+2% Move Speed[]");
+            case 5: return tr("[gold]+2% Tốc Độ Bắn[]", "[gold]+2% Fire Rate[]");
+            case 6: return tr("[scarlet]+3% Tấn Công[]", "[scarlet]+3% Attack[]");
+            case 7: return tr("[green]+3% Máu Tối Đa[]", "[green]+3% Max HP[]");
+            case 8: return tr("[sky]+2 Giáp[]", "[sky]+2 Armor[]");
+            case 9: return tr("[cyan]+3% Tốc Chạy[]  [gold]+3% Tốc Bắn[]", "[cyan]+3% Speed[]  [gold]+3% Fire Rate[]");
+            case 10: return tr("[scarlet]+4% Tấn Công[]  [green]+4% Máu Tối Đa[]", "[scarlet]+4% Attack[]  [green]+4% Max HP[]");
+            default: return "";
+        }
+    }
+    static String pilotLvSub(int lv) {
+        switch (lv) {
+            case 1: case 6: return tr("Tăng nhẹ sát thương đơn vị", "Slightly boosts unit damage");
+            case 2: case 7: return tr("Tăng nhẹ sinh lực tối đa", "Slightly boosts max health");
+            case 3: case 8: return tr("Tăng trực tiếp chỉ số giáp", "Adds flat armor defense");
+            case 4: return tr("Cải thiện độ cơ động khi di chuyển", "Improves movement mobility");
+            case 5: return tr("Rút ngắn thời gian nạp đạn", "Improves weapon reload speed");
+            case 9: return tr("Cường hóa kép tốc độ & nhịp bắn", "Dual mobility & fire-rate boost");
+            case 10: return tr("Cường hóa tối đa công & thủ", "Max-tier attack & health boost");
+            default: return "";
+        }
+    }
     static String pilotStatus(St st, PilotDef d) {
         boolean on = st.pi == d.pi, locked = st.lv < d.minLv;
         return on ? "[green]" + tr("Đã chiêu mộ", "Recruited") + "[]" : (locked ? "[scarlet]" + tr("Cần cấp ", "Need Lv ") + d.minLv + "[]" : "[lightgray]" + tr("Miễn phí", "Free") + "[]");
     }
-    static String pilotTag(St st, PilotDef d) { return "[accent]" + d.name + "[]  " + pilotStatus(st, d); }
+    static String pilotTag(St st, PilotDef d) {
+        int lv = pilotLv(st, d.pi);
+        return "[accent]" + d.name + "[]" + (lv > 0 ? "  [#c084fc]Lv " + lv + "/" + PILOT_MAX_LV + "[]" : "") + "  " + pilotStatus(st, d);
+    }
     static void infoSection(Table t, String text) {
         t.add("[accent]" + text + "[]").left().padTop(8).row();
         t.image().color(Color.gray).growX().height(2).padBottom(4).row();
+    }
+    static void buildPilotInfo(MachineUi.Panel dlg, PilotDef d) {
+        final int pi = d.pi;
+        final St st = localState();
+        final int lv = pilotLv(st, pi);
+        final int pts = st != null ? st.pts : 0;
+        final float W = dlg.innerW() - 20f;
+        Table body = dlg.content();
+        body.clear();
+        body.margin(8).top().left();
+
+        // ---- Khung đầu thẻ kiểu RPG: Tên + Vai trò + Cấp X/10 + Bậc | Chân dung + Thanh tiến độ ----
+        Table card = new Table(Styles.black6);
+        card.margin(10);
+        Table topRow = new Table();
+        Table leftCol = new Table(); leftCol.left().top();
+        Label titleLb = leftCol.add("[white]" + d.name + "[]").left().get();
+        titleLb.setFontScale(narrowScreen() ? 1.05f : 1.25f);
+        leftCol.row();
+        leftCol.add("[lightgray]" + tr("Phi Công — Hỗ Trợ Chiến Đấu", "Pilot — Combat Support") + "[]  •  " + (st != null ? pilotStatus(st, d) : "")).left().padTop(2).row();
+        leftCol.add("[lightgray]" + tr("Yêu cầu cấp: ", "Req Lv: ") + "[]" + d.minLv).left().padTop(2).row();
+        Table lvRow = new Table(); lvRow.left();
+        lvRow.add("[lightgray]" + tr("CẤP ", "LV ") + "[]").bottom();
+        Label lvNum = lvRow.add("[white]" + lv + "[]").bottom().get();
+        lvNum.setFontScale(1.35f);
+        lvRow.add("[lightgray] / " + PILOT_MAX_LV + "[]").bottom();
+        leftCol.add(lvRow).left().padTop(8).row();
+        leftCol.add(pilotTierLabel(lv)).left().padTop(1);
+        topRow.add(leftCol).growX().left().top();
+
+        Table rightCol = new Table(); rightCol.right().top();
+        float isz = narrowScreen() ? 56 : 74;
+        TextureRegion reg = pilotIconRegion(pi);
+        if (reg != null) {
+            Image iconImg = rightCol.image(reg).size(isz).right().get();
+            iconImg.touchable = Touchable.enabled;
+            iconImg.clicked(() -> openPilotZoom(pi, d.name));
+        } else rightCol.add().size(isz);
+        rightCol.row();
+        float barW = narrowScreen() ? 96f : 132f;
+        rightCol.add("[lightgray]" + tr("Cường hóa ", "Tier ") + "[green]" + lv + "[]/" + PILOT_MAX_LV).right().padTop(6).row();
+        Table barBg = new Table(Styles.black8);
+        float fillW = Math.max(0f, barW * lv / (float) PILOT_MAX_LV);
+        if (fillW > 0.5f) barBg.image().color(lv >= PILOT_MAX_LV ? Color.valueOf("ff79c6") : Color.valueOf("5ce67e")).width(fillW).height(6f).left();
+        barBg.add().growX();
+        rightCol.add(barBg).width(barW).height(6f).right().padTop(2);
+        topRow.add(rightCol).right().top().padLeft(8);
+        card.add(topRow).growX().row();
+
+        // ---- Đường phân cách phát sáng tím nhạt ----
+        card.image().color(Color.valueOf("b58cff")).growX().height(2f).padTop(8).padBottom(8).row();
+
+        // ---- Tóm tắt tổng chỉ số cộng thêm hiện tại ----
+        Table sumRow = new Table(Styles.black5);
+        sumRow.margin(6).left();
+        StringBuilder sb = new StringBuilder();
+        sb.append("[scarlet]ATK +").append((int) pilotAtkPct(lv)).append("%[]   |   ");
+        sb.append("[green]HP +").append((int) pilotHpPct(lv)).append("%[]   |   ");
+        sb.append("[sky]").append(tr("Giáp", "Armor")).append(" +").append((int) pilotArmAdd(lv)).append("[]   |   ");
+        sb.append("[cyan]").append(tr("Tốc chạy", "Spd")).append(" +").append((int) pilotSpdPct(lv)).append("%[]   |   ");
+        sb.append("[gold]").append(tr("Tốc bắn", "Reload")).append(" +").append((int) pilotRldPct(lv)).append("%[]");
+        sumRow.add(sb.toString()).left().wrap().growX();
+        card.add(sumRow).growX().padBottom(6).row();
+
+        // ---- Hiệu ứng kỹ năng Pilot (gọn) + Hồi chiêu ----
+        Table effBox = new Table(); effBox.left();
+        for (String raw : tr(d.vi, d.en).split("\\.\\s+")) {
+            String ln = raw.trim(); if (ln.length() == 0) continue;
+            if (ln.charAt(ln.length() - 1) != '.') ln += ".";
+            effBox.add("[lightgray]• []" + ln).left().wrap().growX().padBottom(2).row();
+        }
+        if (pi == PILOT_EMPIX || pi == PILOT_XAKY || pi == PILOT_VANHAU) {
+            effBox.label(() -> {
+                PilotCd pc = pilotCdFor(pi);
+                Float at = Vars.player != null ? pc.at.get(Vars.player.id) : null;
+                int left = at == null ? 0 : (int) Math.ceil((pc.cd - (Time.time - at)) / 60);
+                String cdTxt = (at == null || left <= 0 || Time.time < at)
+                    ? "[green]" + tr("Sẵn sàng", "Ready") + "[]"
+                    : "[scarlet]" + (left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
+                return "[lightgray]" + tr("Hồi chiêu: ", "Cooldown: ") + "[]" + cdTxt;
+            }).left().padTop(2).row();
+        }
+        card.add(effBox).growX().padBottom(8).row();
+
+        // ---- Thanh tiêu đề bảng Cường Hóa + Nút nâng cấp ----
+        card.image().color(Color.valueOf("6d5a94")).growX().height(1.5f).padBottom(6).row();
+        Table upHead = new Table();
+        upHead.add("[lightgray]" + tr("Cấp", "Lv") + "[]").width(narrowScreen() ? 66f : 82f).left();
+        upHead.add("[lightgray]" + tr("Cường Hóa", "Enhancement") + "[]").growX().left();
+        int cost = pilotUpCost(lv);
+        if (lv >= PILOT_MAX_LV) {
+            upHead.add("[#ff79c6]" + tr("TỐI ĐA", "MAXED") + "[]").right();
+        } else {
+            boolean canUp = st != null && pts >= cost && nearOwnCore();
+            TextButton upBtn = upHead.button(
+                tr("Cường hóa (", "Upgrade (") + cost + tr("đ)", "pt)"),
+                Styles.flatBordert,
+                () -> send(REQ_PILOT_UP, String.valueOf(pi))
+            ).height(narrowScreen() ? 32f : 36f).padLeft(6).right().get();
+            upBtn.setDisabled(!canUp);
+        }
+        card.add(upHead).growX().padBottom(4).row();
+        card.add("[lightgray]" + tr("Điểm hiện có: ", "Available points: ") + "[accent]" + pts + "[]  •  " + tr("Tác dụng khi chiêu mộ pilot này.", "Active while this pilot is recruited.")).left().padBottom(4).row();
+
+        // ---- Bảng 10 cấp Cường Hóa (giống ảnh mẫu: đã mở sáng, cấp tiếp nổi bật, cấp khóa làm mờ) ----
+        for (int i = 1; i <= PILOT_MAX_LV; i++) {
+            boolean unlocked = i <= lv;
+            boolean next = i == lv + 1;
+            Table row = new Table(unlocked ? Styles.black5 : Styles.black3);
+            row.margin(5).left();
+            String badge = unlocked ? ("[green]✓ " + tr("CẤP ", "LV ") + i + "[]")
+                : next ? ("[gold]▸ " + tr("CẤP ", "LV ") + i + "[]")
+                : ("[gray]■ " + tr("CẤP ", "LV ") + i + "[]");
+            row.add(badge).width(narrowScreen() ? 66f : 82f).left();
+            row.image().color(unlocked ? Color.valueOf("5ce67e") : (next ? Color.gold : Color.darkGray)).width(2f).growY().padRight(8);
+            Table desc = new Table(); desc.left();
+            String main = pilotLvTitle(i);
+            if (!unlocked && !next) main = "[gray]" + main.replaceAll("\\[[^\\]]*\\]", "") + "[]";
+            desc.add(main).left().wrap().growX().row();
+            desc.add((unlocked ? "[lightgray]" : "[darkgray]") + pilotLvSub(i) + "[]").left().wrap().growX();
+            row.add(desc).growX().left();
+            card.add(row).growX().padBottom(3).row();
+        }
+
+        body.add(card).width(W).row();
     }
     static void openPilotInfo(int pi) {
         PilotDef d = null;
@@ -6195,38 +6400,12 @@ public class NewModePvp {
         if (d == null) return;
         final PilotDef dd = d;
         final MachineUi.Panel dlg = MachineUi.panel(tr("Thông tin ", "Info ") + d.name);
-        float W = dlg.innerW() - 28f;
-        Table body = dlg.content();
-        body.margin(8);
-        body.top().left();
-        body.defaults().left().pad(3);
-        Table head = new Table();
-        float isz = narrowScreen() ? 56 : 72;
-        TextureRegion reg = pilotIconRegion(pi);
-        if (reg != null) head.image(reg).size(isz).padRight(10); else head.add().size(isz).padRight(10);
-        Table nm = new Table(); nm.left();
-        nm.add("[accent]" + d.name + "[]").left().row();
-        nm.label(() -> { St st = localState(); return st == null ? "" : pilotStatus(st, dd); }).left();
-        head.add(nm);
-        body.add(head).left().padBottom(4).row();
-        infoSection(body, tr("Tổng quan", "Overview"));
-        body.add("[lightgray]" + tr("Yêu cầu cấp: ", "Required level: ") + "[]" + d.minLv).left().row();
-        infoSection(body, tr("Hiệu ứng", "Effects"));
-        for (String raw : tr(d.vi, d.en).split("\\.\\s+")) {
-            String ln = raw.trim(); if (ln.length() == 0) continue;
-            if (ln.charAt(ln.length() - 1) != '.') ln += ".";
-            body.add("[lightgray]- []" + ln).left().wrap().width(W).padLeft(10).row();
-        }
-        if (pi == PILOT_EMPIX || pi == PILOT_XAKY || pi == PILOT_VANHAU) {
-            infoSection(body, tr("Hồi chiêu", "Cooldown"));
-            body.label(() -> {
-                PilotCd pc = pilotCdFor(pi);
-                Float at = Vars.player != null ? pc.at.get(Vars.player.id) : null;
-                int left = at == null ? 0 : (int) Math.ceil((pc.cd - (Time.time - at)) / 60);
-                if (at == null || left <= 0 || Time.time < at) return "[green]" + tr("Sẵn sàng", "Ready") + "[]";
-                return "[scarlet]" + (left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60) + "[]";
-            }).left().padLeft(10).row();
-        }
+        dlg.onBuild(() -> buildPilotInfo(dlg, dd));
+        final String[] lastVer = {curVer()};
+        dlg.onTick(() -> {
+            String cv = curVer();
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; dlg.rebuild(); }
+        });
         dlg.show();
     }
     static void pilotCard(Table p, St st, float W, PilotDef d) {
