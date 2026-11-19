@@ -105,7 +105,7 @@ public final class UnitSkillInfo {
             DamageKind.SKILL_ATTACK,
             Color.valueOf("D0C2FF"),
             "Tinh Quang Trảm: 8.0 giây | Combo 8 nhát: 2.75 giây (1.75 giây tung chiêu + 1 giây hồi)",
-            "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại); khi tung nhận Khiên Tinh Quang 5 giây: giảm 72% sát thương nhận vào, phản 28% sát thương về kẻ tấn công\n"
+            "Tinh Quang Trảm: 90% Tấn Công + 10% Máu Hiện Tại (nhân với % Nội Tại); khi tung nhận Khiên Tinh Quang 5 giây: giảm 72% sát thương nhận vào, phản 70% sát thương về kẻ tấn công (28% +150% nội tại); sau nhát chém tạo Vòng Tinh Quang 5 giây, kẻ địch đứng trong vòng nhận 100% Tấn Công mỗi giây\n"
                 + "Combo 8 nhát: mỗi nhát tăng dần từ 50% đến 120% Tấn Công, nhát cuối chém vòng 360°\n"
                 + "Nhát chém đặc biệt (lốc xoáy phong kiếm ngọc lục bảo): 430% Tấn Công",
             "[Kỹ năng 1 - Tinh Quang Trảm] Tụ năng lượng vào Kiếm Sao 4 cánh và phóng ra sóng kiếm hình quạt 3 tầng xé rách không gian phía trước. Được tính là Đòn Đánh Kỹ Năng.\n"

@@ -96,10 +96,23 @@ public final class Honivery {
     static final float HP_RATIO = 0.10f;     // 10% HP hiện tại
     static final int MAX_PASSIVE_PCT = 999;  // giới hạn nội tại 999%
 
-    // ---- Khiên Tinh Quang (dùng Tinh Quang Trảm): giảm 72% sát thương nhận, phản 28%, 5 giây ----
+    // ---- Khiên Tinh Quang (dùng Tinh Quang Trảm): giảm 72% sát thương nhận, phản 28% (+150% nội tại = 70%), 5 giây ----
     static final float AEGIS_T = 300f;
     static final float AEGIS_REDUCE = 0.72f;
-    static final float AEGIS_REFLECT = 0.28f;
+    static final float AEGIS_REFLECT_BASE = 0.28f;
+    static final float AEGIS_REFLECT_BONUS = 1.5f;                                   // nội tại: chỉ số phản sát thương +150%
+    static final float AEGIS_REFLECT = AEGIS_REFLECT_BASE * (1f + AEGIS_REFLECT_BONUS); // = 0.70
+
+    // ---- Vòng Tinh Quang: sau khi chém xong tạo vòng tròn, kẻ địch đứng trong vòng nhận 100% Tấn công mỗi nhịp ----
+    static final float ZONE_T = 300f;          // tồn tại 5 giây
+    static final float ZONE_TICK = 60f;        // 1 nhịp / giây
+    static final float ZONE_ATK_RATIO = 1.0f;  // 100% tấn công mỗi nhịp
+    static final float ZONE_RADIUS = SLASH_RANGE;
+    static final ArrayList<StarZone> zones = new ArrayList<>();
+    static class StarZone {
+        int uid, team;
+        float x, y, t, tick, dmg;
+    }
     public static StatusEffect aegis;
     static final HashMap<Integer, Float> aegisStart = new HashMap<>(); // uid -> thời điểm tung (mọi máy đều nhận CAST) để vẽ nhịp khiên mỗi giây
 
@@ -279,7 +292,8 @@ public final class Honivery {
             localizedName = "Honivery";
             description = "Cơ giáp 4 chân tinh nhuệ trang bị súng máy Gatling quá nhiệt và Kiếm Sao Tinh Quang.";
             details = "Kỹ năng Tinh Quang Trảm (Đòn Đánh Kĩ Năng): Gây 90% Tấn công + 10% HP hiện tại. "
-                + "Nội tại: Hạ gục mục tiêu tăng vĩnh viễn +1% sát thương skill, cộng thêm +1% mỗi 10.000 HP tối đa của mục tiêu (tối đa 999%).";
+                + "Nội tại: Hạ gục mục tiêu tăng vĩnh viễn +1% sát thương skill, cộng thêm +1% mỗi 10.000 HP tối đa của mục tiêu (tối đa 999%). "
+                + "Khiên Tinh Quang phản 70% sát thương (28% +150% nội tại). Sau nhát chém tạo vòng tròn 5 giây, kẻ địch đứng trong vòng nhận 100% Tấn công mỗi giây.";
 
             outlineColor = Pal.darkOutline;
             envDisabled = Env.none;
@@ -357,14 +371,14 @@ public final class Honivery {
         initialized = true;
 
         Events.run(Trigger.update, Honivery::updateSkill);
-        // Khiên Tinh Quang: phản 28% sát thương gốc của đạn về kẻ tấn công
+        // Khiên Tinh Quang: phản 70% sát thương gốc của đạn về kẻ tấn công
         Events.on(UnitDamageEvent.class, e -> {
             try {
                 if (e.bullet != null && e.unit != null) reflectOnHit(e.unit, e.bullet.owner, e.bullet.damage);
             } catch (Throwable ignored) {}
         });
         if (!Vars.headless) {
-            Events.run(Trigger.draw, Honivery::drawSkill);
+            Events.run(Trigger.draw, () -> { drawSkill(); drawZones(); });
             Events.on(ClientLoadEvent.class, e -> {
                 try {
                     buildHudButton();
@@ -522,7 +536,7 @@ public final class Honivery {
         addKillPassive(caster.id, caster, target.maxHealth, target.x, target.y);
     }
 
-    /** Khiên Tinh Quang: nếu nạn nhân đang có khiên, phản 28% sát thương gốc về kẻ tấn công (đạn hoặc skill). Gọi ở server/host. */
+    /** Khiên Tinh Quang: nếu nạn nhân đang có khiên, phản 70% (28% +150%) sát thương gốc về kẻ tấn công (đạn hoặc skill). Gọi ở server/host. */
     public static void reflectOnHit(Unit victim, Entityc attacker, float rawDmg) {
         if (aegis == null || victim == null || attacker == null || rawDmg <= 0f || Vars.net.client()) return;
         if (!victim.hasEffect(aegis)) return;
@@ -574,6 +588,60 @@ public final class Honivery {
         }
     }
 
+    /** Vòng Tinh Quang: mỗi nhịp gây 100% Tấn công lên mọi kẻ địch (và công trình địch) đứng trong vòng. Sát thương chỉ tính ở server/host. */
+    static void updateZones() {
+        for (int i = zones.size() - 1; i >= 0; i--) {
+            StarZone z = zones.get(i);
+            z.t += Time.delta;
+            if (z.t >= ZONE_T) { zones.remove(i); continue; }
+            if (Vars.net.client()) continue;
+            z.tick += Time.delta;
+            if (z.tick < ZONE_TICK) continue;
+            z.tick -= ZONE_TICK;
+
+            final Team team = Team.get(z.team);
+            final Unit caster = Groups.unit.getByID(z.uid);
+            final StarZone zf = z;
+            Units.nearbyEnemies(team, z.x - ZONE_RADIUS, z.y - ZONE_RADIUS, ZONE_RADIUS * 2f, ZONE_RADIUS * 2f, e -> {
+                if (e.dead || Mathf.dst(zf.x, zf.y, e.x, e.y) > ZONE_RADIUS + e.hitSize / 2f) return;
+                float maxHp = e.maxHealth;
+                UnitSkillInfo.markLastDamageSkill(e.id);
+                e.damage(zf.dmg);
+                if (e.dead || e.health <= 0f) addKillPassive(zf.uid, caster, maxHp, e.x, e.y);
+            });
+            Units.nearbyBuildings(z.x, z.y, ZONE_RADIUS, b -> {
+                if (b.team == team || Mathf.dst(zf.x, zf.y, b.x, b.y) > ZONE_RADIUS) return;
+                b.damage(zf.dmg);
+            });
+        }
+    }
+
+    static void drawZones() {
+        if (zones.isEmpty()) return;
+        for (StarZone z : zones) {
+            float fin = Mathf.clamp(z.t / ZONE_T), fade = Mathf.clamp((ZONE_T - z.t) / 40f) * Mathf.clamp(z.t / 12f);
+            float pulse = 0.5f + 0.5f * Mathf.sin(Time.time * 0.12f);
+            Draw.z(Layer.flyingUnit - 2f);
+            Draw.blend(Blending.additive);
+            Draw.color(VOID_PURPLE, 0.10f * fade + 0.05f * pulse * fade);
+            Fill.circle(z.x, z.y, ZONE_RADIUS);
+            Draw.color(HONIVERY_COLOR, 0.85f * fade);
+            Lines.stroke(2.4f);
+            Lines.circle(z.x, z.y, ZONE_RADIUS);
+            Draw.color(STAR_CYAN, 0.55f * fade);
+            Lines.stroke(1.4f);
+            Lines.circle(z.x, z.y, ZONE_RADIUS * (0.55f + 0.1f * pulse));
+            // sao 4 cánh xoay ở tâm + nhịp sóng mỗi giây
+            drawStar4(z.x, z.y, ZONE_RADIUS * 0.45f, Time.time * 0.8f, STAR_GOLD, 0.35f * fade);
+            float wave = Mathf.clamp(z.tick / ZONE_TICK);
+            Draw.color(Color.white, (1f - wave) * 0.5f * fade);
+            Lines.stroke(2f);
+            Lines.circle(z.x, z.y, ZONE_RADIUS * wave);
+            Draw.blend();
+            Draw.reset();
+        }
+    }
+
     static void applySlashHits(StarSlash s, float reach) {
         Team team = Team.get(s.team);
         Unit caster = Groups.unit.getByID(s.uid);
@@ -622,6 +690,7 @@ public final class Honivery {
         if (Vars.state == null || !Vars.state.isGame()) {
             if (!slashes.isEmpty()) slashes.clear();
             if (!charges.isEmpty()) charges.clear();
+            if (!zones.isEmpty()) zones.clear();
             return;
         }
         tryNet();
@@ -667,9 +736,18 @@ public final class Honivery {
             }
 
             if (s.t >= SLASH_T) {
+                StarZone z = new StarZone();
+                z.uid = s.uid; z.team = s.team; z.x = s.x; z.y = s.y;
+                z.dmg = BASE_ATK * Math.max(0.1f, caster != null ? caster.damageMultiplier : 1f) * ZONE_ATK_RATIO;
+                zones.add(z);
+                if (!Vars.headless) {
+                    try { SfxCompat.at("lasercharge2", z.x, z.y, 1.2f, 0.9f); } catch (Throwable ignored) {}
+                }
                 slashes.remove(i);
             }
         }
+
+        updateZones();
 
         for (Iterator<Map.Entry<Integer, StarCharge>> it = charges.entrySet().iterator(); it.hasNext();) {
             StarCharge c = it.next().getValue();
