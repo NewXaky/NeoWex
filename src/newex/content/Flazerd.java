@@ -3,6 +3,7 @@ package newex.content;
 import arc.Core;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Font;
 import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
@@ -19,6 +20,8 @@ import arc.util.io.Writes;
 import mindustry.Vars;
 import mindustry.content.Fx;
 import mindustry.content.Items;
+import mindustry.entities.Damage;
+import mindustry.entities.Effect;
 import mindustry.entities.Units;
 import mindustry.entities.bullet.BulletType;
 import mindustry.gen.Building;
@@ -26,8 +29,10 @@ import mindustry.gen.Bullet;
 import mindustry.gen.Groups;
 import mindustry.gen.Healthc;
 import mindustry.gen.Icon;
+import mindustry.gen.Sounds;
 import mindustry.gen.Teamc;
 import mindustry.gen.Unit;
+import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
 import mindustry.graphics.Pal;
 import mindustry.ui.Fonts;
@@ -41,13 +46,16 @@ import newex.PerfCore;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-/** Chuyển từ flazerd.js. Laser bám mục tiêu, tích điểm sạc 0-200%, MK2 có 2 laser sóng, MK2B có tới 10 laser phụ. */
+/** Chuyển từ flazerd.js. Laser bám mục tiêu, tích điểm sạc 0-200%, xả 3 tia hội tụ + nổ tím và ngưng 2s. */
 public final class Flazerd {
     private Flazerd() {}
 
     static final float deadZone = 40f;
     static final Color laserColor = Color.valueOf("bf7fff");
+    static final int BURST_TICKS = 100; // tia cuối tồn tại ~1.7 giây
+    static final Color burstBlue = Color.valueOf("a64dff");
     static final Color particleColor = Color.valueOf("e8bfff");
+    static final Color deepPurple = Color.valueOf("6a1b9a");
     static final Color greenLaserColor = Color.valueOf("33ff55");
 
     static final class Req { final int copper, graphite, lead, silicon; Req(int c, int g, int l, int s) { copper = c; graphite = g; lead = l; silicon = s; } }
@@ -55,10 +63,66 @@ public final class Flazerd {
     static final Req reqMK3 = new Req(0, 0, 450, 570);
 
     static final class Sub { float x, y; Sub(float x, float y) { this.x = x; this.y = y; } }
-    /** Gộp 5 ObjectMap của JS (tier/charge/milestone/countdown/subTargets) thành 1 trạng thái theo id pháo. */
-    static final class State { int tier = 1; float charge = 0f; int countdown = -1; final ArrayList<Sub> subs = new ArrayList<>(); }
+    /** Trạng thái pháo: burstTimer (>0: đang bắn 3 tia hội tụ), cooldownTimer (>0: ngưng bắn 2s). */
+    static final class State {
+        int tier = 1;
+        float charge = 0f;
+        int burstTimer = 0;
+        int cooldownTimer = 0;
+        final ArrayList<Sub> subs = new ArrayList<>();
+    }
     static final HashMap<Integer, State> states = new HashMap<>();
     static State state(int id) { State s = states.get(id); if (s == null) { s = new State(); states.put(id, s); } return s; }
+
+    static final Color fireA = Color.valueOf("ffd27a"), fireB = Color.valueOf("ff7a1a"), smokeC = Color.valueOf("4a4540");
+
+    /** Pyroclastic Impact (như ảnh): chớp lõi, cầu lửa cuộn, tia lửa + mảnh vỡ, sóng xung kích + bụi, khói bốc lên. */
+    static final Effect purplePyroclasticExplosion = new Effect(75f, 220f, e -> {
+        final float fin = e.fin(), fout = e.fout();
+
+        // 1. Khói bốc lên, phình to
+        Draw.color(smokeC);
+        Draw.alpha(Mathf.clamp(fin * 4f) * fout * 0.7f);
+        Angles.randLenVectors(e.id + 1, 14, 8f + fin * 26f, (x, y) -> Fill.circle(e.x + x * 0.6f, e.y + y * 0.6f + fin * 36f, 6f + fin * 10f));
+
+        // 2. Sóng xung kích hình elip + bụi trên mặt đất
+        Draw.color(fireA, fireB, fin);
+        Lines.stroke(fout * 3f);
+        float rw = fin * 70f, rh = rw;
+        for (int i = 0; i < 36; i++) {
+            float a1 = i * 10f, a2 = (i + 1) * 10f;
+            Lines.line(e.x + Mathf.cosDeg(a1) * rw, e.y + Mathf.sinDeg(a1) * rh, e.x + Mathf.cosDeg(a2) * rw, e.y + Mathf.sinDeg(a2) * rh);
+        }
+        Draw.color(smokeC);
+        Draw.alpha(fout * 0.4f);
+        for (int i = 0; i < 12; i++) {
+            float ang = i * 30f + e.id * 7f;
+            Fill.circle(e.x + Mathf.cosDeg(ang) * rw, e.y + Mathf.sinDeg(ang) * rh, 3f + fin * 5f);
+        }
+
+        // 3. Cầu lửa cuộn (vàng -> cam)
+        Draw.color(fireA, fireB, fin);
+        Draw.alpha(fout * 0.95f);
+        Angles.randLenVectors(e.id + 2, 12, 4f + fin * 26f, (x, y) -> Fill.circle(e.x + x, e.y + y, fout * 11f + 2f));
+
+        // 4. Tia lửa + mảnh vỡ văng
+        Draw.color(Color.white, fireB, fin);
+        Lines.stroke(fout * 1.8f);
+        Angles.randLenVectors(e.id + 3, 22, 10f + fin * 85f, (x, y) -> Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), fout * 11f));
+        Draw.color(Color.darkGray);
+        Angles.randLenVectors(e.id + 4, 8, 6f + fin * 55f, (x, y) -> Fill.square(e.x + x, e.y + y + fin * 6f - fin * fin * 14f, fout * 2.4f, fin * 300f));
+
+        // 5. Chớp lõi trắng + quầng sáng
+        if (fin < 0.4f) {
+            float f = 1f - fin / 0.4f;
+            Draw.color(Color.white);
+            Fill.circle(e.x, e.y, f * 17f);
+            Draw.color(fireA);
+            for (int i = 0; i < 4; i++) Lines.lineAngle(e.x, e.y, i * 90f + 45f, f * 34f);
+            Drawf.light(e.x, e.y, f * 90f, fireB, 0.9f);
+        }
+        Draw.reset();
+    });
 
     static TextureRegion bodyRegion, downxRegion, a1Region, a2Region;
     public static PowerTurret flazerd;
@@ -84,6 +148,20 @@ public final class Flazerd {
             Lines.line(x + Angles.trnsx(a1, radius), y + Angles.trnsy(a1, radius), x + Angles.trnsx(a2, radius), y + Angles.trnsy(a2, radius));
         }
         Draw.reset();
+    }
+
+    /** Tia hình thon (dày ở nòng, mảnh dần về mục tiêu). */
+    static void taperBeam(float x1, float y1, float x2, float y2, float w1, float w2) {
+        float a = Angles.angle(x1, y1, x2, y2) + 90f;
+        float ax = Angles.trnsx(a, w1), ay = Angles.trnsy(a, w1), bx = Angles.trnsx(a, w2), by = Angles.trnsy(a, w2);
+        Fill.quad(x1 - ax, y1 - ay, x1 + ax, y1 + ay, x2 + bx, y2 + by, x2 - bx, y2 - by);
+    }
+
+    /** Mảnh tinh thể nhọn xoay. */
+    static void shard(float x, float y, float size, float rot) {
+        Fill.tri(x + Angles.trnsx(rot, size * 1.7f), y + Angles.trnsy(rot, size * 1.7f),
+                 x + Angles.trnsx(rot + 130f, size * 0.7f), y + Angles.trnsy(rot + 130f, size * 0.7f),
+                 x + Angles.trnsx(rot - 130f, size * 0.7f), y + Angles.trnsy(rot - 130f, size * 0.7f));
     }
 
     static void drawLaserRing(float cx, float cy, float radiusX, float radiusY, float laserAngle, float strokeWidth, Color color) {
@@ -147,9 +225,14 @@ public final class Flazerd {
 
             State st = state(o.id);
             int tier = st.tier;
-            float currentPoints = st.charge;
-            int countdown = st.countdown;
 
+            // Đang trong thời gian ngưng bắn 2 giây (120 ticks) sau khi xả 3 tia
+            if (st.cooldownTimer > 0) {
+                st.subs.clear();
+                return;
+            }
+
+            float currentPoints = st.charge;
             float baseDamage = 33f;
             if (tier == 2) baseDamage = 33f * 3.5f;
             else if (tier == 3) baseDamage = 33f * 6.0f;
@@ -161,9 +244,28 @@ public final class Flazerd {
                 if (isValidTarget(potential, centerX, centerY, range)) mainTarget = potential;
             }
             if (mainTarget == null) {
-                // JS: closestTarget(unitPred, tilePred = true): có thể trả về Building (bài học 5).
                 mainTarget = Units.closestTarget(b.team, centerX, centerY, range, u -> isValidTarget(u, centerX, centerY, range), t -> true);
                 data.mainTargetId = mainTarget != null ? mainTarget.id() : -1;
+            }
+
+            // Trạng thái đang bắn 3 tia hội tụ (25 ticks)
+            if (st.burstTimer > 0) {
+                if (mainTarget != null) {
+                    data.lastX = mainTarget.getX();
+                    data.lastY = mainTarget.getY();
+                }
+                st.burstTimer--;
+                // Khi tia laser 3 chùm bắn xong tới mục tiêu -> tạo vụ nổ tím + gây sát thương diện rộng + vào 2s nghỉ
+                if (st.burstTimer == 0) {
+                    float ex = data.lastX, ey = data.lastY;
+                    purplePyroclasticExplosion.at(ex, ey);
+                    Sounds.explosion.at(ex, ey);
+                    Damage.damage(b.team, ex, ey, 56f, baseDamage * 4.5f);
+                    st.charge = 0f;
+                    st.cooldownTimer = 120; // Ngưng bắn 2 giây
+                    st.subs.clear();
+                }
+                return;
             }
 
             if (mainTarget != null) {
@@ -172,28 +274,19 @@ public final class Flazerd {
                 data.lastY = mt.getY();
                 if (mt instanceof Healthc) ((Healthc) mt).damage(currentTickDamage / 60f);
 
+                // Tốc độ tích sạc tăng thêm 120% (nhân 2.2f)
+                float chargeSpeedMultiplier = (float) (1 + Math.pow(currentPoints / 100f, 2));
+                float speedBonus = (tier == 2 ? 1.5f : 1.0f) * 13.2f;
+                currentPoints += (1f / 60f) * chargeSpeedMultiplier * speedBonus;
+
                 if (currentPoints >= 200f) {
-                    if (countdown == -1) {
-                        st.countdown = 300;
-                    } else if (countdown > 0) {
-                        countdown--;
-                        st.countdown = countdown;
-                    } else if (countdown == 0) {
-                        currentPoints = 0f;
-                        st.charge = 0f;
-                        st.countdown = -1;
-                        st.subs.clear();
-                    }
-                } else {
-                    float chargeSpeedMultiplier = (float) (1 + Math.pow(currentPoints / 100f, 2));
-                    float speedBonus = tier == 2 ? 1.5f : 1.0f;
-                    currentPoints += (1f / 60f) * chargeSpeedMultiplier * speedBonus;
-                    if (currentPoints >= 200f) {
-                        currentPoints = 200f;
-                        st.countdown = 300;
-                    }
-                    st.charge = currentPoints;
+                    currentPoints = 200f;
+                    st.charge = 200f;
+                    st.burstTimer = BURST_TICKS; // Kích hoạt trạng thái bắn 3 tia hội tụ
+                    Sounds.chargeLancer.at(centerX, centerY);
+                    return;
                 }
+                st.charge = currentPoints;
 
                 if (tier == 3) {
                     st.subs.clear();
@@ -228,9 +321,7 @@ public final class Flazerd {
                 st.subs.clear();
                 data.lastX = centerX + Angles.trnsx(b.rotation(), range);
                 data.lastY = centerY + Angles.trnsy(b.rotation(), range);
-                st.countdown = -1;
                 if (currentPoints > 0f) {
-                    // JS: (3 / 60) là chia số thực = 0.05 mỗi tick.
                     currentPoints -= 3f / 60f;
                     if (currentPoints < 0f) currentPoints = 0f;
                     st.charge = currentPoints;
@@ -244,12 +335,82 @@ public final class Flazerd {
             Building o = (Building) b.owner;
             LaserData data = (LaserData) b.data;
             State st = states.get(o.id);
+            if (st != null && st.cooldownTimer > 0) return; // Ngưng vẽ tia trong 2s nghỉ
+
             int tier = st != null ? st.tier : 1;
             float startX = o.x, startY = o.y, endX = data.lastX, endY = data.lastY;
             float dist = Mathf.dst(startX, startY, endX, endY);
             float laserAngle = Angles.angle(startX, startY, endX, endY);
             float currentPoints = st != null ? st.charge : 0f;
-            int countdown = st != null ? st.countdown : -1;
+
+            // Tia cuối điện ảnh (theo video): sạc cầu + mảnh tinh thể -> tia thon chói -> vòng sóng/bong bóng/mảnh vỡ
+            if (st != null && st.burstTimer > 0) {
+                float p = 1f - (st.burstTimer / (float) BURST_TICKS); // 0 -> 1
+                float tm = Time.time;
+                float mx = startX + Angles.trnsx(laserAngle, 14f), my = startY + Angles.trnsy(laserAngle, 14f);
+                float len = Math.max(10f, dist - 14f);
+                float charge = Mathf.clamp(p / 0.3f);
+                float fire = Mathf.clamp((p - 0.3f) / 0.1f);
+                float fade = 1f - Mathf.clamp((p - 0.9f) / 0.1f);
+                float pulse = 1f + Mathf.sin(tm, 3f, 0.15f);
+                float px = Angles.trnsx(laserAngle + 90f, 1f), py = Angles.trnsy(laserAngle + 90f, 1f);
+                float ax = Angles.trnsx(laserAngle, 1f), ay = Angles.trnsy(laserAngle, 1f);
+
+                // Quả cầu năng lượng ở nòng
+                Draw.color(burstBlue); Draw.alpha(0.3f * fade);
+                Fill.circle(mx, my, (8f + charge * 10f) * pulse);
+                Draw.alpha(0.9f * fade);
+                Fill.circle(mx, my, (3f + charge * 4f) * pulse);
+                Draw.color(Color.white); Draw.alpha(fade);
+                Fill.circle(mx, my, (1.5f + charge * 2.5f) * pulse);
+                Drawf.light(mx, my, 40f + charge * 60f + fire * 40f, burstBlue, 0.9f * fade);
+
+                // Tia mảnh dẫn hướng lúc sạc
+                if (fire < 1f) {
+                    Draw.color(Color.white); Draw.alpha(charge * 0.8f * fade); Lines.stroke(1f);
+                    Lines.line(mx, my, mx + ax * len * charge, my + ay * len * charge);
+                }
+
+                // Cụm mảnh tinh thể xoay quanh trục, tụ dần vào
+                for (int i = 0; i < 10; i++) {
+                    float t = i / 10f, ph = tm * 0.12f + i * 1.7f;
+                    float d = (10f + t * 40f) * (0.5f + charge * 0.5f);
+                    float r = (18f - charge * 8f) * (1f - fire * 0.4f);
+                    float sx = mx + ax * d + px * Mathf.sin(ph) * r, sy = my + ay * d + py * Mathf.sin(ph) * r;
+                    Draw.color(i % 2 == 0 ? Color.white : burstBlue);
+                    Draw.alpha(charge * fade * (1f - fire * 0.5f));
+                    shard(sx, sy, 2.2f, tm * 4f + i * 40f);
+                }
+
+                if (fire > 0f) {
+                    float w = fire * (1f + Mathf.sin(tm, 2f, 0.08f));
+                    // Tia thon nhiều lớp: quầng xanh -> xanh đậm -> lõi trắng
+                    Draw.color(burstBlue); Draw.alpha(0.25f * fade); taperBeam(mx, my, endX, endY, 12f * w, 3f * w);
+                    Draw.alpha(0.55f * fade); taperBeam(mx, my, endX, endY, 7f * w, 1.8f * w);
+                    Draw.color(Color.white); Draw.alpha(0.95f * fade); taperBeam(mx, my, endX, endY, 3f * w, 0.9f * w);
+
+                    // Vòng tròn lớn lan tỏa quanh nòng
+                    for (int k = 0; k < 3; k++) {
+                        float rt = ((tm * 0.02f) + k / 3f) % 1f;
+                        Draw.color(burstBlue); Draw.alpha((1f - rt) * fire * fade); Lines.stroke(1.2f);
+                        Lines.circle(mx + ax * rt * 18f, my + ay * rt * 18f, 6f + rt * 34f);
+                    }
+                    // Vòng xoáy chạy dọc tia
+                    for (int r = 0; r < 5; r++) {
+                        float rt = ((tm * 0.05f) + r / 5f) % 1f;
+                        Draw.color(burstBlue); Draw.alpha(fire * fade);
+                        drawLaserRing(Mathf.lerp(mx, endX, rt), Mathf.lerp(my, endY, rt), 2.5f, 8f * (1f - rt * 0.4f), laserAngle, 1f, burstBlue);
+                    }
+                    // Hạt tam giác chạy dọc theo tia từ nòng tới mục tiêu, liên tục tới lúc nổ
+                    for (int i = 0; i < 12; i++) {
+                        float t = (tm * 0.04f + i / 12f) % 1f;
+                        Draw.color(i % 2 == 0 ? Color.white : burstBlue); Draw.alpha(fire);
+                        shard(mx + ax * len * t, my + ay * len * t, 2f, laserAngle);
+                    }
+                }
+                Draw.reset();
+                return;
+            }
 
             float thicknessScale = 1.0f + (currentPoints * 0.02f * 0.5f);
 
@@ -296,10 +457,6 @@ public final class Flazerd {
                 Font font = Fonts.outline;
                 font.getData().setScale(0.12f);
                 String displayString = (int) Math.floor(currentPoints) + "%";
-                if (countdown > 0) {
-                    int secs = (int) Math.ceil(countdown / 60.0);
-                    displayString = ((int) Math.floor(Time.time / 6f) % 2 == 0) ? "[scarlet]" + secs + "s[]" : "[white]" + secs + "s[]";
-                }
                 font.draw(displayString, o.x, o.y, Align.center);
                 font.getData().setScale(1f);
             }
@@ -369,6 +526,14 @@ public final class Flazerd {
 
         @Override
         public void updateTile() {
+            State st = state(id);
+            // Đếm ngược thời gian ngưng bắn 2s (120 ticks) và khóa cơ chế bắn mới của turret
+            if (st.cooldownTimer > 0) {
+                st.cooldownTimer--;
+                reloadCounter = 0f;
+                wingsOffset = Mathf.lerpDelta(wingsOffset, 0f, 0.1f);
+                return;
+            }
             super.updateTile();
             boolean hasTarget = Units.closestTarget(team, x, y, 260f, u -> !u.dead() && !u.type.flying && Mathf.dst(x, y, u.x, u.y) >= deadZone, bb -> true) != null;
             wingsOffset = hasTarget ? Mathf.lerpDelta(wingsOffset, 1f, 0.15f) : Mathf.lerpDelta(wingsOffset, 0f, 0.1f);
@@ -376,7 +541,6 @@ public final class Flazerd {
 
         @Override
         public void draw() {
-            // JS: PerfCore.region(flazerd.basePrefix + ...) = "undefinedblock-4" không bao giờ thấy → luôn super.draw() (bài học 13).
             super.draw();
 
             float rad = rotation * Mathf.degRad;
@@ -393,6 +557,17 @@ public final class Flazerd {
             }
             if (a2Region != null && a2Region.found()) {
                 Draw.rect(a2Region, x + (wingBackOffset * cos) + (combatSideMove * sin), y + (wingBackOffset * sin) - (combatSideMove * cos), rotation);
+            }
+
+            // Hiển thị đếm ngược 2s nghỉ trên thân pháo
+            State st = states.get(id);
+            if (st != null && st.cooldownTimer > 0) {
+                Draw.z(Layer.effect + 10f);
+                Font font = Fonts.outline;
+                font.getData().setScale(0.12f);
+                String cdStr = String.format("[scarlet]%.1fs[]", st.cooldownTimer / 60f);
+                font.draw(cdStr, x, y, Align.center);
+                font.getData().setScale(1f);
             }
             Draw.reset();
         }
