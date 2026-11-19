@@ -6449,15 +6449,16 @@ public class NewModePvp {
             shown++;
             Table row = new Table(Styles.black5);
             row.margin(6).left();
-            TextureRegion ir = GearItems.iconOf(gd);
+            TextureRegion ir = GearItems.icon(gd);
             if (ir != null) row.image(ir).size(32f).padRight(8);
             Table info = new Table(); info.left();
             info.add(GearItems.col(gd.rarity) + GearItems.name(gd) + " [" + GearItems.rarName(gd.rarity) + "][]").left().row();
             StringBuilder pb = new StringBuilder();
             for (int m = 0; m + 1 < gd.mods.length; m += 2) {
-                if (gd.mods[m + 1] > 0) {
+                int si = gd.mods[m];
+                if (gd.mods[m + 1] > 0 && si >= 0 && si < STATS.length) {
                     if (pb.length() > 0) pb.append("  ");
-                    pb.append("[green]+").append(gd.mods[m + 1]).append(" ").append(statName(gd.mods[m])).append("[]");
+                    pb.append("[green]+").append(gd.mods[m + 1]).append(" ").append(tr(STATS[si].vi, STATS[si].en)).append("[]");
                 }
             }
             info.add(pb.length() > 0 ? pb.toString() : tr("[gray]Không có chỉ số dương[]", "[gray]No positive stats[]")).left().wrap().growX();
@@ -6579,11 +6580,12 @@ public class NewModePvp {
                     GearItems.Def gd = GearItems.def(code & 0xFF);
                     if (gd == null) continue;
                     Table gr = new Table(); gr.left();
-                    TextureRegion ir = GearItems.iconOf(gd);
+                    TextureRegion ir = GearItems.icon(gd);
                     if (ir != null) gr.image(ir).size(20f).padRight(6);
                     StringBuilder pb = new StringBuilder();
                     for (int m = 0; m + 1 < gd.mods.length; m += 2) {
-                        if (gd.mods[m + 1] > 0) pb.append(" [green]+").append(gd.mods[m + 1]).append(" ").append(statName(gd.mods[m])).append("[]");
+                        int si = gd.mods[m];
+                        if (gd.mods[m + 1] > 0 && si >= 0 && si < STATS.length) pb.append(" [green]+").append(gd.mods[m + 1]).append(" ").append(tr(STATS[si].vi, STATS[si].en)).append("[]");
                     }
                     gr.add(GearItems.col(gd.rarity) + GearItems.name(gd) + "[]" + pb).left().wrap().growX();
                     gList.add(gr).growX().left().padBottom(2).row();

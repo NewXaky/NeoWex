@@ -762,7 +762,7 @@ final class GearItems {
         Draw.color(Color.valueOf("ffd86b"), 0.45f * alpha);
         Fill.circle(e.x, e.y + 12f + jump, sz * 0.72f);
         Def bd = def(teamBuffDefId);
-        TextureRegion r = bd != null ? iconOf(bd) : null;
+        TextureRegion r = bd != null ? icon(bd) : null;
         if (r != null) {
             Draw.color(Color.white, alpha);
             Draw.rect(r, e.x, e.y + 12f + jump, sz, sz);
