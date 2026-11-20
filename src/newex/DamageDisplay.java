@@ -83,23 +83,6 @@ public final class DamageDisplay {
     }
 
     public static void init() {
-        Events.on(ClientLoadEvent.class, e -> {
-            final SettingsTable g = Vars.ui.settings.game;
-            g.checkPref("show-hp-popup-eatsuki-tt", true, v -> {
-                if (v) {
-                    Core.settings.put("show-damage-popup", false);
-                    g.rebuild();
-                }
-            });
-            g.checkPref("show-damage-popup", false, v -> {
-                if (v) {
-                    Core.settings.put("show-hp-popup-eatsuki-tt", false);
-                    g.rebuild();
-                }
-            });
-            g.checkPref("show-damage-short-format", true);
-        });
-
         Events.on(WorldLoadEvent.class, e -> clearAll());
         Events.on(StateChangeEvent.class, e -> {
             if (e.to == GameState.State.playing && e.from != GameState.State.paused) clearAll();
@@ -109,6 +92,7 @@ public final class DamageDisplay {
             int id = e.unit.id;
             Dmg d = dmgCache.get(id);
             hpCache.remove(id);
+            lastDmgAt.remove(id);
             critMap.remove(id);
             if (d != null) {
                 if (d.popup != null) popups.remove(d.popup);
@@ -122,9 +106,12 @@ public final class DamageDisplay {
         Events.on(BuildDamageEvent.class, e -> onBuildDamage(e));
     }
 
+    private static final HashMap<Integer, Float> lastDmgAt = new HashMap<>();
+
     private static void clearAll() {
         popups.clear();
         hpCache.clear();
+        lastDmgAt.clear();
         dmgCache.clear();
         critMap.clear();
     }
@@ -253,10 +240,17 @@ public final class DamageDisplay {
         Float last = hpCache.get(u.id);
         if (last != null) {
             float diff = last - u.health;
-            boolean crit = diff >= 0.8f && takeCrit(u.id);
-            if (crit) addCrit(u, diff, u.hitSize, true);
-            if (m.equals("eatsuki") && diff >= 0.8f) addEat(u, diff, u.hitSize, true, false);
-            else if (m.equals("popup") && Math.abs(diff) >= 0.8f && !crit) addFloat(u, -diff, u.hitSize, true, false);
+            if (diff >= 0.8f) {
+                lastDmgAt.put(u.id, Time.time);
+                boolean crit = takeCrit(u.id);
+                if (crit) addCrit(u, diff, u.hitSize, true);
+                if (m.equals("eatsuki")) addEat(u, diff, u.hitSize, true, false);
+                else if (m.equals("popup") && !crit) addFloat(u, -diff, u.hitSize, true, false);
+            } else if (diff <= -0.8f && m.equals("popup") && Core.settings.getBool("show-heal-popup", true)) {
+                // Chặn lỗi nhảy số hồi máu ảo trên client do đồng bộ snapshot ngay sau khi gây sát thương
+                boolean recentDmg = Vars.net.client() && (Time.time - lastDmgAt.getOrDefault(u.id, -999f) < 28f);
+                if (!recentDmg) addFloat(u, -diff, u.hitSize, true, false);
+            }
         }
         hpCache.put(u.id, u.health);
     }

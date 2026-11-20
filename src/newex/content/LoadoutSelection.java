@@ -1141,13 +1141,13 @@ public final class LoadoutSelection {
 
         final Runnable pvpSave = pvpSettingsHook != null ? pvpSettingsHook.apply(content) : null;
 
-        content.add(isEn() ? "[accent]-- HP BAR DISPLAY MODE --[]" : "[accent]-- CHẾ ĐỘ HIỂN THỊ THANH MÁU (HP) --[]").padTop(10f).row();
+        content.add(isEn() ? "[accent]-- HP BAR & DAMAGE NUMBERS --[]" : "[accent]-- THANH MÁU (HP), NHẢY SỐ DMG & HỒI MÁU --[]").padTop(10f).row();
         String curStyle = Core.settings.getString("newex-hp-style", "show-hp");
         ButtonGroup<TextButton> group = new ButtonGroup<>();
         group.setMinCheckCount(0);
         Table tableHp = new Table();
-        final TextButton btnShowHp = new TextButton(isEn() ? "Enable HP\n[gray](Horizontal + number)[]" : "Bật hp\n[gray](Ngang + số)[]", Styles.togglet);
-        final TextButton btnHp = new TextButton(isEn() ? "Enable HP\n[gray](Classic vertical)[]" : "Bật hp\n[gray](Dọc cổ điển)[]", Styles.togglet);
+        final TextButton btnShowHp = new TextButton(isEn() ? "Enable HP\n[gray](Horizontal + number)[]" : "Bật HP\n[gray](Ngang + số)[]", Styles.togglet);
+        final TextButton btnHp = new TextButton(isEn() ? "Enable HP\n[gray](Classic vertical)[]" : "Bật HP\n[gray](Dọc cổ điển)[]", Styles.togglet);
         final TextButton btnOff = new TextButton(isEn() ? "Disable HP" : "Tắt HP", Styles.togglet);
         btnShowHp.getLabel().setFontScale(0.8f);
         btnHp.getLabel().setFontScale(0.8f);
@@ -1162,6 +1162,37 @@ public final class LoadoutSelection {
         tableHp.add(btnHp).size(145f, 54f).pad(3f);
         tableHp.add(btnOff).size(85f, 54f).pad(3f);
         content.add(tableHp).row();
+
+        boolean curEat = Core.settings.getBool("show-hp-popup-eatsuki-tt", true);
+        boolean curPop = !curEat && Core.settings.getBool("show-damage-popup", false);
+        ButtonGroup<TextButton> dmgGrp = new ButtonGroup<>();
+        dmgGrp.setMinCheckCount(0);
+        Table tableDmg = new Table();
+        final TextButton btnDmgEat = new TextButton(isEn() ? "DMG Popup\n[gray](Stacked)[]" : "Nhảy số DMG\n[gray](Gộp tổng)[]", Styles.togglet);
+        final TextButton btnDmgFloat = new TextButton(isEn() ? "DMG Popup\n[gray](Floating)[]" : "Nhảy số DMG\n[gray](Bay từng hit)[]", Styles.togglet);
+        final TextButton btnDmgOff = new TextButton(isEn() ? "Disable DMG" : "Tắt số DMG", Styles.togglet);
+        btnDmgEat.getLabel().setFontScale(0.8f);
+        btnDmgFloat.getLabel().setFontScale(0.8f);
+        btnDmgOff.getLabel().setFontScale(0.8f);
+        dmgGrp.add(btnDmgEat); dmgGrp.add(btnDmgFloat); dmgGrp.add(btnDmgOff);
+        if (curEat) btnDmgEat.setChecked(true);
+        else if (curPop) btnDmgFloat.setChecked(true);
+        else btnDmgOff.setChecked(true);
+        tableDmg.add(btnDmgEat).size(145f, 54f).pad(3f);
+        tableDmg.add(btnDmgFloat).size(145f, 54f).pad(3f);
+        tableDmg.add(btnDmgOff).size(85f, 54f).pad(3f);
+        content.add(tableDmg).padTop(4f).row();
+
+        Table tableDmgOpt = new Table();
+        final TextButton btnShowHeal = new TextButton(isEn() ? "Show Heal Numbers" : "Hiện số hồi máu", Styles.togglet);
+        btnShowHeal.setChecked(Core.settings.getBool("show-heal-popup", true));
+        btnShowHeal.getLabel().setFontScale(0.82f);
+        final TextButton btnShortDmg = new TextButton(isEn() ? "Short Format (1.2k)" : "Rút gọn số (1.2k)", Styles.togglet);
+        btnShortDmg.setChecked(Core.settings.getBool("show-damage-short-format", true));
+        btnShortDmg.getLabel().setFontScale(0.82f);
+        tableDmgOpt.add(btnShowHeal).size(185f, 44f).pad(3f);
+        tableDmgOpt.add(btnShortDmg).size(185f, 44f).pad(3f);
+        content.add(tableDmgOpt).padTop(3f).row();
 
         content.add(isEn() ? "[accent]-- DETAILED INFORMATION --[]" : "[accent]-- THÔNG TIN CHI TIẾT --[]").padTop(10f).row();
         content.button(isEn() ? "View README / Update Log" : "Xem README / Update Log", Icon.info, LoadoutSelection::showReadmeDialog).size(240f, 48f).pad(5f).row();
@@ -1200,6 +1231,10 @@ public final class LoadoutSelection {
             if (btnShowHp.isChecked()) style = "show-hp";
             else if (btnHp.isChecked()) style = "hp";
             Core.settings.put("newex-hp-style", style);
+            Core.settings.put("show-hp-popup-eatsuki-tt", btnDmgEat.isChecked());
+            Core.settings.put("show-damage-popup", btnDmgFloat.isChecked());
+            Core.settings.put("show-heal-popup", btnShowHeal.isChecked());
+            Core.settings.put("show-damage-short-format", btnShortDmg.isChecked());
 
             reloadCachedSettings();
             applyTurretVisibility(null);

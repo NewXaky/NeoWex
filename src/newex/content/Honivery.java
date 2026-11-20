@@ -309,9 +309,9 @@ public final class Honivery {
             researchCostMultiplier = 7.5f;
 
             hitSize = 18f;
-            health = 3500f;
-            armor = 10f;
-            speed = 3.4f / 7.5f * 1.5f; // +50% tốc độ di chuyển
+            health = 12000f;
+            armor = 20f;
+            speed = 6.9f / 7.5f; // 6.9 ô/giây
 
             legCount = 4;
             legLength = 10f;
@@ -350,7 +350,7 @@ public final class Honivery {
                 targetSwitchInterval = 0;
                 inversion = true;
                 inaccuracy = 2;
-                bullet = new BasicBulletType(12f, 25f) {{
+                bullet = new BasicBulletType(12f, 50f) {{
                     hitEffect = hitFx;
                     despawnEffect = despawnFx;
                     shootEffect = honiveryShootFx;

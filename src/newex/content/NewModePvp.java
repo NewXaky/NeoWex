@@ -900,11 +900,92 @@ public class NewModePvp {
     }
     static float pf(String s) { try { return Float.parseFloat(s.trim()); } catch (Throwable e) { return Float.NaN; } }
 
+    // ===== Trung tâm Thông báo trên HUD (thay vì gửi lên thanh tin nhắn) =====
+    static final String NOTIF_KIND = "newex-pvp-notif";
+    static final ArrayList<String> notifLog = new ArrayList<>();
+    static int notifUnread = 0;
+    static Table notifHudBtn = null;
+
+    static void recordNotifLocal(String line) {
+        if (line == null || line.isEmpty()) return;
+        notifLog.add(0, line);
+        if (notifLog.size() > 80) notifLog.remove(notifLog.size() - 1);
+        notifUnread++;
+    }
+
+    static void onNotifPacket(String content) {
+        if (content == null || content.isEmpty()) return;
+        recordNotifLocal(content);
+    }
+
+    /** Máy chủ ghi nhận thông báo (hạ gục, nhặt đồ, mua đồ, lên cấp pilot...) và gửi đến mọi máy qua nút HUD Thông báo. */
+    public static void pushNotif(String msg) {
+        if (msg == null || msg.isEmpty()) return;
+        int sec = (int) Math.max(0, matchT / 60f);
+        String ts = "[lightgray][" + (sec / 60) + ":" + (sec % 60 < 10 ? "0" : "") + (sec % 60) + "][] ";
+        String full = ts + msg;
+        if (!Vars.headless) recordNotifLocal(full);
+        if (Vars.net.server()) {
+            try { Call.clientPacketReliable(NOTIF_KIND, full); } catch (Throwable ignored) {}
+        }
+    }
+
+    static void openNotifDialog() {
+        if (Vars.headless) return;
+        notifUnread = 0;
+        final MachineUi.Panel p = MachineUi.panel(tr("Thông báo trận đấu", "Match Notifications"));
+        p.onBuild(() -> {
+            Table c = p.content();
+            c.clear();
+            c.margin(8).top().left();
+            float W = p.innerW() - 18f;
+            if (notifLog.isEmpty()) {
+                c.add("[lightgray]" + tr("Chưa có thông báo nào trong trận này.", "No notifications yet in this match.") + "[]").left().pad(10).row();
+                return;
+            }
+            for (int i = 0; i < notifLog.size(); i++) {
+                Table row = new Table(i % 2 == 0 ? Styles.black5 : Styles.black3);
+                row.margin(6).left();
+                row.add(notifLog.get(i)).left().wrap().growX();
+                c.add(row).width(W).padBottom(3).row();
+            }
+        });
+        p.show();
+    }
+
+    static void addNotifHud() {
+        if (Vars.headless || notifHudBtn != null || Vars.ui == null || Vars.ui.hudGroup == null) return;
+        notifHudBtn = new Table();
+        notifHudBtn.visible(() -> isActive() && Vars.state != null && Vars.state.isGame());
+        final TextButton btn = new TextButton("", Styles.flatBordert);
+        btn.clicked(NewModePvp::openNotifDialog);
+        btn.update(() -> {
+            if (notifUnread > 0) {
+                float pulse = 0.55f + 0.45f * Mathf.sin(Time.time * 0.18f);
+                btn.setColor(Color.gold.cpy().lerp(Color.white, pulse * 0.45f));
+                btn.setText("[gold]★ " + tr("TB", "LOG") + " (" + notifUnread + ")[]");
+            } else {
+                btn.setColor(Color.white);
+                btn.setText("[lightgray]" + tr("Thông báo", "Notif") + "[]");
+            }
+        });
+        notifHudBtn.add(btn).size(106f, 40f);
+        notifHudBtn.pack();
+        notifHudBtn.setPosition(Math.max(12f, Core.graphics.getWidth() - 130f), Math.max(120f, Core.graphics.getHeight() * 0.62f));
+        notifHudBtn.update(() -> {
+            float maxX = Math.max(12f, Core.graphics.getWidth() - notifHudBtn.getWidth() - 10f);
+            float maxY = Math.max(80f, Core.graphics.getHeight() - notifHudBtn.getHeight() - 10f);
+            notifHudBtn.setPosition(Mathf.clamp(notifHudBtn.x, 8f, maxX), Mathf.clamp(notifHudBtn.y, 70f, maxY));
+        });
+        Vars.ui.hudGroup.addChild(notifHudBtn);
+    }
+
     static void register() {
         if (registered) return;
         try {
             if (Vars.netClient == null) return;
             Vars.netClient.addPacketHandler(SYNC_KIND, content -> onSync(content));
+            Vars.netClient.addPacketHandler(NOTIF_KIND, content -> onNotifPacket(content));
             Vars.netClient.addPacketHandler(SHIELD_KIND, content -> onShieldSync(content));
             Vars.netClient.addPacketHandler(GearItems.FX_KIND, content -> GearItems.onFxPacket(content));
             Vars.netClient.addPacketHandler(GearItems.RING_KIND, content -> GearItems.onRingPacket(content));
@@ -2451,6 +2532,7 @@ public class NewModePvp {
                     Vars.ui.hudGroup.addChild(pilotOverlay);
                     pilotOverlay.toFront();
                     GearItems.addHud();
+                    addNotifHud();
                 } catch (Throwable err) { Log.err("[NexPvp] cannot add pilot overlay: " + err); }
             });
             Events.run(Trigger.postDraw, () -> {
@@ -3019,7 +3101,10 @@ public class NewModePvp {
         if (Math.abs(unit.maxHealth - hpT) > 0.5f) {
             float diff = hpT - unit.maxHealth;
             unit.maxHealth = hpT;
-            if (diff > 0) unit.health += diff; else if (unit.health > hpT) unit.health = hpT;
+            // Chỉ server/host mới điều chỉnh unit.health; client để server đồng bộ tránh lỗi nhảy hồi máu rồi tụt máu!
+            if (!Vars.net.client()) {
+                if (diff > 0) unit.health += diff; else if (unit.health > hpT) unit.health = hpT;
+            }
         }
 
         unit.armor = (unit.type.armor + s[1] * ARM_FLAT) * (1 + rc.def * ROLE_ARM_PCT / 100f) + rc.def * ROLE_ARM_FLAT;
@@ -4212,7 +4297,7 @@ public class NewModePvp {
                 if (ou == null || !ou.isValid()) continue;
                 try { Call.unitDespawn(ou); } catch (Throwable err) { try { ou.remove(); } catch (Throwable err2) {} }
             }
-            try { Call.sendMessage(tr("[scarlet]Đã tự động spawn x" + BONUS_WAVE_TIMES + " đợt quái!", "[scarlet]Auto-spawned x" + BONUS_WAVE_TIMES + " waves!")); } catch (Throwable err) {}
+            pushNotif(tr("[scarlet]Đã tự động spawn x" + BONUS_WAVE_TIMES + " đợt quái!", "[scarlet]Auto-spawned x" + BONUS_WAVE_TIMES + " waves!"));
         });
         Events.on(WaveEvent.class, e -> {
             if (Vars.net.client() || !isFull() || Vars.state.gameOver) return;
@@ -4300,7 +4385,7 @@ public class NewModePvp {
                     try {
                         String kn = gearKiller.name != null ? gearKiller.name : "Player";
                         String vn = dp.name != null ? dp.name : "Player";
-                        Call.sendMessage(tr("[scarlet]⚔ [accent]", "[scarlet]⚔ [accent]") + kn + "[] " + tr("đã hạ gục", "eliminated") + " [orange]" + vn + "[]!");
+                        pushNotif(tr("[scarlet]⚔ [accent]", "[scarlet]⚔ [accent]") + kn + "[] " + tr("đã hạ gục", "eliminated") + " [orange]" + vn + "[]");
                     } catch (Throwable err) {}
                     if (isBotPl(gearKiller)) PvpBotAI.onBotKilledPlayer(gearKiller, dp);
                 }
@@ -4318,7 +4403,7 @@ public class NewModePvp {
                 try {
                     String kn = gearKiller.name != null ? gearKiller.name : "Player";
                     String vn = dBot.botPl.name != null ? dBot.botPl.name : "AI";
-                    Call.sendMessage(tr("[scarlet]⚔ [accent]", "[scarlet]⚔ [accent]") + kn + "[] " + tr("đã hạ gục", "eliminated") + " [orange]" + vn + "[]!");
+                    pushNotif(tr("[scarlet]⚔ [accent]", "[scarlet]⚔ [accent]") + kn + "[] " + tr("đã hạ gục", "eliminated") + " [orange]" + vn + "[]");
                 } catch (Throwable err) {}
                 PvpBotAI.onPlayerKilledBot(gearKiller, dBot.botPl);
             }
@@ -4364,7 +4449,7 @@ public class NewModePvp {
         respawnLock.clear(); deadUnit.clear(); spawnBuff.clear(); swapPending.clear(); prevUnit.clear(); extPvp.clear();
         barrackT.clear(); rally.clear(); soldiers.clear(); soldierOwner.clear(); mountSt.clear(); lastHitBy.clear(); teamHit.clear();
         passiveT = PASSIVE_INTERVAL; logged.clear(); rolled.clear(); rolledN = 0; winning = false; seenBoth = false; dirty = false; syncT = 0; stVer++;
-        PvpBotAI.clear(); autoPauseFixed = false;
+        PvpBotAI.clear(); notifLog.clear(); notifUnread = 0; autoPauseFixed = false;
         restoreStore();
         if (!Vars.net.client()) {
             Time.run(2f, () -> {
@@ -5384,8 +5469,8 @@ public class NewModePvp {
     }
     static int pilotLv(St st, int pi) { return st == null || st.plv == null || pi <= 0 || pi >= st.plv.length ? 0 : Math.min(PILOT_MAX_LV, Math.max(0, st.plv[pi])); }
     static int pilotExp(St st, int pi) { return st == null || st.pexp == null || pi <= 0 || pi >= st.pexp.length ? 0 : Math.max(0, st.pexp[pi]); }
-    static int pilotExpNeed(int curLv) { return 200 + Math.max(0, curLv) * 180; }
-    static int pilotKillExp(Unit u) { return Math.max(12, Math.min(220, Math.round(killExp(u) * 0.45f))); }
+    static int pilotExpNeed(int curLv) { return (200 + Math.max(0, curLv) * 180) * 5; } // giảm tốc độ lên cấp gấp 5 lần
+    static int pilotKillExp(Unit u) { return u == null ? 0 : Math.max(8, Math.min(120, Math.round(u.maxHealth * 0.03f))); } // chỉ tính theo máu gốc, không chịu buff EXP
     static int pilotGiftCount(St st, int pi) {
         if (st == null || st.pgift == null || pi <= 0) return 0;
         int c = 0;
@@ -5416,11 +5501,9 @@ public class NewModePvp {
             int nlv = st.plv[pi];
             String pname = pl.name != null ? pl.name : "Player";
             String piname = pilotNameById(pi);
-            try {
-                Call.sendMessage(tr("[gold]★ [accent]", "[gold]★ [accent]") + pname + "[] "
-                    + tr("đã nâng ", "leveled up ") + "[white]" + piname + "[] "
-                    + tr("lên [gold]Cấp ", "to [gold]Lv ") + nlv + "/" + PILOT_MAX_LV + "[] (" + pilotTierLabel(nlv) + ")!");
-            } catch (Throwable ignored) {}
+            pushNotif(tr("[gold]★ [accent]", "[gold]★ [accent]") + pname + "[] "
+                + tr("đã nâng ", "leveled up ") + "[white]" + piname + "[] "
+                + tr("lên [gold]Cấp ", "to [gold]Lv ") + nlv + "/" + PILOT_MAX_LV + "[] (" + pilotTierLabel(nlv) + ")");
             stVer++;
         }
         dirty = true;

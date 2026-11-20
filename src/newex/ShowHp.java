@@ -252,41 +252,50 @@ public final class ShowHp {
 
         float smoothHpVal = smoothHp.getOrDefault(id, curHp);
         if (!Vars.state.isPaused()) {
-            smoothHpVal = Mathf.lerpDelta(smoothHpVal, curHp, 0.1f);
+            // Máu tăng lên đột ngột do sync -> cập nhật nhanh; mất máu -> trượt vệt trắng mượt
+            smoothHpVal = curHp > smoothHpVal ? curHp : Mathf.lerpDelta(smoothHpVal, curHp, 0.14f);
             smoothHp.put(id, smoothHpVal);
         }
-        float pct = Math.max(0f, Math.min(100f, smoothHpVal / maxHp * 100f));
+        float realPct = Math.max(0f, Math.min(100f, curHp / maxHp * 100f));
+        float pct = Math.max(realPct, Math.min(100f, smoothHpVal / maxHp * 100f));
 
         if (style.equals("show-hp")) {
             float sh = smoothShield.getOrDefault(id, curShield);
             if (!Vars.state.isPaused()) {
-                sh = Mathf.lerpDelta(sh, curShield, 0.1f);
+                sh = Mathf.lerpDelta(sh, curShield, 0.15f);
                 smoothShield.put(id, sh);
             }
 
             float cx = u.x;
             float baseY = u.y + u.hitSize / 2f + 6f;
-            float barW = Math.max(22f, u.hitSize * 1.2f), barH = 4f, halfW = barW / 2f;
+            float barW = Math.max(24f, u.hitSize * 1.25f), barH = 4.2f, halfW = barW / 2f;
 
             Draw.z(115f);
-            Draw.color(BG_BAR, 0.8f);
-            Fill.rect(cx, baseY, barW + 1.6f, barH + 1.6f);
+            Draw.color(BG_BAR, 0.85f);
+            Fill.rect(cx, baseY, barW + 2f, barH + 2f);
 
-            Color hpColor = pct < 25f ? Color.red : pct < 55f ? Color.yellow : Color.green;
+            // Vệt trắng giảm máu mượt phía sau thanh máu thật
+            if (pct > realPct + 0.5f) {
+                float trailW = barW * (pct / 100f);
+                Draw.color(Color.white, 0.55f);
+                Fill.rect(cx - halfW + trailW / 2f, baseY, trailW, barH);
+            }
+
+            Color hpColor = realPct < 25f ? Color.red : realPct < 55f ? Color.yellow : Color.green;
             Draw.color(hpColor);
-            Draw.alpha(pct < 20f ? 0.6f + Mathf.absin(Time.time, 5f, 0.4f) : 0.9f);
-            float curW = barW * (Math.max(0f, pct) / 100f);
+            Draw.alpha(realPct < 20f ? 0.65f + Mathf.absin(Time.time, 5f, 0.35f) : 0.94f);
+            float curW = barW * (realPct / 100f);
             Fill.rect(cx - halfW + curW / 2f, baseY, curW, barH);
 
             if (sh > 0.5f) {
                 float shW = Math.min(barW, barW * (sh / maxHp));
-                Draw.color(SHIELD, 0.85f);
-                Fill.rect(cx - halfW + shW / 2f, baseY + barH / 2f + 0.8f, shW, 1.2f);
+                Draw.color(SHIELD, 0.9f);
+                Fill.rect(cx - halfW + shW / 2f, baseY + barH / 2f + 0.9f, shW, 1.3f);
             }
 
             Draw.z(116f);
-            Draw.color(Color.white, 0.45f);
-            Fill.rect(cx, baseY + barH / 2f - 0.5f, barW, 0.8f);
+            Draw.color(Color.white, 0.35f);
+            Fill.rect(cx, baseY + barH / 2f - 0.5f, barW, 0.7f);
 
             Font font = Fonts.outline;
             float oldX = font.getData().scaleX, oldY = font.getData().scaleY;
@@ -295,10 +304,10 @@ public final class ShowHp {
 
             String text = textCache.get(id);
             Float cachedHp = textCacheHp.get(id);
-            if (text == null || cachedHp == null || Math.abs(cachedHp - smoothHpVal) > 5f) {
-                text = formatHP(smoothHpVal) + " / " + formatHP(maxHp);
+            if (text == null || cachedHp == null || Math.abs(cachedHp - curHp) > Math.max(4f, maxHp * 0.005f)) {
+                text = formatHP(curHp) + " / " + formatHP(maxHp);
                 textCache.put(id, text);
-                textCacheHp.put(id, smoothHpVal);
+                textCacheHp.put(id, curHp);
             }
             font.draw(text, cx, baseY + barH / 2f + 3.5f + font.getCapHeight(), 0, Align.center, false);
 
