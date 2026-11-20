@@ -785,7 +785,7 @@ public final class NexDynamicShadows {
                 Draw.color();
             }
             // Vẽ ánh sáng ấm dịu từ Unit, Khối & Nguồn sáng chiếu sáng trong bóng đổ (nếu bật)
-            if (lightEraseEnabled && (!dynLights.isEmpty() || darkness > 0.02f)) {
+            if (lightEraseEnabled && !dynLights.isEmpty()) {
                 Draw.blend(Blending.additive);
                 for (int i = 0; i < dynLights.size; i++) {
                     LightSpot ls = dynLights.get(i);
