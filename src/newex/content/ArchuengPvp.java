@@ -53,10 +53,10 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Archueng PvP - Kỹ năng kiếm khí hình quạt:
- * - Gây sát thương kỹ năng: 500% Tấn công + 5% Máu tối đa.
+ * - Gây sát thương kỹ năng: 1500% Tấn công + 5% Máu tối đa.
  * - Hưởng chỉ số từ trang nâng cấp NewMode PvP: Tấn công (% và flat), Bạo kích, Sát thương theo giáp (qua damageMultiplier),
  *   Xuyên giáp, Sát thương % máu tối đa, Sát thương quái spawn ngẫu nhiên, Đẩy lùi (qua NewModePvp.skillDamage).
- * - Khi chém hụt mục tiêu, nhát chém kết thúc giảm 65% thời gian hồi chiêu.
+ * - Khi chém hụt mục tiêu, nhát chém kết thúc giảm 25% thời gian hồi chiêu.
  * - Tùy chỉnh phím bấm PC trong Cài đặt NewEx -> NewMode PvP.
  */
 public final class ArchuengPvp {
@@ -69,7 +69,7 @@ public final class ArchuengPvp {
 
     static final float CD_T = 600f, WINDUP = 42f, SLOW_T = 72f, FAST_T = 60f, FADE_T = 45f, MARK_T = 180f, MARK_SLOW = 0.5f;
     static final float SLOW_SPD = 0.6f, FAST_SPD = 9f;
-    static final float DMG = 500f, ATK_PCT = 5.0f, MAX_HP_PCT = 0.05f, MISS_CD_REFUND = 0.65f;
+    static final float DMG = 500f, ATK_PCT = 15.0f, MAX_HP_PCT = 0.05f, MISS_CD_REFUND = 0.25f;
     static final float HALF = 40f, RAD = 70f;
     static final Color COL = Color.valueOf("5ab4ff"), COL2 = Color.valueOf("bff4ff"), GOLD = Color.valueOf("ffc83c");
     static final Color FIRE = Color.valueOf("ff8a3c"), FIRE2 = Color.valueOf("ff3c1e");
@@ -217,7 +217,7 @@ public final class ArchuengPvp {
         NexNet.broadcast(FAN, u.id + "," + u.team.id + "," + (Math.round(ang * 10) / 10f) + "," + u.x + "," + u.y + "," + player.id);
     }
 
-    /** Sát thương kỹ năng = 500% Tấn công (đã gồm chỉ số Tấn công từ trang nâng cấp) + 5% Máu tối đa. */
+    /** Sát thương kỹ năng = 1500% Tấn công (đã gồm chỉ số Tấn công từ trang nâng cấp) + 5% Máu tối đa. */
     static float calcDmg(int id) {
         Unit o = Groups.unit.getByID(id);
         if (o == null) return DMG * ATK_PCT;
@@ -371,7 +371,7 @@ public final class ArchuengPvp {
             }
             if (!Vars.net.client() && prog == 0) hitFan(f);
 
-            // Nhát chém kết thúc: nếu chém hụt hoàn toàn -> giảm 65% thời gian hồi chiêu
+            // Nhát chém kết thúc: nếu chém hụt hoàn toàn -> giảm 25% thời gian hồi chiêu
             if (f.t >= SLOW_T + FAST_T + FADE_T) {
                 if (f.hit.isEmpty()) {
                     float refund = CD_T * MISS_CD_REFUND;
@@ -382,7 +382,7 @@ public final class ArchuengPvp {
                     if (!Vars.headless && Vars.player != null && ownerUnit != null && Vars.player.unit() == ownerUnit) {
                         cdEnd = Math.max(Time.time, cdEnd - refund);
                         try {
-                            Call.label("[#bff4ff]CHÉM HỤT: -65% HỒI CHIÊU[]", 1.2f, ownerUnit.x, ownerUnit.y + 16f);
+                            Call.label("[#bff4ff]CHÉM HỤT: -25% HỒI CHIÊU[]", 1.2f, ownerUnit.x, ownerUnit.y + 16f);
                             SfxCompat.at("plasmadrop", ownerUnit.x, ownerUnit.y, 1.35f, 0.9f);
                         } catch (Throwable ignored) {}
                     }

@@ -61,7 +61,7 @@ final class GearItems {
     static final int R_COMMON = 0, R_RARE = 1, R_EPIC = 2, R_LEGEND = 3, R_MYTHIC = 4, RARITIES = 5, R_SHOP = 5;
     static final int K_TP = 1, K_LUCK = 2, K_HASTE = 3;                 // loại vật phẩm cửa hàng: dịch chuyển / may mắn / tăng tốc (tiêu hao)
     static final int SK_MOVE_ATK = 1, SK_KILL_SPD = 2, SK_KILL_SKILL_ATK = 3, SK_MIN_PT = 4, SK_DEATH_CDR = 5;
-    static final int SK_EXEC50 = 6, SK_SLOW_ALL1 = 7, SK_LOWHP_SHIELD = 8, SK_SKILL_EXP = 9, SK_CORE_LASER = 10, SK_TEAM_BUFF = 11;
+    static final int SK_EXEC50 = 6, SK_SLOW_ALL1 = 7, SK_LOWHP_SHIELD = 8, SK_SKILL_EXP = 9, SK_CORE_LASER = 10, SK_TEAM_BUFF = 11, SK_BASIC_ZERA = 12;
     static final int PORT_TICKS = 180, PORT_CD = 1800, HASTE_TICKS = 600;
     static final int MOVE_ATK_STEP = 300, MOVE_ATK_MAX = 15, KILL_SPD_TICKS = 360, SKILL_ATK_MAX = 500;
     static final int LOWHP_SHIELD_CD = 45 * 60, SKILL_EXP_TICKS = 600, RESONANCE_MAX = 1000, RESONANCE_TICKS = 20 * 60;
@@ -187,6 +187,9 @@ final class GearItems {
             "Kỹ năng: Đánh trúng mục tiêu tích 1 tầng Tinh Quang Cộng Hưởng; đủ 1000 tầng giúp cả phe nhận +10% Tấn công & +10% Giáp trong 20s (chỉ tích lại sau khi hết buff).",
             "Skill: On hit, gain 1 stack of Astral Resonance; at 1000 stacks, grants the whole team +10% ATK & +10% Armor for 20s (re-stacks only after buff ends).",
             0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11, 1, 12, 1, 13, 1, 14, 1);
+        sk(S_WEAPON, R_MYTHIC, "Pháo Ấn Sư Tử", "Lionstrike Core", "zeralion,spectre,lancer", SK_BASIC_ZERA,
+            "Kỹ năng: Tăng 50% sát thương gây ra cho các đòn đánh thường; nếu đang dùng unit Zeralion thì tăng thêm 100%.",
+            "Skill: +50% damage for basic attacks; +100% additional damage when piloting Zeralion.", 2, 6, 4, 4);
     }
     static void shop(String vi, String en, String icons, int kind, int price, String dvi, String den) {
         Def x = new Def(n, S_CHARM, R_SHOP, vi, en, icons);
@@ -917,6 +920,12 @@ final class GearItems {
         if (team == null || !war()) return false;
         Float until = teamResonanceUntil.get(team.id);
         return until != null && Time.time < until;
+    }
+    /** Pháo Ấn Sư Tử: +50% sát thương đòn đánh thường; nếu dùng unit Zeralion tăng thêm +100% (tổng +150%). */
+    static float basicAtkMul(NewModePvp.St st, Unit u) {
+        if (!hasSkill(st, SK_BASIC_ZERA)) return 1f;
+        boolean isZera = u != null && Zeralion.zeralion != null && u.type == Zeralion.zeralion;
+        return isZera ? 2.5f : 1.5f;
     }
     /** Ngọc Tinh Thông: gọi khi unit player nhấn dùng kỹ năng -> +50% EXP trong 10s (không cộng dồn). */
     public static void onUnitSkillCast(Unit owner) {

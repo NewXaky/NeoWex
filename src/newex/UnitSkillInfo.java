@@ -128,11 +128,11 @@ public final class UnitSkillInfo {
             "THIÊN PHONG KIẾM KHÍ",
             DamageKind.SKILL_ATTACK,
             Color.valueOf("5AB4FF"),
-            "[cyan]10.0s[] ([green]-65%[] nếu chém hụt)",
-            "[scarlet]500%[] Tấn Công + [green]5%[] Máu Tối Đa",
+            "[cyan]10.0s[] ([green]-25%[] nếu chém hụt)",
+            "[scarlet]1500%[] Tấn Công + [green]5%[] Máu Tối Đa",
             "Vận khí hóa lưỡi liềm kiếm khí tầm rộng, lướt chậm rồi bứt tốc cực đại. Ai trúng chiêu sẽ nhận sát thương kỹ năng và [accent]ấn làm chậm[].",
-            "[gold]Thu Kiếm Hồi Khí[]: chém hụt hoàn toàn thì kiếm khí quay về, hồi chiêu rút ngắn [green]65%[].",
-            () -> "Hiệu ứng hồi chiêu khi hụt: [accent]-65% CD[] (còn 3.5 giây)",
+            "[gold]Thu Kiếm Hồi Khí[]: chém hụt hoàn toàn thì kiếm khí quay về, hồi chiêu rút ngắn [green]25%[].",
+            () -> "Hiệu ứng hồi chiêu khi hụt: [accent]-25% CD[] (còn 7.5 giây)",
             () -> "PC: Nhấn phím [accent][" + ArchuengPvp.getSkillKey().value + "][] (Mở ngắm -> Click hướng -> Tung) | Mobile: Bấm SKILL -> Chạm chọn hướng -> KHÓA -> TUNG"
         ));
     }

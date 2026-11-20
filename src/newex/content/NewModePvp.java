@@ -953,12 +953,13 @@ public class NewModePvp {
         p.show();
     }
 
+    static final String NOTIF_POS_X = "newex-notif-btn-x", NOTIF_POS_Y = "newex-notif-btn-y";
+
     static void addNotifHud() {
         if (Vars.headless || notifHudBtn != null || Vars.ui == null || Vars.ui.hudGroup == null) return;
         notifHudBtn = new Table();
         notifHudBtn.visible(() -> isActive() && Vars.state != null && Vars.state.isGame());
         final TextButton btn = new TextButton("", Styles.flatBordert);
-        btn.clicked(NewModePvp::openNotifDialog);
         btn.update(() -> {
             if (notifUnread > 0) {
                 float pulse = 0.55f + 0.45f * Mathf.sin(Time.time * 0.18f);
@@ -969,13 +970,47 @@ public class NewModePvp {
                 btn.setText("[lightgray]" + tr("Thông báo", "Notif") + "[]");
             }
         });
+        btn.addListener(new arc.scene.event.InputListener() {
+            float sx, sy, bx, by;
+            boolean dragged;
+            @Override public boolean touchDown(arc.scene.event.InputEvent event, float x, float y, int pointer, arc.input.KeyCode button) {
+                sx = Core.input.mouseX(pointer);
+                sy = Core.input.mouseY(pointer);
+                bx = notifHudBtn.x;
+                by = notifHudBtn.y;
+                dragged = false;
+                return true;
+            }
+            @Override public void touchDragged(arc.scene.event.InputEvent event, float x, float y, int pointer) {
+                float dx = Core.input.mouseX(pointer) - sx;
+                float dy = Core.input.mouseY(pointer) - sy;
+                if (!dragged && dx * dx + dy * dy > 100f) dragged = true;
+                if (dragged) {
+                    float maxX = Math.max(12f, Core.graphics.getWidth() - notifHudBtn.getWidth() - 8f);
+                    float maxY = Math.max(12f, Core.graphics.getHeight() - notifHudBtn.getHeight() - 8f);
+                    notifHudBtn.setPosition(Mathf.clamp(bx + dx, 8f, maxX), Mathf.clamp(by + dy, 8f, maxY));
+                }
+            }
+            @Override public void touchUp(arc.scene.event.InputEvent event, float x, float y, int pointer, arc.input.KeyCode button) {
+                if (dragged) {
+                    Core.settings.put(NOTIF_POS_X, notifHudBtn.x);
+                    Core.settings.put(NOTIF_POS_Y, notifHudBtn.y);
+                } else {
+                    openNotifDialog();
+                }
+            }
+        });
         notifHudBtn.add(btn).size(106f, 40f);
         notifHudBtn.pack();
-        notifHudBtn.setPosition(Math.max(12f, Core.graphics.getWidth() - 130f), Math.max(120f, Core.graphics.getHeight() * 0.62f));
+        float defX = Math.max(12f, Core.graphics.getWidth() - 130f);
+        float defY = Math.max(120f, Core.graphics.getHeight() * 0.62f);
+        float initX = Core.settings.has(NOTIF_POS_X) ? Core.settings.getFloat(NOTIF_POS_X, defX) : defX;
+        float initY = Core.settings.has(NOTIF_POS_Y) ? Core.settings.getFloat(NOTIF_POS_Y, defY) : defY;
+        notifHudBtn.setPosition(initX, initY);
         notifHudBtn.update(() -> {
-            float maxX = Math.max(12f, Core.graphics.getWidth() - notifHudBtn.getWidth() - 10f);
-            float maxY = Math.max(80f, Core.graphics.getHeight() - notifHudBtn.getHeight() - 10f);
-            notifHudBtn.setPosition(Mathf.clamp(notifHudBtn.x, 8f, maxX), Mathf.clamp(notifHudBtn.y, 70f, maxY));
+            float maxX = Math.max(12f, Core.graphics.getWidth() - notifHudBtn.getWidth() - 8f);
+            float maxY = Math.max(12f, Core.graphics.getHeight() - notifHudBtn.getHeight() - 8f);
+            notifHudBtn.setPosition(Mathf.clamp(notifHudBtn.x, 8f, maxX), Mathf.clamp(notifHudBtn.y, 8f, maxY));
         });
         Vars.ui.hudGroup.addChild(notifHudBtn);
     }
@@ -3082,9 +3117,10 @@ public class NewModePvp {
         Rc rc = eqc != null ? eqc.rc : EMPTY_RC;
 
         boolean isPl = pl != null;
+        float statK = isPl ? 1f : 0.5f; // Lính chỉ hưởng 50% chỉ số của unit player
         float tHp = unit.type.health;
         if (isPl && unit.type == UnitTypes.reign) tHp *= REIGN_HP_MUL;
-        float hpT = (tHp * (1 + s[0] * HP_PCT / 100f) + s[0] * HP_FLAT) * (1 + ChaosMode.capRole(ROLE_HP_MAX, rc.brl * ROLE_HP_PCT) / 100f);
+        float hpT = (tHp * (1 + s[0] * statK * HP_PCT / 100f) + s[0] * statK * HP_FLAT) * (1 + ChaosMode.capRole(ROLE_HP_MAX, rc.brl * statK * ROLE_HP_PCT) / 100f);
         int pi = isPl ? stOwn.pi : 0;
         int pLv = isPl ? pilotLv(stOwn, pi) : 0;
         float pK = ChaosMode.pilotK();
@@ -3107,27 +3143,27 @@ public class NewModePvp {
             }
         }
 
-        unit.armor = (unit.type.armor + s[1] * ARM_FLAT) * (1 + rc.def * ROLE_ARM_PCT / 100f) + rc.def * ROLE_ARM_FLAT;
+        unit.armor = (unit.type.armor + s[1] * statK * ARM_FLAT) * (1 + rc.def * statK * ROLE_ARM_PCT / 100f) + rc.def * statK * ROLE_ARM_FLAT;
         if (pLv > 0) unit.armor += pilotArmAdd(pi, pLv) * pK;
         if (histOn) unit.armor *= 1 + HIST_STAT_PCT;
         if (GearItems.hasTeamResonance(unit.team)) unit.armor *= 1.10f;
-        float cut = ChaosMode.capCut((float) ROLE_CUT_CAP, armorCut(s[1]) + rc.def * ROLE_CUT_PCT);
+        float cut = ChaosMode.capCut((float) ROLE_CUT_CAP, armorCut(Math.round(s[1] * statK)) + rc.def * statK * ROLE_CUT_PCT);
         if (ChaosMode.noArmor()) { unit.armor = 0f; cut = 0f; }
         if (cut > 0) unit.healthMultiplier *= 1 / (1 - cut / 100f);
 
-        float dm = Math.max(0.1f, 1 + s[2] * ATK_PCT / 100f) * (1 + ChaosMode.capRole(ROLE_ATK_MAX, rc.atk * ROLE_ATK_PCT) / 100f);
-        dm *= ChaosMode.critMul(s[5], s[6]);
+        float dm = Math.max(0.1f, 1 + s[2] * statK * ATK_PCT / 100f) * (1 + ChaosMode.capRole(ROLE_ATK_MAX, rc.atk * statK * ROLE_ATK_PCT) / 100f);
+        dm *= ChaosMode.critMul(Math.round(s[5] * statK), Math.round(s[6] * statK));
         if (empixOn) dm *= 1 + EMPIX_ATK_PCT * pK;
         if (histOn) dm *= 1 + HIST_STAT_PCT;
         if (xakyNeoOn) dm *= 1 + XAKYNEO_ATK_PCT * pK + xakyNeoRampPct(unit, pl);
         if (pLv > 0) dm *= 1 + pilotAtkPct(pi, pLv) / 100f * pK;
         if (GearItems.hasTeamResonance(unit.team)) dm *= 1.10f;
-        dm *= GearItems.moveAtkMul(stOwn);
+        dm *= isPl ? GearItems.moveAtkMul(stOwn) : (1f + (GearItems.moveAtkMul(stOwn) - 1f) * statK);
         unit.damageMultiplier *= dm;
         boolean isServer = !Vars.net.client();
         if (empixOn && isServer) empixHeal(unit);
         float base = Math.max(0.1f, unit.type.speed);
-        unit.speedMultiplier *= Math.max(0.2f, (1 + s[3] * SPD_PCT / 100f) * (1 + s[3] * SPD_FLAT / base));
+        unit.speedMultiplier *= Math.max(0.2f, (1 + s[3] * statK * SPD_PCT / 100f) * (1 + s[3] * statK * SPD_FLAT / base));
         if (isPl && unit.type == UnitTypes.disrupt) unit.speedMultiplier *= DISRUPT_SPEED_MUL;
         if (xakyOn) unit.speedMultiplier *= 1 + (XAKY_SPD_MUL - 1) * pK;
         if (histOn) unit.speedMultiplier *= 1 + HIST_STAT_PCT;
@@ -3140,7 +3176,7 @@ public class NewModePvp {
             stOwn.gSlowBonus = GearItems.hasSkill(stOwn, GearItems.SK_SLOW_ALL1)
                 && (unit.type.speed * unit.speedMultiplier * TILES_PER_SPEED) < GearItems.SLOW_SPEED_LIMIT;
         }
-        unit.reloadMultiplier *= Math.max(0.2f, 1 + s[4] * 0.06f);
+        unit.reloadMultiplier *= Math.max(0.2f, 1 + s[4] * statK * 0.06f);
         if (pLv > 0) unit.reloadMultiplier *= 1 + pilotRldPct(pi, pLv) / 100f * pK;
         if (histOn) {
             unit.reloadMultiplier *= 1 + HIST_STAT_PCT;
@@ -3151,12 +3187,12 @@ public class NewModePvp {
             }
         }
         if (s[8] > 0 && isServer && unit.health > 0) {
-            float regenAmt = unit.maxHealth * s[8] * REGEN_PCT / 100f * Time.delta / 60f;
+            float regenAmt = unit.maxHealth * s[8] * statK * REGEN_PCT / 100f * Time.delta / 60f;
             VanhauField vhF = vanhauOn ? vanhauField.get(pl.id) : null;
             if (vhF != null && vhF.hp > 0 && vhF.hp < vhF.max) vhF.hp = Math.min(vhF.max, vhF.hp + regenAmt);
             else if (unit.health < unit.maxHealth * REGEN_THRESHOLD) unit.health = Math.min(unit.maxHealth, unit.health + regenAmt);
         }
-        if (s[10] > 0) unit.damageMultiplier *= 1 + s[10] * DMG_PER_ARMOR * unit.armor;
+        if (s[10] > 0) unit.damageMultiplier *= 1 + s[10] * statK * DMG_PER_ARMOR * unit.armor;
         if (eqc != null) {
             if (isPl && eqc.malign) {
                 unit.speedMultiplier *= MALIGN_SPEED_MUL;
@@ -3232,9 +3268,11 @@ public class NewModePvp {
         if (s == null) return;
         rolled.put(b.id, true);
         rolledN++;
+        boolean isSoldierB = false;
         if (isUnitOwner) {
             Unit ou = (Unit) o;
             boolean isSoldier = soldierOwner.containsKey(ou.id);
+            isSoldierB = isSoldier;
             boolean isPl = !isSoldier && (ou.isPlayer() || (bots.size() > 0 && botUnitOf(ou) != null));
             if (s[STAT_ARMY] > 0 && isSoldier && !ChaosMode.soldierRangeOff()) {
                 float rangeMul = 1 + s[STAT_ARMY] * RANGE_PCT / 100f, lifeMul = 1 + s[STAT_ARMY] * LIFE_PCT / 100f;
@@ -3243,8 +3281,19 @@ public class NewModePvp {
             }
             if (isPl && malignEquipped(st)) { try { b.lifetime *= MALIGN_LIFE_MUL; } catch (Throwable err) {} }
             if (isPl && st.pi == PILOT_HIST) { try { b.lifetime *= 1 + HIST_STAT_PCT; } catch (Throwable err) {} }
+            // Pháo Ấn Sư Tử: +50% sát thương đòn đánh thường (+100% nữa nếu là unit Zeralion)
+            if (isPl) {
+                float bMul = GearItems.basicAtkMul(st, ou);
+                if (bMul > 1.001f) {
+                    try {
+                        if (b.damage > 0.001f) b.damage *= bMul;
+                        if (b.data instanceof Float) b.data = ((Float) b.data) * bMul;
+                    } catch (Throwable err) {}
+                }
+            }
         }
-        if (s[2] > 0) { try { b.damage += s[2] * ATK_FLAT; } catch (Throwable err) {} }
+        float bSk = isSoldierB ? 0.5f : 1f;
+        if (s[2] > 0) { try { b.damage += s[2] * ATK_FLAT * bSk; } catch (Throwable err) {} }
         if (!isUnitOwner) {
             try {
                 b.damage *= ChaosMode.critMul(s[5], s[6]);
@@ -3252,13 +3301,14 @@ public class NewModePvp {
                 b.damage *= ChaosMode.builtDmgMul();
             } catch (Throwable err) {}
         }
-        boolean histPierce = isUnitOwner && st.pi == PILOT_HIST;
-        if ((s[7] > 0 || histPierce) && !b.type.pierceArmor && Math.random() < s[7] * 0.05 + (histPierce ? HIST_PIERCE_ADD : 0)) {
+        boolean histPierce = isUnitOwner && !isSoldierB && st.pi == PILOT_HIST;
+        if ((s[7] > 0 || histPierce) && !b.type.pierceArmor && Math.random() < s[7] * 0.05 * bSk + (histPierce ? HIST_PIERCE_ADD : 0)) {
             BulletType c = pierceType(b.type);
             if (c != null) { try { b.type = c; } catch (Throwable err) {} }
         }
-        if (s[11] > 0) {
-            BulletType kt = knockType(b.type, s[11]);
+        int kbLv = Math.round(s[11] * bSk);
+        if (kbLv > 0) {
+            BulletType kt = knockType(b.type, kbLv);
             if (kt != null) { try { b.type = kt; } catch (Throwable err) {} }
         }
     }
@@ -4153,17 +4203,18 @@ public class NewModePvp {
         if (isUnitOwner) { Player ap = ownerPl((Unit) o); apid = ap != null ? Integer.valueOf(ap.id) : soldierOwner.get(o.id()); }
         else apid = hostOwner.get(o.id());
         if (apid == null) return;
+        float hitSk = (isUnitOwner && soldierOwner.containsKey(o.id())) ? 0.5f : 1f;
         try {
             St ost = byId.get(apid);
             int[] os = ost != null ? GearItems.eff(ost) : null;
-            if (os != null && os[9] > 0 && tgt.maxHealth > 0) { float ex = tgt.maxHealth * ChaosMode.pctMaxHp(os[9], DMG_PCT_MAXHP) / 100f; try { tgt.damagePierce(ex); } catch (Throwable err) { tgt.damage(ex); } }
-            if (os != null && os[13] > 0 && tgt.team == Vars.state.rules.waveTeam) { float exw = b.damage * os[13] * WRAND_DMG_PCT / 100f; try { tgt.damagePierce(exw); } catch (Throwable err) { tgt.damage(exw); } }
+            if (os != null && os[9] > 0 && tgt.maxHealth > 0) { float ex = tgt.maxHealth * ChaosMode.pctMaxHp(Math.round(os[9] * hitSk), DMG_PCT_MAXHP) / 100f; try { tgt.damagePierce(ex); } catch (Throwable err) { tgt.damage(ex); } }
+            if (os != null && os[13] > 0 && tgt.team == Vars.state.rules.waveTeam) { float exw = b.damage * os[13] * hitSk * WRAND_DMG_PCT / 100f; try { tgt.damagePierce(exw); } catch (Throwable err) { tgt.damage(exw); } }
             GearItems.onDamage(apid, tgt, b.damage);
         } catch (Throwable err) {}
         try {
             St ast = byId.get(apid);
             int[] as = ast != null ? GearItems.eff(ast) : null;
-            if (as != null && as.length > STAT_HEAL && as[STAT_HEAL] > 0 && statVisible(STAT_HEAL)) applyHealCut(tgt, Math.min(HEAL_CUT_MAX, as[STAT_HEAL] * HEAL_CUT_PCT));
+            if (as != null && as.length > STAT_HEAL && as[STAT_HEAL] > 0 && statVisible(STAT_HEAL)) applyHealCut(tgt, Math.min(HEAL_CUT_MAX, as[STAT_HEAL] * hitSk * HEAL_CUT_PCT));
         } catch (Throwable err) {}
         try {
             St hst = byId.get(apid);

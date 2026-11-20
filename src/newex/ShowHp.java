@@ -29,6 +29,7 @@ import java.util.Map;
 /** Hiện thanh máu cho đơn vị trong 5 giây sau khi bị thương (thay show-hp.js). Cài đặt: "newex-hp-style" = show-hp | hp | off. */
 public final class ShowHp {
     static final String STYLE_KEY = "newex-hp-style";
+    static final String MAXHP_KIND = "newex-maxhp-sync";
     static final float SHOW_TIME = 300f;            // 5s sau lần mất/hồi máu cuối
     static final float SHATTER_LIFE = 18f, CRACK_FRAC = 0.22f;
 
@@ -43,6 +44,12 @@ public final class ShowHp {
     static final Map<Integer, Float> lastDamageTime = new HashMap<>();
     static final Map<Integer, String> textCache = new HashMap<>();
     static final Map<Integer, Float> textCacheHp = new HashMap<>();
+    static final Map<Integer, Float> textCacheMax = new HashMap<>();
+    static final Map<Integer, Float> peakMaxHp = new HashMap<>();
+    static final Map<Integer, Float> syncedMaxHp = new HashMap<>();
+    static boolean netRegistered = false;
+    static float maxHpSyncAcc = 0f;
+    static int maxHpFullTick = 0;
 
     static final Rect rect = new Rect();
 
@@ -164,7 +171,7 @@ public final class ShowHp {
             String style = style();
             float lastDmg = lastDamageTime.getOrDefault(id, -9999f);
             if (!style.equals("off") && Time.time - lastDmg <= SHOW_TIME && smoothHp.containsKey(id) && !Vars.headless) {
-                float pct = Math.max(0f, smoothHp.get(id) / u.maxHealth * 100f);
+                float pct = Math.max(0f, smoothHp.get(id) / effectiveMaxHp(u) * 100f);
                 float W, H, by;
                 Color col;
                 if (style.equals("show-hp")) {
@@ -181,7 +188,79 @@ public final class ShowHp {
             forget(id);
         });
 
+        Events.run(mindustry.game.EventType.Trigger.update, ShowHp::syncMaxHealthTick);
         Events.run(mindustry.game.EventType.Trigger.draw, ShowHp::drawBars);
+    }
+
+    static void ensureNetRegistered() {
+        if (netRegistered || Vars.netClient == null) return;
+        netRegistered = true;
+        try {
+            Vars.netClient.addPacketHandler(MAXHP_KIND, content -> {
+                if (content == null || content.isEmpty()) return;
+                String[] parts = content.split(",");
+                for (String p : parts) {
+                    int c = p.indexOf(':');
+                    if (c <= 0) continue;
+                    try {
+                        int id = Integer.parseInt(p.substring(0, c));
+                        float mh = Float.parseFloat(p.substring(c + 1));
+                        if (mh > 0f) {
+                            peakMaxHp.put(id, mh);
+                            Unit u = Groups.unit.getByID(id);
+                            if (u != null && u.isValid()) u.maxHealth = mh;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    /** Host gửi maxHealth của các unit có máu tối đa khác mặc định sang client (Mindustry mặc định chỉ sync u.health, không sync u.maxHealth). */
+    static void syncMaxHealthTick() {
+        ensureNetRegistered();
+        if (!Vars.net.server() || Vars.state == null || !Vars.state.isGame()) return;
+        maxHpSyncAcc += Time.delta;
+        if (maxHpSyncAcc < 20f) return;
+        maxHpSyncAcc = 0f;
+        boolean full = (++maxHpFullTick >= 9); // gửi lại toàn bộ mỗi ~3s cho client mới vào
+        if (full) maxHpFullTick = 0;
+        final StringBuilder sb = new StringBuilder();
+        Groups.unit.each(u -> {
+            if (u == null || u.dead || !u.isValid() || u.type == null) return;
+            if (Math.abs(u.maxHealth - u.type.health) <= 1f && !syncedMaxHp.containsKey(u.id)) return;
+            Float prev = syncedMaxHp.get(u.id);
+            if (!full && prev != null && Math.abs(prev - u.maxHealth) <= 1f) return;
+            syncedMaxHp.put(u.id, u.maxHealth);
+            if (sb.length() > 0) sb.append(',');
+            sb.append(u.id).append(':').append(Math.round(u.maxHealth));
+            if (sb.length() > 1400) {
+                try { mindustry.gen.Call.clientPacketUnreliable(MAXHP_KIND, sb.toString()); } catch (Throwable ignored) {}
+                sb.setLength(0);
+            }
+        });
+        if (sb.length() > 0) {
+            try { mindustry.gen.Call.clientPacketUnreliable(MAXHP_KIND, sb.toString()); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** Máu tối đa hiệu dụng: trên client giữ mốc cao nhất đã nhận (hoặc giá trị host sync) để không bị tụt cùng máu hiện tại. */
+    static float effectiveMaxHp(Unit u) {
+        float curHp = Math.max(0f, u.health);
+        float maxHp = u.maxHealth;
+        if (!(maxHp > 0f)) maxHp = Math.max(1f, curHp);
+        if (Vars.net.client()) {
+            float peak = peakMaxHp.getOrDefault(u.id, 0f);
+            if (maxHp > peak) peak = maxHp;
+            if (curHp > peak) peak = curHp;
+            if (peak > 0f) {
+                peakMaxHp.put(u.id, peak);
+                maxHp = peak;
+            }
+        } else if (curHp > maxHp) {
+            maxHp = curHp;
+        }
+        return Math.max(1f, maxHp);
     }
 
     static String style() {
@@ -189,11 +268,14 @@ public final class ShowHp {
     }
 
     static void clearCache() {
-        smoothHp.clear(); smoothShield.clear(); lastHp.clear(); lastDamageTime.clear(); textCache.clear(); textCacheHp.clear();
+        smoothHp.clear(); smoothShield.clear(); lastHp.clear(); lastDamageTime.clear();
+        textCache.clear(); textCacheHp.clear(); textCacheMax.clear(); peakMaxHp.clear(); syncedMaxHp.clear();
+        maxHpSyncAcc = 0f; maxHpFullTick = 0;
     }
 
     static void forget(int id) {
-        smoothHp.remove(id); smoothShield.remove(id); lastHp.remove(id); lastDamageTime.remove(id); textCache.remove(id); textCacheHp.remove(id);
+        smoothHp.remove(id); smoothShield.remove(id); lastHp.remove(id); lastDamageTime.remove(id);
+        textCache.remove(id); textCacheHp.remove(id); textCacheMax.remove(id); peakMaxHp.remove(id); syncedMaxHp.remove(id);
     }
 
     /** Độ cao (từ tâm đơn vị) tới đỉnh phần hiển thị máu, để số sát thương xếp ngay trên mà không đè.
@@ -233,10 +315,7 @@ public final class ShowHp {
         if (u == null || !u.isValid() || u.dead || !u.isAdded()) return;
 
         int id = u.id;
-        float curHp = u.health, maxHp = u.maxHealth, curShield = u.shield;
-        // Client (vào host người khác) có thể thấy máu > máu tối đa cục bộ -> không để thanh vượt khung
-        if (!(maxHp > 0f)) maxHp = Math.max(1f, curHp);
-        if (curHp > maxHp) maxHp = curHp;
+        float curHp = u.health, maxHp = effectiveMaxHp(u), curShield = u.shield;
 
         if (!lastHp.containsKey(id)) lastHp.put(id, curHp);
         if (Math.abs(curHp - lastHp.get(id)) > 0.1f) {
@@ -304,10 +383,14 @@ public final class ShowHp {
 
             String text = textCache.get(id);
             Float cachedHp = textCacheHp.get(id);
-            if (text == null || cachedHp == null || Math.abs(cachedHp - curHp) > Math.max(4f, maxHp * 0.005f)) {
+            Float cachedMax = textCacheMax.get(id);
+            if (text == null || cachedHp == null || cachedMax == null
+                    || Math.abs(cachedHp - curHp) > Math.max(4f, maxHp * 0.005f)
+                    || Math.abs(cachedMax - maxHp) > 1f) {
                 text = formatHP(curHp) + " / " + formatHP(maxHp);
                 textCache.put(id, text);
                 textCacheHp.put(id, curHp);
+                textCacheMax.put(id, maxHp);
             }
             font.draw(text, cx, baseY + barH / 2f + 3.5f + font.getCapHeight(), 0, Align.center, false);
 
