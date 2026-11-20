@@ -226,7 +226,9 @@ public final class NexDarkGraphics {
             Draw.flush();
             if (screenTex == null || texW != w || texH != h || screenTex.getTextureObjectHandle() == 0) {
                 if (screenTex != null) { try { screenTex.dispose(); } catch (Throwable ignored) {} }
-                screenTex = new Texture(w, h, Pixmap.Format.rgba8888);
+                Pixmap pm = new Pixmap(w, h);
+                screenTex = new Texture(pm);
+                pm.dispose();
                 screenTex.setFilter(Texture.TextureFilter.linear);
                 screenTex.setWrap(Texture.TextureWrap.clampToEdge);
                 screenReg = new TextureRegion(screenTex);
