@@ -461,6 +461,11 @@ public final class NexDynamicShadows {
     }
 
     private static float qualityScale() {
+        if (Vars.mobile) {
+            if (graphicsQuality == 0) return 0.35f;
+            if (graphicsQuality == 1) return 0.50f;
+            return 0.70f;
+        }
         if (graphicsQuality == 0) return 0.45f;
         if (graphicsQuality == 1) return 0.65f;
         return 0.90f;
@@ -528,7 +533,7 @@ public final class NexDynamicShadows {
 
         final float fboScale = qualityScale();
         int gw = Core.graphics.getWidth(), gh = Core.graphics.getHeight();
-        int maxDim = Vars.mobile ? 1280 : 2560;
+        int maxDim = Vars.mobile ? 960 : 2560;
         final int fw = Mathf.clamp((int) (gw * fboScale), 1, maxDim);
         final int fh = Mathf.clamp((int) (gh * fboScale), 1, maxDim);
 
@@ -554,60 +559,40 @@ public final class NexDynamicShadows {
         final int chX1 = tx1 / ChunkCache.CHUNK_SIZE, chY1 = ty1 / ChunkCache.CHUNK_SIZE;
         final int chX2 = tx2 / ChunkCache.CHUNK_SIZE, chY2 = ty2 / ChunkCache.CHUNK_SIZE;
 
-        // Thu thập bóng unit + nguồn sáng động (đạn phát sáng, tia khoan/xây, unit phát sáng) trong vùng camera
+        // Thu thập bóng unit trong vùng camera (bỏ quét dynLights mỗi 3 tick vốn làm mobile phải blur lại liên tục gây giật!)
         freeUnitShadows();
         freeDynLights();
-        Groups.unit.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Unit>) u -> {
-            if (u == null || u.dead) return;
-            // Unit có ánh sáng hoặc đang khoan/xây tạo nguồn sáng làm tan bóng
-            if (u.type != null && u.type.lightRadius > 4f) {
-                addDynLight(u.x, u.y, u.type.lightRadius * 0.72f, 0.85f);
-            } else if (u.isPlayer()) {
-                addDynLight(u.x, u.y, 44f, 0.75f);
-            }
-            if (u.mining() && u.mineTile != null) {
-                addDynLight(u.mineTile.worldx(), u.mineTile.worldy(), 36f, 0.90f);
-            }
-            if (!unitShadowsEnabled || u.drownTime >= 0.99f) return;
-            TextureRegion usReg = NexShadowConfig.getOriginalShadow(u.type);
-            if (usReg == null || !usReg.found() || usReg == emptyRegion) return;
+        if (unitShadowsEnabled) {
+            Groups.unit.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Unit>) u -> {
+                if (u == null || u.dead || u.drownTime >= 0.99f) return;
+                TextureRegion usReg = NexShadowConfig.getOriginalShadow(u.type);
+                if (usReg == null || !usReg.found() || usReg == emptyRegion) return;
 
-            float dFactor = 1f - Mathf.clamp(u.drownTime, 0f, 1f);
-            float ufl = shadowScale * (1f + u.elevation * 2.8f) * 0.03f * dFactor;
-            float sx = u.x + cosA * ufl, sy = u.y + sinA * ufl;
-            if (Vars.world != null) {
-                Floor fl = Vars.world.floorWorld(sx, sy);
-                if (fl != null && !fl.canShadow) return;
-            }
-            float sizeMult = (1f + u.elevation * 0.22f) * dFactor;
-            UnitShadowData d = obtainUnitShadow();
-            d.region = usReg;
-            d.flying = u.isFlying() || u.elevation > 0.5f;
-            d.x = sx; d.y = sy;
-            d.w = usReg.width * Draw.scl * sizeMult;
-            d.h = usReg.height * Draw.scl * sizeMult;
-            d.rotation = u.rotation;
-            d.alpha = Mathf.clamp(1f - u.elevation * 0.40f, 0.30f, 1f) * dFactor;
-            unitShadows.add(d);
-        });
+                float dFactor = 1f - Mathf.clamp(u.drownTime, 0f, 1f);
+                float ufl = shadowScale * (1f + u.elevation * 2.8f) * 0.03f * dFactor;
+                float sx = u.x + cosA * ufl, sy = u.y + sinA * ufl;
+                if (Vars.world != null) {
+                    Floor fl = Vars.world.floorWorld(sx, sy);
+                    if (fl != null && !fl.canShadow) return;
+                }
+                float sizeMult = (1f + u.elevation * 0.22f) * dFactor;
+                UnitShadowData d = obtainUnitShadow();
+                d.region = usReg;
+                d.flying = u.isFlying() || u.elevation > 0.5f;
+                d.x = sx; d.y = sy;
+                d.w = usReg.width * Draw.scl * sizeMult;
+                d.h = usReg.height * Draw.scl * sizeMult;
+                d.rotation = u.rotation;
+                d.alpha = Mathf.clamp(1f - u.elevation * 0.40f, 0.30f, 1f) * dFactor;
+                unitShadows.add(d);
+            });
+        }
 
-        Groups.bullet.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Bullet>) b -> {
-            if (b == null || !b.isAdded() || b.type == null) return;
-            float lr = b.type.lightRadius > 2f ? b.type.lightRadius : (b.hitSize * 2.8f + 14f);
-            if (lr > 6f) addDynLight(b.x, b.y, Math.min(85f, lr * 0.85f), 0.88f);
-        });
-
-        float camMoveThreshold = Vars.mobile ? Math.max(0.25f, camW * 0.0035f) : Math.max(0.10f, camW * 0.0018f);
-        float camZoomThreshold = Vars.mobile ? Math.max(0.35f, camW * 0.0045f) : Math.max(0.18f, camW * 0.0028f);
-
-        // Nếu có nguồn sáng động (đạn/unit), cập nhật lại FBO mỗi ~3 tick (~20fps cho ánh sáng xóa bóng -> cực mượt & nhẹ!)
-        dynLightRedrawAcc += Time.delta;
-        boolean dynLightTick = !dynLights.isEmpty() && dynLightRedrawAcc >= 3f;
-        if (dynLightTick) dynLightRedrawAcc = 0f;
+        float camMoveThreshold = Vars.mobile ? Math.max(0.45f, camW * 0.006f) : Math.max(0.10f, camW * 0.0018f);
+        float camZoomThreshold = Vars.mobile ? Math.max(0.55f, camW * 0.007f) : Math.max(0.18f, camW * 0.0028f);
 
         final boolean needsRedraw = shadDirty
-            || dynLightTick
-            || Math.abs(angle - lastCachedAngle) > 0.6f
+            || Math.abs(angle - lastCachedAngle) > 0.8f
             || Math.abs(camX - lastCachedCamX) > camMoveThreshold
             || Math.abs(camY - lastCachedCamY) > camMoveThreshold
             || Math.abs(camW - lastCachedCamW) > camZoomThreshold;
@@ -655,13 +640,20 @@ public final class NexDynamicShadows {
                         Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
                         Draw.color(0.04f, 0.03f, 0.08f, 1f);
 
+                        int rebuiltChunks = 0;
+                        int maxRebuildPerFrame = Vars.mobile ? 2 : 6;
                         for (int cx = chX1; cx <= chX2; cx++) {
                             for (int cy = chY1; cy <= chY2; cy++) {
                                 if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
                                 ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
                                 if (!chunk.valid) {
+                                    if (rebuiltChunks >= maxRebuildPerFrame) {
+                                        shadDirty = true;
+                                        continue;
+                                    }
                                     ChunkCache.rebuildChunkSync(cx, cy);
                                     chunk = ChunkCache.chunks[cx][cy];
+                                    rebuiltChunks++;
                                 }
                                 Seq<ChunkCache.CasterEntry> list = chunk.casters;
                                 for (int i = 0; i < list.size; i++) {

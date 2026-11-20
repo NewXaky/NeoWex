@@ -6,27 +6,30 @@ import arc.graphics.Blending;
 import arc.graphics.Color;
 import arc.graphics.GL20;
 import arc.graphics.Gl;
-import arc.graphics.Pixmap;
-import arc.graphics.Texture;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.TextureRegion;
+import arc.graphics.gl.FrameBuffer;
 import arc.graphics.gl.Shader;
 import arc.math.Mathf;
+import arc.util.Buffers;
 import arc.util.Log;
 import arc.util.Tmp;
 import mindustry.Vars;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.ContentInitEvent;
 import mindustry.game.EventType.Trigger;
+import mindustry.graphics.Layer;
 import mindustry.type.UnitType;
 import mindustry.world.Block;
 import mindustry.world.blocks.defense.turrets.Turret;
 
+import java.nio.IntBuffer;
+
 /**
- * Đồ họa Bloom Tím ôm sát hình dáng & Saturation NeoWex (tương thích cả PC OpenGL 2/3 lẫn Mobile Android GLES 2/3 Mali/Adreno):
- * - Chạy ở Trigger.postDraw (sau khi toàn bộ thế giới, bóng động, ánh sáng, bloom gốc đã vẽ xong, trước khi vẽ HUD/UI).
- * - Dùng texture GL_RGB (chuẩn GLES 3.2 khi sao chép từ backbuffer RGB/RGBA -> tuyệt đối không bị GL_INVALID_OPERATION trên Android!).
- * - Tự động kiểm tra lỗi GL ở khung hình đầu để không bao giờ spam log lỗi trên driver đặc biệt.
+ * Đồ họa Bloom Tím ôm sát hình dáng & Saturation NeoWex (tương thích hoàn toàn cả PC lẫn Mobile Android Mali/Adreno):
+ * - Sử dụng FrameBuffer chuẩn kèm lưu & khôi phục FBO gốc (prevOuterFbo) và kết thúc ở Layer.light - 1f (trước LightRenderer).
+ * - Không dùng copyTexSubImage2D từ backbuffer (vốn bị chặn hoặc gây giật trên GPU mobile tile-based như Mali/Adreno).
+ * - Tự động tối ưu số mẫu lấy sáng trên Mobile (8-tap) để giữ 60 FPS mượt mà mà vẫn lên màu Bloom tím & Saturation chuẩn xác.
  */
 public final class NexDarkGraphics {
     public static final String BORDER_KEY = "newex-dark-border";
@@ -54,52 +57,44 @@ public final class NexDarkGraphics {
         "vec3 brightTap(vec2 uv){\n" +
         "    vec3 col = texture2D(u_texture, uv).rgb;\n" +
         "    float peak = max(col.r, max(col.g, col.b));\n" +
-        "    float mask = smoothstep(0.68, 0.96, peak);\n" +
+        "    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));\n" +
+        "    float mask = smoothstep(0.66, 0.95, max(peak, luma));\n" +
         "    return col * mask;\n" +
         "}\n" +
         "void main(){\n" +
         "    vec4 c = texture2D(u_texture, v_texCoords);\n" +
         "    vec3 rgb = c.rgb;\n" +
         "    if(u_bloom > 0.005){\n" +
-        "        vec2 px = u_invsize;\n" +
-        "        vec2 r1 = px * 1.6;\n" +
-        "        vec2 r2 = px * 3.6;\n" +
+        "        vec2 r1 = u_invsize * 1.8;\n" +
+        "        vec2 r2 = u_invsize * 3.8;\n" +
         "        vec3 acc = vec3(0.0);\n" +
-        "        acc += brightTap(v_texCoords + vec2( r1.x, 0.0)) * 0.14;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r1.x, 0.0)) * 0.14;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0,  r1.y)) * 0.14;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0, -r1.y)) * 0.14;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r1.x,  r1.y) * 0.75) * 0.10;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r1.x,  r1.y) * 0.75) * 0.10;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r1.x, -r1.y) * 0.75) * 0.10;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r1.x, -r1.y) * 0.75) * 0.10;\n" +
-        "#ifndef LITE\n" +
-        "        acc += brightTap(v_texCoords + vec2( r2.x, 0.0)) * 0.055;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r2.x, 0.0)) * 0.055;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0,  r2.y)) * 0.055;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0, -r2.y)) * 0.055;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r2.x,  r2.y) * 0.72) * 0.035;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r2.x,  r2.y) * 0.72) * 0.035;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r2.x, -r2.y) * 0.72) * 0.035;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r2.x, -r2.y) * 0.72) * 0.035;\n" +
-        "#else\n" +
-        "        acc *= 1.375;\n" +
-        "#endif\n" +
+        "        acc += brightTap(v_texCoords + vec2( r1.x, 0.0)) * 0.16;\n" +
+        "        acc += brightTap(v_texCoords + vec2(-r1.x, 0.0)) * 0.16;\n" +
+        "        acc += brightTap(v_texCoords + vec2(0.0,  r1.y)) * 0.16;\n" +
+        "        acc += brightTap(v_texCoords + vec2(0.0, -r1.y)) * 0.16;\n" +
+        "        acc += brightTap(v_texCoords + vec2( r1.x,  r1.y) * 0.75) * 0.11;\n" +
+        "        acc += brightTap(v_texCoords + vec2(-r1.x,  r1.y) * 0.75) * 0.11;\n" +
+        "        acc += brightTap(v_texCoords + vec2( r1.x, -r1.y) * 0.75) * 0.11;\n" +
+        "        acc += brightTap(v_texCoords + vec2(-r1.x, -r1.y) * 0.75) * 0.11;\n" +
+        "        acc += brightTap(v_texCoords + vec2( r2.x, 0.0)) * 0.06;\n" +
+        "        acc += brightTap(v_texCoords + vec2(-r2.x, 0.0)) * 0.06;\n" +
+        "        acc += brightTap(v_texCoords + vec2(0.0,  r2.y)) * 0.06;\n" +
+        "        acc += brightTap(v_texCoords + vec2(0.0, -r2.y)) * 0.06;\n" +
         "        float glowAmt = max(acc.r, max(acc.g, acc.b));\n" +
         "        vec3 violetTint = vec3(0.56, 0.28, 0.94) * glowAmt;\n" +
         "        vec3 softBloom = mix(violetTint, acc * vec3(0.78, 0.56, 1.05), 0.28);\n" +
         "        float centerBright = smoothstep(0.72, 0.98, max(rgb.r, max(rgb.g, rgb.b)));\n" +
         "        vec3 haloOnly = softBloom * (1.0 - centerBright * 0.62);\n" +
-        "        rgb = 1.0 - (1.0 - rgb) * (1.0 - clamp(haloOnly * (0.95 * u_bloom), 0.0, 0.82));\n" +
+        "        rgb = 1.0 - (1.0 - rgb) * (1.0 - clamp(haloOnly * (0.98 * u_bloom), 0.0, 0.84));\n" +
         "    }\n" +
         "    float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));\n" +
         "    rgb = mix(vec3(luma), rgb, u_saturation);\n" +
-        "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);\n" +
+        "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), c.a);\n" +
         "}\n";
 
     static final class PostShader extends Shader {
         float invW = 1f, invH = 1f, sat = 1f, bloom = 0.65f;
-        PostShader() { super(VERT_SRC, (Vars.mobile ? "#define LITE\n" : "") + FRAG_SRC); }
+        PostShader() { super(VERT_SRC, FRAG_SRC); }
         @Override
         public void apply() {
             setUniformf("u_invsize", invW, invH);
@@ -110,16 +105,36 @@ public final class NexDarkGraphics {
 
     private static boolean initialized = false;
     private static boolean shaderTried = false;
-    private static boolean postDisabledOnGpu = false;
     private static PostShader postShader = null;
-    private static Texture screenTex = null;
-    private static TextureRegion screenReg = null;
-    private static int texW = 0, texH = 0;
-    private static int checkFrames = 0;      // chỉ kiểm tra lỗi GL ở vài khung hình đầu (glGetError làm CPU chờ GPU trên mobile)
-    private static int failCount = 0;         // số lần lỗi liên tiếp
-    private static boolean useRgba = false;    // dự phòng: đổi sang texture RGBA nếu driver không nhận RGB
+    private static FrameBuffer postBuf = null;
+    private static TextureRegion postReg = null;
+    private static boolean capturing = false;
+    private static int prevOuterFbo = 0;
+    private static int curW = 1, curH = 1;
+    private static float curSat = 1f, curBloom = 0.65f;
+
+    private static final IntBuffer fboQueryBuf = Buffers.newIntBuffer(1);
+    private static final Runnable beginPost = NexDarkGraphics::beginCapture;
+    private static final Runnable endPost = NexDarkGraphics::endCapture;
 
     private NexDarkGraphics() {}
+
+    private static int currentFboBinding() {
+        try {
+            fboQueryBuf.clear();
+            Gl.getIntegerv(GL20.GL_FRAMEBUFFER_BINDING, fboQueryBuf);
+            return fboQueryBuf.get(0);
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static void restoreFboBinding(int fbo) {
+        try {
+            Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, fbo);
+            Gl.viewport(0, 0, Core.graphics.getWidth(), Core.graphics.getHeight());
+        } catch (Throwable ignored) {}
+    }
 
     public static void init() {
         if (initialized) return;
@@ -132,8 +147,7 @@ public final class NexDarkGraphics {
                 registerGraphicsSettings();
                 initShader();
             }));
-            // Chạy ở Trigger.postDraw: sau toàn bộ thế giới + bóng + ánh sáng + bloom, trước HUD/UI!
-            Events.run(Trigger.postDraw, NexDarkGraphics::renderPostPass);
+            Events.run(Trigger.draw, NexDarkGraphics::onDraw);
         }
     }
 
@@ -173,9 +187,13 @@ public final class NexDarkGraphics {
         shaderTried = true;
         try {
             postShader = new PostShader();
+            postBuf = new FrameBuffer(2, 2);
+            postReg = new TextureRegion(postBuf.getTexture());
+            postReg.flip(false, true);
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] Failed to compile violet bloom shader", err);
             postShader = null;
+            postBuf = null;
         }
     }
 
@@ -206,82 +224,73 @@ public final class NexDarkGraphics {
         return Mathf.clamp(Core.settings.getInt(BLOOM_KEY, 65), 0, 100) / 100f;
     }
 
-    private static void renderPostPass() {
-        if (postDisabledOnGpu || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
-        if (Core.settings.getBool("pixelate", false)) return;
+    private static void onDraw() {
+        if (Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
         if (!shaderTried) initShader();
-        if (postShader == null) return;
+        if (postShader == null || postBuf == null) return;
+        if (Core.settings.getBool("pixelate", false)) return;
 
-        float sat = readSaturation();
-        float bloom = readBloomStrength();
-        if (Math.abs(sat - 1f) < 0.005f && bloom < 0.005f) return;
+        curSat = readSaturation();
+        curBloom = readBloomStrength();
+        if (Math.abs(curSat - 1f) < 0.005f && curBloom < 0.005f) return;
 
+        // Kẹp từ Layer.floor - 9f (1.0f) đến Layer.light - 1f (139.0f, ngay TRƯỚC LightRenderer ở 140.0f)
+        // kết hợp lưu/khôi phục prevOuterFbo -> hoạt động trên cả Mobile lẫn PC mà không bao giờ đen sàn!
+        Draw.draw(Layer.floor - 9f, beginPost);
+        Draw.draw(Layer.light - 1f, endPost);
+    }
+
+    private static void beginCapture() {
+        capturing = false;
+        if (postBuf == null || postShader == null) return;
         int w = Core.graphics.getWidth(), h = Core.graphics.getHeight();
         if (w <= 0 || h <= 0) return;
-
+        curW = w;
+        curH = h;
         try {
             Draw.flush();
-            // Xóa cờ lỗi GL cũ (nếu có) trước khi sao chép
-            if (checkFrames < 6) Gl.getError();
-
-            boolean needAlloc = (screenTex == null || texW != w || texH != h || screenTex.getTextureObjectHandle() == 0);
-            if (needAlloc) {
-                if (screenTex != null) { try { screenTex.dispose(); } catch (Throwable ignored) {} }
-                // Tạo Texture bằng Pixmap (API chuẩn Arc) rồi cấp phát lại bộ nhớ dạng GL_RGB để khớp backbuffer Android (Mali/Adreno)
-                Pixmap pm = new Pixmap(2, 2);
-                screenTex = new Texture(pm);
-                pm.dispose();
-                texW = w;
-                texH = h;
-                checkFrames = 0;
-                screenTex.bind(0);
-                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_LINEAR);
-                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_LINEAR);
-                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
-                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
-                int fmt = useRgba ? GL20.GL_RGBA : GL20.GL_RGB;
-                Gl.texImage2D(GL20.GL_TEXTURE_2D, 0, fmt, w, h, 0, fmt, GL20.GL_UNSIGNED_BYTE, (java.nio.Buffer) null);
-                screenReg = new TextureRegion(screenTex);
-                screenReg.flip(false, true);
-            } else {
-                screenTex.bind(0);
+            prevOuterFbo = currentFboBinding();
+            if (postBuf.getWidth() != w || postBuf.getHeight() != h) {
+                postBuf.resize(w, h);
+                postReg = new TextureRegion(postBuf.getTexture());
+                postReg.flip(false, true);
             }
+            postBuf.begin(Color.clear);
+            capturing = true;
+        } catch (Throwable err) {
+            capturing = false;
+            restoreFboBinding(prevOuterFbo);
+        }
+    }
 
-            Gl.copyTexSubImage2D(GL20.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
-            if (checkFrames < 6) {
-                checkFrames++;
-                int err = Gl.getError();
-                if (err != GL20.GL_NO_ERROR) {
-                    failCount++;
-                    if (!useRgba) { useRgba = true; texW = 0; }          // thử lại bằng texture RGBA ở khung hình sau
-                    else if (failCount >= 4) {
-                        postDisabledOnGpu = true;
-                        Log.warn("[NexDarkGraphics] Disabled post pass on this GPU (GL error: " + err + ")");
-                    }
-                    return;
-                }
-            }
-            failCount = 0;
+    private static void endCapture() {
+        if (!capturing || postBuf == null || postShader == null) return;
+        capturing = false;
+        try {
+            Draw.flush();
+            postBuf.end();
+            // Khôi phục lại đúng FBO ngoài (ví dụ FBO của Bloom Mindustry hoặc FBO 0 trên Android) trước khi vẽ kết quả
+            restoreFboBinding(prevOuterFbo);
 
-            postShader.sat = sat;
-            postShader.bloom = bloom;
-            postShader.invW = 1f / Math.max(1, w);
-            postShader.invH = 1f / Math.max(1, h);
+            postShader.invW = 1f / Math.max(1, curW);
+            postShader.invH = 1f / Math.max(1, curH);
+            postShader.sat = curSat;
+            postShader.bloom = curBloom;
 
             Tmp.m2.set(Draw.proj());
-            Draw.proj(Tmp.m1.setOrtho(0f, 0f, w, h));
+            Draw.proj(Tmp.m1.setOrtho(0f, 0f, curW, curH));
             Draw.blend(Blending.disabled);
             Draw.shader(postShader);
             Draw.color(Color.white, 1f);
-            Draw.rect(screenReg, w * 0.5f, h * 0.5f, w, h);
+            Draw.rect(postReg, curW * 0.5f, curH * 0.5f, curW, curH);
             Draw.flush();
             Draw.shader();
             Draw.blend(Blending.normal);
             Draw.proj(Tmp.m2);
             Draw.reset();
         } catch (Throwable err) {
-            postDisabledOnGpu = true;
-            Log.err("[NexDarkGraphics] post pass failed, disabling", err);
+            Log.err("[NexDarkGraphics] post blit failed", err);
+            restoreFboBinding(prevOuterFbo);
         }
     }
 }
