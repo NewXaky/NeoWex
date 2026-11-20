@@ -3,11 +3,16 @@ package newex.graphics;
 import arc.Core;
 import arc.Events;
 import arc.graphics.Color;
+import arc.graphics.GL20;
+import arc.graphics.Gl;
+import arc.graphics.Pixmap;
+import arc.graphics.Texture;
 import arc.graphics.g2d.Draw;
-import arc.graphics.gl.FrameBuffer;
+import arc.graphics.g2d.TextureRegion;
 import arc.graphics.gl.Shader;
 import arc.math.Mathf;
 import arc.util.Log;
+import arc.util.Tmp;
 import mindustry.Vars;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.ContentInitEvent;
@@ -19,9 +24,10 @@ import mindustry.world.blocks.defense.turrets.Turret;
 
 /**
  * Đồ họa Bloom Tím ôm sát hình dáng & Saturation NeoWex (tương thích OpenGL 2.0 / Intel GPU / Mobile):
- * - Dùng shader hậu xử lý trích xuất vùng phát sáng thực tế trên màn hình (đạn, tia khoan ore, tia xây/phá khối,
- *   sét, kỹ năng, động cơ, lò phản ứng...) và phủ quầng bloom tím thạch anh êm mắt ôm sát đúng hình dáng vật thể.
- * - Thêm 2 thanh kéo thả trong Cài đặt -> Đồ họa: Độ bão hòa màu (Saturation) & Độ sáng Bloom tím.
+ * - KHÔNG dùng FrameBuffer lồng nhau (dùng Gl.copyTexSubImage2D tại Layer.end) -> tuyệt đối không xung đột FBO
+ *   với LightRenderer (ngày/đêm), NexDynamicShadows, Bloom hay khiên lực -> không bao giờ bị đen nền!
+ * - Tự động trích xuất vùng phát sáng thật trên màn hình (đạn, tia khoan ore, tia xây/phá khối, sét, kỹ năng...)
+ *   và phủ quầng bloom tím thạch anh êm mắt ôm sát hình dáng + chỉnh độ bão hòa màu (Saturation).
  */
 public final class NexDarkGraphics {
     public static final String BORDER_KEY = "newex-dark-border";
@@ -31,20 +37,15 @@ public final class NexDarkGraphics {
 
     private static final String VERT_SRC =
         "attribute vec4 a_position;\n" +
+        "attribute vec4 a_color;\n" +
         "attribute vec2 a_texCoord0;\n" +
+        "uniform mat4 u_projTrans;\n" +
         "varying vec2 v_texCoords;\n" +
         "void main(){\n" +
         "    v_texCoords = a_texCoord0;\n" +
-        "    gl_Position = a_position;\n" +
+        "    gl_Position = u_projTrans * a_position;\n" +
         "}\n";
 
-    /**
-     * Shader hậu xử lý OpenGL 2.0:
-     * 1) Lấy mẫu 2 vòng sát (1.5px & 3.5px) để tạo quầng bloom tím ôm sát hình dáng mọi thứ phát sáng
-     *    (đạn, tia laser khoan/xây/phá khối, sét, lõi, hiệu ứng...).
-     * 2) Tông tím thạch anh dịu (Amethyst-Lavender) pha nhẹ màu gốc để gây nghiện mà êm mắt, không chói gắt.
-     * 3) Chỉnh độ bão hòa màu (Saturation) theo thanh kéo.
-     */
     private static final String FRAG_SRC =
         "uniform sampler2D u_texture;\n" +
         "uniform vec2 u_invsize;\n" +
@@ -91,20 +92,28 @@ public final class NexDarkGraphics {
         "    }\n" +
         "    float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));\n" +
         "    rgb = mix(vec3(luma), rgb, u_saturation);\n" +
-        "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), c.a);\n" +
+        "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);\n" +
         "}\n";
+
+    static final class PostShader extends Shader {
+        float invW = 1f, invH = 1f, sat = 1f, bloom = 0.65f;
+        PostShader() { super(VERT_SRC, FRAG_SRC); }
+        @Override
+        public void apply() {
+            setUniformf("u_invsize", invW, invH);
+            setUniformf("u_saturation", sat);
+            setUniformf("u_bloom", bloom);
+        }
+    }
 
     private static boolean initialized = false;
     private static boolean shaderTried = false;
-    private static Shader postShader = null;
-    private static FrameBuffer postBuf = null;
-    private static boolean capturing = false;
-    private static float curSat = 1.0f;
-    private static float curBloom = 0.65f;
-    private static int curW = 1, curH = 1;
+    private static PostShader postShader = null;
+    private static Texture screenTex = null;
+    private static TextureRegion screenReg = null;
+    private static int texW = 0, texH = 0;
 
-    private static final Runnable beginPost = NexDarkGraphics::beginCapture;
-    private static final Runnable endPost = NexDarkGraphics::endCapture;
+    private static final Runnable applyPost = NexDarkGraphics::renderPostPass;
 
     private NexDarkGraphics() {}
 
@@ -158,12 +167,10 @@ public final class NexDarkGraphics {
         if (shaderTried || Vars.headless) return;
         shaderTried = true;
         try {
-            postShader = new Shader(VERT_SRC, FRAG_SRC);
-            postBuf = new FrameBuffer();
+            postShader = new PostShader();
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] Failed to compile violet bloom shader", err);
             postShader = null;
-            postBuf = null;
         }
     }
 
@@ -197,49 +204,57 @@ public final class NexDarkGraphics {
     private static void onDraw() {
         if (Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
         if (!shaderTried) initShader();
-        if (postShader == null || postBuf == null) return;
+        if (postShader == null) return;
         if (Core.settings.getBool("pixelate", false)) return;
 
-        curSat = readSaturation();
-        curBloom = readBloomStrength();
-        if (Math.abs(curSat - 1f) < 0.005f && curBloom < 0.005f) return;
+        float sat = readSaturation();
+        float bloom = readBloomStrength();
+        if (Math.abs(sat - 1f) < 0.005f && bloom < 0.005f) return;
 
-        Draw.draw(Layer.floor - 9f, beginPost);
-        Draw.draw(Layer.light + 5f, endPost);
+        postShader.sat = sat;
+        postShader.bloom = bloom;
+        // Chạy ở Layer.end (SAU toàn bộ thế giới, bóng, ánh sáng, bloom gốc, TRƯỚC HUD/UI) -> không bao giờ xung đột FBO!
+        Draw.draw(Layer.end, applyPost);
     }
 
-    private static void beginCapture() {
-        capturing = false;
-        if (postBuf == null || postShader == null) return;
+    private static void renderPostPass() {
+        if (postShader == null) return;
         int w = Core.graphics.getWidth(), h = Core.graphics.getHeight();
         if (w <= 0 || h <= 0) return;
-        curW = w;
-        curH = h;
-        try {
-            postBuf.resize(w, h);
-            if (!postBuf.isBound()) {
-                postBuf.begin(Color.clear);
-                capturing = true;
-            }
-        } catch (Throwable err) {
-            capturing = false;
-        }
-    }
 
-    private static void endCapture() {
-        if (!capturing || postBuf == null || postShader == null) return;
-        capturing = false;
         try {
-            if (!postBuf.isBound()) return;
-            postBuf.end();
             Draw.flush();
-            postShader.bind();
-            postShader.setUniformf("u_invsize", 1f / Math.max(1, curW), 1f / Math.max(1, curH));
-            postShader.setUniformf("u_saturation", curSat);
-            postShader.setUniformf("u_bloom", curBloom);
-            postBuf.blit(postShader);
+            if (screenTex == null || texW != w || texH != h || screenTex.getTextureObjectHandle() == 0) {
+                if (screenTex != null) { try { screenTex.dispose(); } catch (Throwable ignored) {} }
+                screenTex = new Texture(w, h, Pixmap.Format.rgba8888);
+                screenTex.setFilter(Texture.TextureFilter.linear);
+                screenTex.setWrap(Texture.TextureWrap.clampToEdge);
+                screenReg = new TextureRegion(screenTex);
+                screenReg.flip(false, true);
+                texW = w;
+                texH = h;
+            }
+
+            // Sao chép trực tiếp khung hình thế giới đã vẽ vào texture (không cần bind FBO lồng nhau!)
+            screenTex.bind(0);
+            Gl.copyTexSubImage2D(GL20.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+
+            postShader.invW = 1f / Math.max(1, w);
+            postShader.invH = 1f / Math.max(1, h);
+
+            Tmp.m2.set(Draw.proj());
+            Draw.proj(Tmp.m1.setOrtho(0f, 0f, w, h));
+            Draw.blend(arc.graphics.Blending.disabled);
+            Draw.shader(postShader);
+            Draw.color(Color.white, 1f);
+            Draw.rect(screenReg, w * 0.5f, h * 0.5f, w, h);
+            Draw.flush();
+            Draw.shader();
+            Draw.blend(arc.graphics.Blending.normal);
+            Draw.proj(Tmp.m2);
+            Draw.reset();
         } catch (Throwable err) {
-            Log.err("[NexDarkGraphics] post blit failed", err);
+            Log.err("[NexDarkGraphics] post pass failed", err);
         }
     }
 }

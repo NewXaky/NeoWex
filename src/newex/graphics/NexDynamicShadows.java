@@ -473,7 +473,7 @@ public final class NexDynamicShadows {
         if (dayNightCycle) {
             if (rawSun < 0.64f) {
                 float np = (0.64f - rawSun) / 1.64f;
-                darkness = Mathf.clamp(np * 0.99f, 0f, 0.70f);
+                darkness = Mathf.clamp(np * 0.72f, 0f, 0.52f);
             }
             if (Vars.state.rules != null) {
                 Vars.state.rules.lighting = true;
