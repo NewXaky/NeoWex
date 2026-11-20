@@ -71,8 +71,10 @@ public final class NexDynamicShadows {
     public static final String KEY_TINT = "newex-ds-tint";
     public static final String KEY_CONTACT = "newex-ds-contact";
     public static final String KEY_LIGHT_ERASE = "newex-ds-light-erase";
+    public static final String KEY_LITE = "newex-ds-lite";
 
     public static boolean enabled = true;
+    public static boolean liteMode = true;
     public static boolean dayNightCycle = true;
     public static boolean rotateShadows = true;
     public static boolean unitShadowsEnabled = true;
@@ -276,6 +278,7 @@ public final class NexDynamicShadows {
 
     private static void loadSettings() {
         enabled = Core.settings.getBool(KEY_ENABLED, true);
+        liteMode = Core.settings.getBool(KEY_LITE, true);
         dayNightCycle = Core.settings.getBool(KEY_DAYNIGHT, true);
         rotateShadows = Core.settings.getBool(KEY_ROTATE, true);
         unitShadowsEnabled = Core.settings.getBool(KEY_UNITS, true);
@@ -317,6 +320,11 @@ public final class NexDynamicShadows {
                         subBox.clear();
                         if (!enabled) return;
 
+                        addCheck(subBox, en ? "Lite Mode (Ultra Smooth 60 FPS - 1 Pass)" : "Chế độ Lite (Siêu mượt 60 FPS - không lag)", KEY_LITE, liteMode, v -> {
+                            liteMode = v;
+                            if (v) hasMtnBlockShadow = false;
+                            shadDirty = true;
+                        });
                         addCheck(subBox, en ? "Day / Night Lighting Cycle" : "Chu kỳ ánh sáng Ngày / Đêm", KEY_DAYNIGHT, dayNightCycle, v -> {
                             dayNightCycle = v;
                             if (!v && Vars.state != null && Vars.state.rules != null && Vars.state.rules.ambientLight != null) {
@@ -675,121 +683,184 @@ public final class NexDynamicShadows {
                             }
                         }
 
-                        // === LỚP A: Bóng tường địa hình (1-pass Kawase blur: scratchA -> mtnBlockShadowOut, cắt 50% FBO pass!) ===
-                        hasMtnBlockShadow = anyMtn;
-                        if (hasMtnBlockShadow) {
-                            scratchA.begin();
-                            Gl.clearColor(0f, 0f, 0f, 0f);
-                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            Draw.color(0.04f, 0.03f, 0.08f, 1f);
-                            for (int cx = chX1; cx <= chX2; cx++) {
-                                for (int cy = chY1; cy <= chY2; cy++) {
-                                    if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
-                                    ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                                    if (chunk == null || !chunk.valid || chunk.mountainTiles.isEmpty()) continue;
-                                    Seq<ChunkCache.CasterEntry> list = chunk.casters;
-                                    for (int i = 0; i < list.size; i++) {
-                                        ChunkCache.CasterEntry e = list.get(i);
-                                        if (!e.isMtn || e.mod == 0f) continue;
-                                        if (!isExposedMountainCaster(e.x, e.y, cosA, sinA)) continue;
-                                        float whs = e.size * 0.5f + 1f;
-                                        float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
-                                        float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
-                                        float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
-                                        float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
-                                        if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
-                                        float fLen = shadowScale * e.elev * e.mod;
-                                        if (fLen < 0.2f) continue;
-                                        NexShadowConfig.drawExtruded(e.cx, e.cy, fLen, cosA, sinA, null, e.rawSize);
-                                    }
-                                }
-                            }
-                            Draw.flush();
-                            scratchA.end();
-
-                            mtnBlockShadowOut.begin();
-                            Gl.clearColor(0f, 0f, 0f, 0f);
-                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
-                            Draw.flush();
-
-                            Draw.blend(Blending.disabled);
-                            Draw.color(0f, 0f, 0f, 0f);
-                            eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                            eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                            Draw.flush();
-
-                            if (lightEraseEnabled) {
-                                Draw.blend(LIGHT_ERASE_BLEND);
-                                punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                                Draw.flush();
-                            }
-                            Draw.blend(Blending.normal);
-                            mtnBlockShadowOut.end();
-                        }
-
-                        // === LỚP B: Bóng khối xây & prop (1-pass Kawase blur: scratchA -> shadowOut, trừ bóng địa hình -> không đè tối!) ===
-                        hasShadowContent = anyNonMtn;
-                        if (hasShadowContent) {
-                            scratchA.begin();
-                            Gl.clearColor(0f, 0f, 0f, 0f);
-                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            Draw.color(0.04f, 0.03f, 0.08f, 1f);
-                            for (int cx = chX1; cx <= chX2; cx++) {
-                                for (int cy = chY1; cy <= chY2; cy++) {
-                                    if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
-                                    ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                                    if (chunk == null || !chunk.valid || !chunk.hasNonMtnCasters) continue;
-                                    Seq<ChunkCache.CasterEntry> list = chunk.casters;
-                                    for (int i = 0; i < list.size; i++) {
-                                        ChunkCache.CasterEntry e = list.get(i);
-                                        if (e.isMtn || e.mod == 0f) continue;
-                                        float whs = e.size * 0.5f + 1f;
-                                        float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
-                                        float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
-                                        float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
-                                        float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
-                                        if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
-                                        if (e.isProp) {
-                                            float propLen = (e.region.height * Draw.scl) * (shadowScale / 80f) * 1.35f;
-                                            if (propLen < 0.4f) continue;
-                                            NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * fDarkFade, 1f);
-                                        } else {
-                                            float fLen = shadowScale * e.elev * e.mod;
-                                            if (fLen < 0.2f) continue;
-                                            Draw.color(0.04f, 0.03f, 0.08f, 1f);
-                                            NexShadowConfig.drawExtruded(e.cx, e.cy, fLen, cosA, sinA, e.region, e.rawSize);
+                        if (liteMode) {
+                            // === CHẾ ĐỘ LITE (SIÊU MƯỢT): 1 FBO duy nhất gộp toàn bộ bóng, không đổi texture, không vẽ mtnBlockShadowOut ===
+                            hasMtnBlockShadow = false;
+                            hasShadowContent = anyMtn || anyNonMtn;
+                            if (hasShadowContent) {
+                                scratchA.begin();
+                                Gl.clearColor(0f, 0f, 0f, 0f);
+                                Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                                for (int cx = chX1; cx <= chX2; cx++) {
+                                    for (int cy = chY1; cy <= chY2; cy++) {
+                                        if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                        ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                        if (chunk == null || !chunk.valid) continue;
+                                        Seq<ChunkCache.CasterEntry> list = chunk.casters;
+                                        for (int i = 0; i < list.size; i++) {
+                                            ChunkCache.CasterEntry e = list.get(i);
+                                            if (e.mod == 0f) continue;
+                                            if (e.isMtn && !isExposedMountainCaster(e.x, e.y, cosA, sinA)) continue;
+                                            float whs = e.size * 0.5f + 1f;
+                                            float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
+                                            float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
+                                            float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
+                                            float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
+                                            if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
+                                            if (e.isProp) {
+                                                float propLen = (e.region.height * Draw.scl) * (shadowScale / 80f) * 1.35f;
+                                                if (propLen < 0.4f) continue;
+                                                NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * fDarkFade, 1f);
+                                            } else {
+                                                float fLen = shadowScale * e.elev * e.mod;
+                                                if (fLen < 0.2f) continue;
+                                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                                                NexShadowConfig.drawExtruded(e.cx, e.cy, fLen, cosA, sinA, null, e.rawSize);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Draw.flush();
-                            scratchA.end();
+                                Draw.flush();
+                                scratchA.end();
 
-                            shadowOut.begin();
-                            Gl.clearColor(0f, 0f, 0f, 0f);
-                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
-                            Draw.flush();
+                                shadowOut.begin();
+                                Gl.clearColor(0f, 0f, 0f, 0f);
+                                Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
+                                Draw.flush();
 
-                            Draw.blend(Blending.disabled);
-                            Draw.color(0f, 0f, 0f, 0f);
-                            eraseAllFootprints(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                            eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                            eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                            Draw.flush();
+                                Draw.blend(Blending.disabled);
+                                Draw.color(0f, 0f, 0f, 0f);
+                                eraseAllFootprints(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                Draw.flush();
 
-                            Draw.blend(LIGHT_ERASE_BLEND);
-                            if (hasMtnBlockShadow && mtnBlockRegOut != null) {
-                                Draw.color(Color.white, 1f);
-                                Draw.rect(mtnBlockRegOut, camX, camY, overW, overH);
+                                if (lightEraseEnabled) {
+                                    Draw.blend(LIGHT_ERASE_BLEND);
+                                    punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                    Draw.flush();
+                                }
+                                Draw.blend(Blending.normal);
+                                shadowOut.end();
                             }
-                            if (lightEraseEnabled) {
-                                punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                        } else {
+                            // === CHẾ ĐỘ ĐẦY ĐỦ: Tách riêng bóng tường địa hình (phủ tối lên các khối bên dưới) & bóng khối xây ===
+                            hasMtnBlockShadow = anyMtn;
+                            if (hasMtnBlockShadow) {
+                                scratchA.begin();
+                                Gl.clearColor(0f, 0f, 0f, 0f);
+                                Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                                for (int cx = chX1; cx <= chX2; cx++) {
+                                    for (int cy = chY1; cy <= chY2; cy++) {
+                                        if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                        ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                        if (chunk == null || !chunk.valid || chunk.mountainTiles.isEmpty()) continue;
+                                        Seq<ChunkCache.CasterEntry> list = chunk.casters;
+                                        for (int i = 0; i < list.size; i++) {
+                                            ChunkCache.CasterEntry e = list.get(i);
+                                            if (!e.isMtn || e.mod == 0f) continue;
+                                            if (!isExposedMountainCaster(e.x, e.y, cosA, sinA)) continue;
+                                            float whs = e.size * 0.5f + 1f;
+                                            float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
+                                            float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
+                                            float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
+                                            float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
+                                            if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
+                                            float fLen = shadowScale * e.elev * e.mod;
+                                            if (fLen < 0.2f) continue;
+                                            NexShadowConfig.drawExtruded(e.cx, e.cy, fLen, cosA, sinA, null, e.rawSize);
+                                        }
+                                    }
+                                }
+                                Draw.flush();
+                                scratchA.end();
+
+                                mtnBlockShadowOut.begin();
+                                Gl.clearColor(0f, 0f, 0f, 0f);
+                                Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
+                                Draw.flush();
+
+                                Draw.blend(Blending.disabled);
+                                Draw.color(0f, 0f, 0f, 0f);
+                                eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                Draw.flush();
+
+                                if (lightEraseEnabled) {
+                                    Draw.blend(LIGHT_ERASE_BLEND);
+                                    punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                    Draw.flush();
+                                }
+                                Draw.blend(Blending.normal);
+                                mtnBlockShadowOut.end();
                             }
-                            Draw.flush();
-                            Draw.blend(Blending.normal);
-                            shadowOut.end();
+
+                            hasShadowContent = anyNonMtn;
+                            if (hasShadowContent) {
+                                scratchA.begin();
+                                Gl.clearColor(0f, 0f, 0f, 0f);
+                                Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                                for (int cx = chX1; cx <= chX2; cx++) {
+                                    for (int cy = chY1; cy <= chY2; cy++) {
+                                        if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                        ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                        if (chunk == null || !chunk.valid || !chunk.hasNonMtnCasters) continue;
+                                        Seq<ChunkCache.CasterEntry> list = chunk.casters;
+                                        for (int i = 0; i < list.size; i++) {
+                                            ChunkCache.CasterEntry e = list.get(i);
+                                            if (e.isMtn || e.mod == 0f) continue;
+                                            float whs = e.size * 0.5f + 1f;
+                                            float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
+                                            float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
+                                            float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
+                                            float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
+                                            if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
+                                            if (e.isProp) {
+                                                float propLen = (e.region.height * Draw.scl) * (shadowScale / 80f) * 1.35f;
+                                                if (propLen < 0.4f) continue;
+                                                NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * fDarkFade, 1f);
+                                            } else {
+                                                float fLen = shadowScale * e.elev * e.mod;
+                                                if (fLen < 0.2f) continue;
+                                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                                                NexShadowConfig.drawExtruded(e.cx, e.cy, fLen, cosA, sinA, null, e.rawSize);
+                                            }
+                                        }
+                                    }
+                                }
+                                Draw.flush();
+                                scratchA.end();
+
+                                shadowOut.begin();
+                                Gl.clearColor(0f, 0f, 0f, 0f);
+                                Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
+                                Draw.flush();
+
+                                Draw.blend(Blending.disabled);
+                                Draw.color(0f, 0f, 0f, 0f);
+                                eraseAllFootprints(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                Draw.flush();
+
+                                Draw.blend(LIGHT_ERASE_BLEND);
+                                if (hasMtnBlockShadow && mtnBlockRegOut != null) {
+                                    Draw.color(Color.white, 1f);
+                                    Draw.rect(mtnBlockRegOut, camX, camY, overW, overH);
+                                }
+                                if (lightEraseEnabled) {
+                                    punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                }
+                                Draw.flush();
+                                Draw.blend(Blending.normal);
+                                shadowOut.end();
+                            }
                         }
 
                         Draw.proj(Tmp.m3);
@@ -850,14 +921,16 @@ public final class NexDynamicShadows {
             });
         }
 
-        // Phủ bóng tường địa hình lên đúng các khối xây nằm dưới bóng tường (Layer.blockOver + 0.5f -> tối cùng màu bóng, không đè lại mặt đất!)
-        Draw.draw(Layer.blockOver + 0.5f, () -> {
-            if (enabled && hasMtnBlockShadow && globalFade > 0.005f && mtnBlockRegOut != null && mtnBlockRegOut.texture != null) {
-                Draw.color(Color.white, alpha * globalFade);
-                Draw.rect(mtnBlockRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
-                Draw.color();
-            }
-        });
+        // Phủ bóng tường địa hình lên đúng các khối xây nằm dưới bóng tường (chỉ chạy khi tắt chế độ Lite)
+        if (!liteMode) {
+            Draw.draw(Layer.blockOver + 0.5f, () -> {
+                if (enabled && hasMtnBlockShadow && globalFade > 0.005f && mtnBlockRegOut != null && mtnBlockRegOut.texture != null) {
+                    Draw.color(Color.white, alpha * globalFade);
+                    Draw.rect(mtnBlockRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
+                    Draw.color();
+                }
+            });
+        }
 
         // Cây tĩnh vẽ trên bóng
         Draw.draw(NexShadowConfig.Z_TREE, () -> {
