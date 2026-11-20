@@ -62,7 +62,14 @@ public final class Bulvasyr {
     public static final int ROCKETS_PER_BURST = 4;
     public static final float ROCKET_STAGGER = 3.5f;   // độ trễ giữa từng quả trong 1 đợt (tick)
     public static final float BURST_INTERVAL = 56f;    // ~0.93s giữa đợt 1 và đợt 2 (khớp video)
-    public static final float FULL_RELOAD = 300f;      // 5.0s nạp toàn bộ ổ đạn
+    public static final float FULL_RELOAD = 300f;
+
+    /** Đạn xoắn ốc (nhìn từ trên xuống): lệch ngang theo sin quanh trục bay, biên độ nhỏ dần khi tới gần mục tiêu. */
+    public static final float SWIRL_AMP = 11f;        // biên độ lệch ngang tối đa (đơn vị thế giới)
+    public static final float SWIRL_SPEED = 0.2f;     // tốc độ xoay (rad/tick), ~2 vòng trong hành trình
+    public static final float SWIRL_RAMP = 14f;       // tick đầu: biên độ tăng dần từ 0 để đạn rời nòng thẳng
+    public static final float SWIRL_END = 60f;        // cách mục tiêu bao nhiêu thì bắt đầu thu hẹp xoắn
+    public static final float SWIRL_DEPTH = 0.22f;    // phóng to/thu nhỏ đạn theo pha, giả hiệu ứng chiều sâu 3D      // 5.0s nạp toàn bộ ổ đạn
 
     /** Chỉ số Tấn công chuẩn (đồng bộ công thức Aureon/NewModePvp). */
     public static final float BASE_ATK = 320f;
@@ -206,9 +213,9 @@ public final class Bulvasyr {
             abilities.add(new PhysicalShieldAbility());
 
             // 3 khe pháo đặt bất đối xứng ở phần trên & hông PHẢI (x >= 0 là bên phải, đối diện tấm khiên bên trái)
-            weapons.add(createSalvoWeapon(-1.5f, 8.0f, missileBullet));  // khe trên-giữa
-            weapons.add(createSalvoWeapon(10.5f, 8.0f, missileBullet));  // khe trên-phải
-            weapons.add(createSalvoWeapon(15.5f, -1.5f, missileBullet)); // khe hông phải
+            weapons.add(createSalvoWeapon(4.2f, 6.0f, missileBullet));   // khe trên-giữa
+            weapons.add(createSalvoWeapon(21.0f, 7.8f, missileBullet));  // khe trên-phải
+            weapons.add(createSalvoWeapon(13.5f, -8.1f, missileBullet)); // khe dưới-phải
         }};
     }
 
@@ -224,7 +231,7 @@ public final class Bulvasyr {
             shootCone = 360f;
             layerOffset = 0.04f;
             shootX = 0f;
-            shootY = 10f;
+            shootY = 9f;
             recoil = 2.6f;
             recoilTime = 24f;
             reload = FULL_RELOAD;
@@ -487,10 +494,11 @@ public final class Bulvasyr {
                     float sy = my + Angles.trnsy(weaponRot - 90f, ox, oy);
 
                     // Góc phóng vồng lệch sang 2 bên tạo chùm tên lửa cong uốn lượn giống video
-                    float arcSpread = (idx - 1.5f) * 14f + Mathf.range(6f);
+                    float arcSpread = (idx - 1.5f) * 5f + Mathf.range(3f);
                     float launchAngle = weaponRot + arcSpread;
 
-                    Bullet b = bullet.create(unit, unit.team, sx, sy, launchAngle, -1f, 0.92f + idx * 0.04f, 1f, target);
+                    float swirlPhase = idx * (Mathf.PI / 2f) + x * 0.37f;
+                    Bullet b = bullet.create(unit, unit.team, sx, sy, launchAngle, -1f, 0.92f + idx * 0.04f, 1f, new SwirlData(target, swirlPhase));
                     if (b != null) {
                         float atk = calcAtk(unit);
                         b.damage = atk * ROCKET_DIRECT_RATIO;
@@ -507,6 +515,13 @@ public final class Bulvasyr {
     }
 
     // ================================================================== Đạn tên lửa cong tự dẫn hướng, nổ & xuyên giáp
+
+    /** Dữ liệu từng quả: mục tiêu, pha xoắn và độ lệch ngang đã áp dụng ở tick trước. */
+    public static class SwirlData {
+        public Teamc target;
+        public float phase, prev;
+        public SwirlData(Teamc target, float phase) { this.target = target; this.phase = phase; }
+    }
 
     public static class SalvoMissileBulletType extends MissileBulletType {
         public SalvoMissileBulletType() {
@@ -549,13 +564,14 @@ public final class Bulvasyr {
         public void updateHoming(Bullet b) {
             if (b.time < homingDelay) return;
 
-            Teamc target = (b.data instanceof Teamc) ? (Teamc) b.data : null;
+            SwirlData sd = (b.data instanceof SwirlData) ? (SwirlData) b.data : null;
+            Teamc target = sd != null ? sd.target : null;
             if (!isTargetAlive(target)) {
                 target = Units.closestTarget(b.team, b.x, b.y, homingRange,
                     e -> e.checkTarget(collidesAir, collidesGround),
                     t -> collidesGround
                 );
-                b.data = target;
+                if (sd != null) sd.target = target;
             }
 
             if (target != null) {
@@ -563,6 +579,48 @@ public final class Bulvasyr {
                 float ramp = Mathf.clamp((b.time - homingDelay) / 18f, 0.35f, 1.6f);
                 b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(target), homingPower * 58f * ramp * Time.delta));
             }
+        }
+
+        /** Dịch vị trí đạn ngang quỹ đạo theo sin: nhìn từ trên xuống, xoắn ốc 3D chính là sóng lượn quanh trục bay. */
+        private static float swirlOffset(Bullet b, SwirlData sd) {
+            float t = b.time;
+            float env = Mathf.clamp(t / SWIRL_RAMP);
+            if (isTargetAlive(sd.target)) env *= Mathf.clamp((b.dst(sd.target) - 12f) / SWIRL_END);
+            return SWIRL_AMP * env * Mathf.sin(sd.phase + t * SWIRL_SPEED);
+        }
+
+        @Override
+        public void update(Bullet b) {
+            super.update(b);
+            if (!(b.data instanceof SwirlData)) return;
+            SwirlData sd = (SwirlData) b.data;
+            float off = swirlOffset(b, sd);
+            float d = off - sd.prev;
+            sd.prev = off;
+            float side = b.rotation() + 90f;
+            b.x += Angles.trnsx(side, d);
+            b.y += Angles.trnsy(side, d);
+        }
+
+        @Override
+        public void draw(Bullet b) {
+            if (!(b.data instanceof SwirlData)) { super.draw(b); return; }
+            SwirlData sd = (SwirlData) b.data;
+            // Đầu đạn quay theo tiếp tuyến thực của đường xoắn; kích thước đổi theo pha để giống đang vòng xa-gần
+            float t = b.time;
+            float env = Mathf.clamp(t / SWIRL_RAMP);
+            if (isTargetAlive(sd.target)) env *= Mathf.clamp((b.dst(sd.target) - 12f) / SWIRL_END);
+            float ph = sd.phase + t * SWIRL_SPEED;
+            float lat = SWIRL_AMP * env * SWIRL_SPEED * Mathf.cos(ph);
+            float r0 = b.rotation();
+            float tilt = Mathf.atan2(lat, speed) * Mathf.radDeg;
+            float sc = 1f + SWIRL_DEPTH * env * Mathf.cos(ph);
+            float w0 = width, h0 = height;
+            width = w0 * sc; height = h0 * sc;
+            b.rotation(r0 + tilt);
+            super.draw(b);
+            b.rotation(r0);
+            width = w0; height = h0;
         }
 
         @Override
