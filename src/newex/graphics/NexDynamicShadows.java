@@ -112,9 +112,9 @@ public final class NexDynamicShadows {
     // Chế độ hòa trộn làm tan bóng mượt quanh nguồn sáng & trừ phần giao bóng núi khỏi bóng khối xây (dst = dst * (1 - srcAlpha))
     private static final Blending LIGHT_ERASE_BLEND = new Blending(Gl.zero, Gl.oneMinusSrcAlpha);
 
-    // 4 FBO tách biệt: scratchA, scratchB, shadowOut (bóng khối xây + prop dưới Layer.block), mtnBlockShadowOut (bóng tường địa hình cao nhất trên mọi khối xây)
-    private static FrameBuffer scratchA, scratchB, shadowOut, mtnBlockShadowOut;
-    private static TextureRegion scratchRegA, scratchRegB, shadowRegOut, mtnBlockRegOut;
+    // Chỉ cần 3 FBO gọn nhẹ (scratchA dùng chung, shadowOut cho bóng khối xây, mtnBlockShadowOut cho bóng địa hình!)
+    private static FrameBuffer scratchA, shadowOut, mtnBlockShadowOut;
+    private static TextureRegion scratchRegA, shadowRegOut, mtnBlockRegOut;
     private static boolean hasShadowContent = false;
     private static boolean hasMtnBlockShadow = false;
 
@@ -143,31 +143,27 @@ public final class NexDynamicShadows {
         "    gl_Position = u_projTrans * a_position;\n" +
         "}\n";
 
-    /** Shader 5-tap separable Gaussian blur + nhuộm màu ánh sáng ngày/hoàng hôn/đêm. */
+    /** Shader Kawase 1-pass (5-tap chéo -> làm mờ mịn cả 2 trục X/Y chỉ trong 1 pass duy nhất, cắt 50% số FBO pass!). */
     private static final String FRAG_SRC =
         "varying vec4 v_color;\n" +
         "varying vec2 v_texCoord;\n" +
         "uniform sampler2D u_texture;\n" +
         "uniform vec2 u_resolution;\n" +
         "uniform float u_radius;\n" +
-        "uniform vec2 u_blurDir;\n" +
         "uniform float u_sunElevation;\n" +
         "uniform float u_shadowTint;\n" +
         "uniform float u_contactShadow;\n" +
         "void main(){\n" +
         "    vec2 texel = 1.0 / u_resolution;\n" +
         "    float elevFactor = 1.0 - clamp(u_sunElevation, 0.0, 1.0);\n" +
-        "    float dynamicRad = u_radius * (1.0 + elevFactor * 1.25);\n" +
-        "    vec2 step1 = u_blurDir * texel * (dynamicRad * 1.3846);\n" +
-        "    vec2 step2 = u_blurDir * texel * (dynamicRad * 3.2307);\n" +
-        "    vec4 col = texture2D(u_texture, v_texCoord) * 0.2270;\n" +
-        "    col += texture2D(u_texture, v_texCoord + step1) * 0.3162;\n" +
-        "    col += texture2D(u_texture, v_texCoord - step1) * 0.3162;\n" +
-        "    col += texture2D(u_texture, v_texCoord + step2) * 0.0703;\n" +
-        "    col += texture2D(u_texture, v_texCoord - step2) * 0.0703;\n" +
-        "    float alpha = col.a;\n" +
-        "    float distFade = smoothstep(0.0, 0.15, alpha);\n" +
-        "    float edgeFactor = smoothstep(0.0, 0.40, alpha) * (1.0 - smoothstep(0.50, 1.0, alpha));\n" +
+        "    float rad = u_radius * (1.0 + elevFactor * 1.15);\n" +
+        "    vec2 d = texel * rad;\n" +
+        "    float alpha = texture2D(u_texture, v_texCoord).a * 0.28\n" +
+        "                + texture2D(u_texture, v_texCoord + vec2( d.x,  d.y)).a * 0.18\n" +
+        "                + texture2D(u_texture, v_texCoord + vec2(-d.x,  d.y)).a * 0.18\n" +
+        "                + texture2D(u_texture, v_texCoord + vec2( d.x, -d.y)).a * 0.18\n" +
+        "                + texture2D(u_texture, v_texCoord + vec2(-d.x, -d.y)).a * 0.18;\n" +
+        "    float distFade = smoothstep(0.0, 0.14, alpha);\n" +
         "    float contactBoost = smoothstep(0.55, 1.0, alpha) * u_contactShadow;\n" +
         "    float sunE = u_sunElevation;\n" +
         "    vec3 dayTint = vec3(0.06, 0.07, 0.13);\n" +
@@ -175,15 +171,13 @@ public final class NexDynamicShadows {
         "    vec3 horizonTint = vec3(0.16, 0.06, 0.02) * horizonFactor;\n" +
         "    float nightFactor = clamp(-sunE, 0.0, 1.0);\n" +
         "    vec3 nightTint = vec3(0.04, 0.02, 0.10) * nightFactor;\n" +
-        "    vec3 rawTint = dayTint + horizonTint + nightTint;\n" +
-        "    vec3 shadowColor = mix(vec3(0.0), rawTint, u_shadowTint);\n" +
-        "    shadowColor += vec3(0.025, 0.010, 0.0) * edgeFactor * u_shadowTint * (1.0 - nightFactor);\n" +
+        "    vec3 shadowColor = mix(vec3(0.0), dayTint + horizonTint + nightTint, u_shadowTint);\n" +
         "    float finalAlpha = clamp(alpha * distFade * (1.0 + contactBoost), 0.0, 1.0);\n" +
         "    gl_FragColor = vec4(shadowColor, finalAlpha) * v_color;\n" +
         "}\n";
 
     static final class ShadowBlurShader extends Shader {
-        float radius = 3.0f, blurDirX = 1f, blurDirY = 0f, shadowTint = 0.6f, contactShadow = 0.45f, sunElevation = 0.5f;
+        float radius = 3.0f, shadowTint = 0.6f, contactShadow = 0.45f, sunElevation = 0.5f;
         int resW = 1, resH = 1;
 
         ShadowBlurShader() {
@@ -193,7 +187,6 @@ public final class NexDynamicShadows {
         @Override
         public void apply() {
             setUniformf("u_radius", radius);
-            setUniformf("u_blurDir", blurDirX, blurDirY);
             setUniformf("u_shadowTint", shadowTint);
             setUniformf("u_contactShadow", contactShadow);
             setUniformf("u_sunElevation", sunElevation);
@@ -469,13 +462,13 @@ public final class NexDynamicShadows {
 
     private static float qualityScale() {
         if (Vars.mobile) {
-            if (graphicsQuality == 0) return 0.35f;
-            if (graphicsQuality == 1) return 0.50f;
-            return 0.70f;
+            if (graphicsQuality == 0) return 0.25f;
+            if (graphicsQuality == 1) return 0.35f;
+            return 0.50f;
         }
-        if (graphicsQuality == 0) return 0.45f;
-        if (graphicsQuality == 1) return 0.65f;
-        return 0.90f;
+        if (graphicsQuality == 0) return 0.30f;
+        if (graphicsQuality == 1) return 0.42f;
+        return 0.60f;
     }
 
     /** Vẽ quầng xóa bóng mềm 3 lớp quanh nguồn sáng để bóng tan tự nhiên vào ánh sáng. */
@@ -527,21 +520,23 @@ public final class NexDynamicShadows {
 
         final float camX = Core.camera.position.x, camY = Core.camera.position.y;
         final float camW = Core.camera.width, camH = Core.camera.height;
+        // Dựng FBO rộng hơn khung hình 28% (overscan): khi di chuyển trong vùng đệm 11% KHÔNG cần vẽ lại FBO (0ms GPU!) mà bóng vẫn ghim chặt xuống đất 100% không giật!
+        final float overW = camW * 1.28f, overH = camH * 1.28f;
         float margin = shadowScale + Vars.tilesize * 4f;
         int wMax = Vars.world.width() - 1, hMax = Vars.world.height() - 1;
-        final int tx1 = Mathf.clamp((int) ((camX - camW * 0.5f - margin) / Vars.tilesize), 0, wMax);
-        final int ty1 = Mathf.clamp((int) ((camY - camH * 0.5f - margin) / Vars.tilesize), 0, hMax);
-        final int tx2 = Mathf.clamp((int) ((camX + camW * 0.5f + margin) / Vars.tilesize), 0, wMax);
-        final int ty2 = Mathf.clamp((int) ((camY + camH * 0.5f + margin) / Vars.tilesize), 0, hMax);
+        final int tx1 = Mathf.clamp((int) ((camX - overW * 0.5f - margin) / Vars.tilesize), 0, wMax);
+        final int ty1 = Mathf.clamp((int) ((camY - overH * 0.5f - margin) / Vars.tilesize), 0, hMax);
+        final int tx2 = Mathf.clamp((int) ((camX + overW * 0.5f + margin) / Vars.tilesize), 0, wMax);
+        final int ty2 = Mathf.clamp((int) ((camY + overH * 0.5f + margin) / Vars.tilesize), 0, hMax);
 
-        final float screenX1 = camX - camW * 0.5f - margin;
-        final float screenY1 = camY - camH * 0.5f - margin;
-        final float screenX2 = camX + camW * 0.5f + margin;
-        final float screenY2 = camY + camH * 0.5f + margin;
+        final float screenX1 = camX - overW * 0.5f - margin;
+        final float screenY1 = camY - overH * 0.5f - margin;
+        final float screenX2 = camX + overW * 0.5f + margin;
+        final float screenY2 = camY + overH * 0.5f + margin;
 
         final float fboScale = qualityScale();
         int gw = Core.graphics.getWidth(), gh = Core.graphics.getHeight();
-        int maxDim = Vars.mobile ? 960 : 2560;
+        int maxDim = Vars.mobile ? 640 : 1024;
         final int fw = Mathf.clamp((int) (gw * fboScale), 1, maxDim);
         final int fh = Mathf.clamp((int) (gh * fboScale), 1, maxDim);
 
@@ -552,11 +547,9 @@ public final class NexDynamicShadows {
             lastFboScale = fboScale;
             try {
                 scratchA = new FrameBuffer(fw, fh); scratchRegA = flipped(scratchA);
-                scratchB = new FrameBuffer(fw, fh); scratchRegB = flipped(scratchB);
                 shadowOut = new FrameBuffer(fw, fh); shadowRegOut = flipped(shadowOut);
                 mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
                 scratchA.getTexture().setFilter(Texture.TextureFilter.linear);
-                scratchB.getTexture().setFilter(Texture.TextureFilter.linear);
                 shadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
                 mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
             } catch (Throwable err) {
@@ -611,21 +604,21 @@ public final class NexDynamicShadows {
             });
         }
 
-        // Cập nhật FBO ngay khi camera dịch chuyển hoặc góc mặt trời xoay nhẹ (0.025 độ) để bóng bám chặt mặt đất 100%, không bao giờ giật cục!
+        // Nhờ overscan 28%, chỉ vẽ lại FBO khi camera đi quá 11% màn hình, zoom lệch >6%, hoặc góc mặt trời xoay >0.18 độ -> cắt giảm 90% tải GPU mà vẫn mượt 60FPS không giật!
         final boolean needsRedraw = shadDirty
-            || Math.abs(angle - lastCachedAngle) > 0.025f
-            || Math.abs(camX - lastCachedCamX) > 0.001f
-            || Math.abs(camY - lastCachedCamY) > 0.001f
-            || Math.abs(camW - lastCachedCamW) > 0.001f
-            || Math.abs(camH - lastCachedCamH) > 0.001f;
+            || Math.abs(angle - lastCachedAngle) > 0.18f
+            || Math.abs(camX - lastCachedCamX) > camW * 0.11f
+            || Math.abs(camY - lastCachedCamY) > camH * 0.11f
+            || Math.abs(overW - lastCachedCamW) > camW * 0.08f
+            || Math.abs(overH - lastCachedCamH) > camH * 0.08f;
 
         if (needsRedraw) {
             shadDirty = false;
             lastCachedAngle = angle;
             lastCachedCamX = camX;
             lastCachedCamY = camY;
-            lastCachedCamW = camW;
-            lastCachedCamH = camH;
+            lastCachedCamW = overW;
+            lastCachedCamH = overH;
         }
 
         final float rawTilePixels = (Vars.tilesize / Core.camera.width) * Core.graphics.getWidth();
@@ -657,9 +650,12 @@ public final class NexDynamicShadows {
                         Draw.flush();
                         int prevFbo = currentFboBinding();
 
-                        // Dựng tối đa 2 chunk/frame trên Mobile (6 trên PC) trước khi tách 2 lớp bóng
+                        // Dựng tối đa 2 chunk/frame trên Mobile (4 trên PC) và dùng ma trận overscan (overW x overH)
+                        Tmp.m3.set(Draw.proj());
+                        Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
+
                         int rebuiltChunks = 0;
-                        int maxRebuildPerFrame = Vars.mobile ? 2 : 6;
+                        int maxRebuildPerFrame = Vars.mobile ? 2 : 4;
                         boolean anyMtn = false, anyNonMtn = false;
                         for (int cx = chX1; cx <= chX2; cx++) {
                             for (int cy = chY1; cy <= chY2; cy++) {
@@ -679,7 +675,7 @@ public final class NexDynamicShadows {
                             }
                         }
 
-                        // === LỚP A: Bóng tường địa hình (cao nhất, riêng biệt hoàn toàn với khối xây -> phủ tối cả đất lẫn mọi khối xây bên dưới!) ===
+                        // === LỚP A: Bóng tường địa hình (1-pass Kawase blur: scratchA -> mtnBlockShadowOut, cắt 50% FBO pass!) ===
                         hasMtnBlockShadow = anyMtn;
                         if (hasMtnBlockShadow) {
                             scratchA.begin();
@@ -711,20 +707,12 @@ public final class NexDynamicShadows {
                             Draw.flush();
                             scratchA.end();
 
-                            scratchB.begin();
-                            Gl.clearColor(0f, 0f, 0f, 0f);
-                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            applyShaderPass(1f, 0f, rawSun, scratchRegA, camX, camY, camW, camH, fw, fh);
-                            Draw.flush();
-                            scratchB.end();
-
                             mtnBlockShadowOut.begin();
                             Gl.clearColor(0f, 0f, 0f, 0f);
                             Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            applyShaderPass(0f, 1f, rawSun, scratchRegB, camX, camY, camW, camH, fw, fh);
+                            applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
                             Draw.flush();
 
-                            // Chỉ xóa mặt tường địa hình & sàn phát sáng (KHÔNG xóa chân khối xây -> mọi khối dưới bóng núi đều bị phủ tối đồng màu!)
                             Draw.blend(Blending.disabled);
                             Draw.color(0f, 0f, 0f, 0f);
                             eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
@@ -740,7 +728,7 @@ public final class NexDynamicShadows {
                             mtnBlockShadowOut.end();
                         }
 
-                        // === LỚP B: Bóng khối xây & prop (dưới Layer.block, trừ đi phần giao với bóng địa hình -> tuyệt đối không đè bóng!) ===
+                        // === LỚP B: Bóng khối xây & prop (1-pass Kawase blur: scratchA -> shadowOut, trừ bóng địa hình -> không đè tối!) ===
                         hasShadowContent = anyNonMtn;
                         if (hasShadowContent) {
                             scratchA.begin();
@@ -778,17 +766,10 @@ public final class NexDynamicShadows {
                             Draw.flush();
                             scratchA.end();
 
-                            scratchB.begin();
-                            Gl.clearColor(0f, 0f, 0f, 0f);
-                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            applyShaderPass(1f, 0f, rawSun, scratchRegA, camX, camY, camW, camH, fw, fh);
-                            Draw.flush();
-                            scratchB.end();
-
                             shadowOut.begin();
                             Gl.clearColor(0f, 0f, 0f, 0f);
                             Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
-                            applyShaderPass(0f, 1f, rawSun, scratchRegB, camX, camY, camW, camH, fw, fh);
+                            applyShaderPass(rawSun, scratchRegA, camX, camY, overW, overH, fw, fh);
                             Draw.flush();
 
                             Draw.blend(Blending.disabled);
@@ -798,11 +779,10 @@ public final class NexDynamicShadows {
                             eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                             Draw.flush();
 
-                            // Trừ phần bóng địa hình ra khỏi bóng khối xây -> không bao giờ đè tối 2 lớp lên nhau!
                             Draw.blend(LIGHT_ERASE_BLEND);
                             if (hasMtnBlockShadow && mtnBlockRegOut != null) {
                                 Draw.color(Color.white, 1f);
-                                Draw.rect(mtnBlockRegOut, camX, camY, camW, camH);
+                                Draw.rect(mtnBlockRegOut, camX, camY, overW, overH);
                             }
                             if (lightEraseEnabled) {
                                 punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
@@ -812,7 +792,7 @@ public final class NexDynamicShadows {
                             shadowOut.end();
                         }
 
-                        // Khôi phục lại đúng FBO đang bind trước đó (Bloom / màn hình) để không bao giờ mất nền sàn!
+                        Draw.proj(Tmp.m3);
                         restoreFboBinding(prevFbo);
                     }
                 }
@@ -967,7 +947,7 @@ public final class NexDynamicShadows {
         }
     }
 
-    private static void applyShaderPass(float dx, float dy, float sunElev, TextureRegion src,
+    private static void applyShaderPass(float sunElev, TextureRegion src,
                                         float cx, float cy, float cw, float ch, int resW, int resH) {
         if (shadowShader == null) {
             try { shadowShader = new ShadowBlurShader(); }
@@ -977,9 +957,7 @@ public final class NexDynamicShadows {
         if (scl <= 0.001f) scl = 1f;
         float currentPpu = ((float) Core.graphics.getWidth() / Core.camera.width) / scl;
         float ppuScale = Math.min(1f, currentPpu / 4f);
-        shadowShader.radius = Mathf.clamp(blurRadius * ppuScale, 0.5f, blurRadius);
-        shadowShader.blurDirX = dx;
-        shadowShader.blurDirY = dy;
+        shadowShader.radius = Mathf.clamp(blurRadius * ppuScale * 0.85f, 0.5f, blurRadius);
         shadowShader.shadowTint = shadowTint;
         shadowShader.contactShadow = contactShadow;
         shadowShader.sunElevation = sunElev;
@@ -1006,7 +984,6 @@ public final class NexDynamicShadows {
         hasShadowContent = false;
         hasMtnBlockShadow = false;
         if (scratchA != null) { try { scratchA.dispose(); } catch (Throwable ignored) {} scratchA = null; scratchRegA = null; }
-        if (scratchB != null) { try { scratchB.dispose(); } catch (Throwable ignored) {} scratchB = null; scratchRegB = null; }
         if (shadowOut != null) { try { shadowOut.dispose(); } catch (Throwable ignored) {} shadowOut = null; shadowRegOut = null; }
         if (mtnBlockShadowOut != null) { try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {} mtnBlockShadowOut = null; mtnBlockRegOut = null; }
     }

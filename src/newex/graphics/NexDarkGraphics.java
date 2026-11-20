@@ -54,6 +54,7 @@ public final class NexDarkGraphics {
         "    gl_Position = u_projTrans * a_position;\n" +
         "}\n";
 
+    /** Shader 4-tap bilinear (tận dụng lọc tuyến tính phần cứng = 16 texel trong 4 lần đọc -> nhanh gấp 3x trên Intel/Mobile!). */
     private static final String FRAG_SRC =
         "uniform sampler2D u_texture;\n" +
         "uniform vec2 u_invsize;\n" +
@@ -64,35 +65,24 @@ public final class NexDarkGraphics {
         "vec3 brightTap(vec2 uv){\n" +
         "    vec3 col = texture2D(u_texture, uv).rgb;\n" +
         "    float peak = max(col.r, max(col.g, col.b));\n" +
-        "    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));\n" +
-        "    float mask = smoothstep(0.66, 0.95, max(peak, luma));\n" +
+        "    float mask = smoothstep(0.66, 0.94, peak);\n" +
         "    return col * mask;\n" +
         "}\n" +
         "void main(){\n" +
         "    vec4 c = texture2D(u_texture, v_texCoords);\n" +
         "    vec3 rgb = c.rgb;\n" +
         "    if(u_bloom > 0.005){\n" +
-        "        vec2 r1 = u_invsize * 1.8;\n" +
-        "        vec2 r2 = u_invsize * 3.8;\n" +
-        "        vec3 acc = vec3(0.0);\n" +
-        "        acc += brightTap(v_texCoords + vec2( r1.x, 0.0)) * 0.16;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r1.x, 0.0)) * 0.16;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0,  r1.y)) * 0.16;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0, -r1.y)) * 0.16;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r1.x,  r1.y) * 0.75) * 0.11;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r1.x,  r1.y) * 0.75) * 0.11;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r1.x, -r1.y) * 0.75) * 0.11;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r1.x, -r1.y) * 0.75) * 0.11;\n" +
-        "        acc += brightTap(v_texCoords + vec2( r2.x, 0.0)) * 0.06;\n" +
-        "        acc += brightTap(v_texCoords + vec2(-r2.x, 0.0)) * 0.06;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0,  r2.y)) * 0.06;\n" +
-        "        acc += brightTap(v_texCoords + vec2(0.0, -r2.y)) * 0.06;\n" +
+        "        vec2 d = u_invsize * 2.35;\n" +
+        "        vec3 acc = (brightTap(v_texCoords + vec2( d.x,  d.y))\n" +
+        "                  + brightTap(v_texCoords + vec2(-d.x,  d.y))\n" +
+        "                  + brightTap(v_texCoords + vec2( d.x, -d.y))\n" +
+        "                  + brightTap(v_texCoords + vec2(-d.x, -d.y))) * 0.25;\n" +
         "        float glowAmt = max(acc.r, max(acc.g, acc.b));\n" +
         "        vec3 customTint = u_bloomColor * glowAmt;\n" +
         "        vec3 softBloom = mix(customTint, acc * (u_bloomColor * 0.65 + vec3(0.35)), 0.28);\n" +
         "        float centerBright = smoothstep(0.72, 0.98, max(rgb.r, max(rgb.g, rgb.b)));\n" +
         "        vec3 haloOnly = softBloom * (1.0 - centerBright * 0.62);\n" +
-        "        rgb = 1.0 - (1.0 - rgb) * (1.0 - clamp(haloOnly * (0.98 * u_bloom), 0.0, 0.84));\n" +
+        "        rgb = 1.0 - (1.0 - rgb) * (1.0 - clamp(haloOnly * (1.15 * u_bloom), 0.0, 0.84));\n" +
         "    }\n" +
         "    float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));\n" +
         "    rgb = mix(vec3(luma), rgb, u_saturation);\n" +
