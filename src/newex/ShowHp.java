@@ -294,18 +294,18 @@ public final class ShowHp {
     static String formatHP(float value) {
         int val = Math.max(0, (int) Math.floor(value));
         if (val >= 1000000) {
-            float m = val / 1000000f;
-            return (m % 1f == 0f ? String.valueOf((int) m) : String.format("%.1f", m)) + "M";
+            int t = Math.round(val / 100000f);
+            return (t % 10 == 0 ? String.valueOf(t / 10) : (t / 10) + "." + (t % 10)) + "M";
         } else if (val >= 1000) {
-            float k = val / 1000f;
-            return (k % 1f == 0f ? String.valueOf((int) k) : String.format("%.1f", k)) + "k";
+            int t = Math.round(val / 100f);
+            return (t % 10 == 0 ? String.valueOf(t / 10) : (t / 10) + "." + (t % 10)) + "k";
         }
         return String.valueOf(val);
     }
 
     static void drawBars() {
         String style = style();
-        if (style.equals("off") || Vars.headless) return;
+        if (style.equals("off") || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
 
         Rect bounds = Core.camera.bounds(rect);
         Groups.unit.intersect(bounds.x, bounds.y, bounds.width, bounds.height, (Cons<Unit>) u -> drawUnit(u, style));

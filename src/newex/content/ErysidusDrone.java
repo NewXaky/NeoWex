@@ -130,8 +130,12 @@ public final class ErysidusDrone {
                 };
             }
 
+            Events.on(mindustry.game.EventType.WorldLoadEvent.class, e -> droneStorage.clear());
+            Events.on(mindustry.game.EventType.UnitDestroyEvent.class, e -> {
+                if (e.unit != null) droneStorage.remove(e.unit.id);
+            });
             Events.run(Trigger.update, () -> {
-                if (Vars.state.isMenu()) return;
+                if (Vars.state.isMenu() || Vars.state.isPaused() || Groups.unit.isEmpty()) return;
 
                 Groups.unit.each(u -> {
                     if (u != null && u.type == droneType && u.isValid()) {

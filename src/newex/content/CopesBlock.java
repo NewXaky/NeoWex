@@ -158,12 +158,9 @@ public final class CopesBlock {
         }
 
         public void applyPerformanceBoost() {
-            Groups.build.each(building -> {
-                if (building == this) return;
-
-                boolean inSquare = Math.abs(building.x - x) <= range && Math.abs(building.y - y) <= range;
-
-                if (inSquare && building.team == team) {
+            Vars.indexer.eachBlock(this, range * 1.42f,
+                b -> b != this && b.team == team && Math.abs(b.x - x) <= range && Math.abs(b.y - y) <= range,
+                building -> {
                     boolean isDrill = building instanceof Drill.DrillBuild;
                     boolean isBeryiDrill = building.block != null
                         && ("newex-beryi-drills".equals(building.block.name) || "beryi-drills".equals(building.block.name));
@@ -176,8 +173,7 @@ public final class CopesBlock {
                             copesBuffCircleEffect.at(building.x, building.y);
                         }
                     }
-                }
-            });
+                });
         }
 
         @Override

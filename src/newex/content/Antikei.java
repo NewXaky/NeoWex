@@ -527,7 +527,9 @@ public final class Antikei {
             }
         }
 
-        Groups.unit.each(Antikei::steerUnit);
+        if (mapHasAntikei && !Vars.state.isPaused()) {
+            Groups.unit.each(Antikei::steerUnit);
+        }
     }
 
     private static void steerUnit(Unit unit) {

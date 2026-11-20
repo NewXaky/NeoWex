@@ -1673,6 +1673,7 @@ public final class CargoDrone {
     }
 
     public static void init() {
+        Events.on(mindustry.game.EventType.WorldLoadEvent.class, event -> droneData.clear());
         Events.on(UnitDestroyEvent.class, event -> {
             if (event.unit != null && droneData.containsKey(event.unit.id)) forget(event.unit.id);
         });
@@ -1680,7 +1681,7 @@ public final class CargoDrone {
     }
 
     static void update() {
-        if (Vars.state.isPaused()) return;
+        if (Vars.state.isPaused() || Groups.unit.isEmpty()) return;
 
         if (!typesCached) {
             normalType = unitType("newex-combat-drone", "combat-drone", "newex-cargo-drone", "cargo-drone");

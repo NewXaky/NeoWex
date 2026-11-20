@@ -1194,6 +1194,30 @@ public final class LoadoutSelection {
         tableDmgOpt.add(btnShortDmg).size(185f, 44f).pad(3f);
         content.add(tableDmgOpt).padTop(3f).row();
 
+        content.add(isEn() ? "[accent]-- AI MEMORY DATA (PVP) --[]" : "[accent]-- DỮ LIỆU LƯU TRỮ A.I (PVP) --[]").padTop(10f).row();
+        final Label aiMemStatus = content.add(
+            PvpBotAI.hasMemoryFile()
+                ? (isEn() ? "[lightgray]Status: [green]Memory file saved[]" : "[lightgray]Trạng thái: [green]Đang có file lưu trữ ký ức A.I[]")
+                : (isEn() ? "[lightgray]Status: No memory file[]" : "[lightgray]Trạng thái: Chưa có file lưu trữ[]")
+        ).padBottom(4f).get();
+        content.row();
+        content.button(isEn() ? "Delete AI Memory File" : "Xóa file lưu trữ A.I", Icon.trash, () -> {
+            BaseDialog confirm = new BaseDialog(isEn() ? "Confirm Delete" : "Xác nhận xóa");
+            confirm.cont.add(isEn()
+                ? "Delete the saved A.I memory file (newex-ai-memory.json)?\n[lightgray]A.I will forget past matches and learned playstyles.[]"
+                : "Bạn có chắc muốn xóa file lưu trữ của A.I (newex-ai-memory.json)?\n[lightgray]A.I sẽ quên các trận trước và lối chơi đã học.[]")
+                .width(340f).wrap().pad(12f).row();
+            confirm.buttons.button(isEn() ? "Cancel" : "Hủy", confirm::hide).size(130f, 48f);
+            confirm.buttons.button(isEn() ? "[scarlet]Delete[]" : "[scarlet]Xóa ngay[]", () -> {
+                boolean had = PvpBotAI.clearMemory();
+                aiMemStatus.setText(had
+                    ? (isEn() ? "[green]Deleted AI memory file![]" : "[green]Đã xóa file lưu trữ của A.I![]")
+                    : (isEn() ? "[lightgray]Cleared (no file found on device).[]" : "[lightgray]Đã đặt lại (không có file trên thiết bị).[]"));
+                confirm.hide();
+            }).size(140f, 48f);
+            confirm.show();
+        }).size(260f, 48f).pad(4f).row();
+
         content.add(isEn() ? "[accent]-- DETAILED INFORMATION --[]" : "[accent]-- THÔNG TIN CHI TIẾT --[]").padTop(10f).row();
         content.button(isEn() ? "View README / Update Log" : "Xem README / Update Log", Icon.info, LoadoutSelection::showReadmeDialog).size(240f, 48f).pad(5f).row();
 

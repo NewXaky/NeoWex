@@ -379,24 +379,25 @@ public final class ElementSystem {
     }
 
     private static void pollTurrets() {
-        Groups.build.each(b -> {
-            if (b == null || !b.isValid()) return;
+        for (int i = 0; i < turretCache.size(); i++) {
+            Building b = turretCache.get(i);
+            if (b == null || !b.isValid()) continue;
             String name = String.valueOf(b.block.name);
 
             final Float aura = AURA_TURRETS.get(name);
             if (aura != null && b instanceof AuraTurret) {
                 final float r = ((AuraTurret) b).affectRadius();
-                if (!(r > 0)) return;
+                if (!(r > 0)) continue;
                 final Building src = b;
                 Units.nearbyEnemies(b.team, b.x - r, b.y - r, r * 2f, r * 2f, u -> {
                     if (u.within(src.x, src.y, r)) hit(src, u, aura);
                 });
             }
-        });
+        }
     }
 
     private static void update() {
-        if (Vars.net.client() || !Vars.state.isGame()) return;
+        if (Vars.net.client() || !Vars.state.isGame() || Vars.state.isPaused()) return;
         float now = Time.time;
         if (now < lastPoll) lastPoll = now;
         if (now < lastCache) lastCache = -999f;

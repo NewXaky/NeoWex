@@ -189,6 +189,38 @@ public final class PvpBotAI {
 
     static String esc(String s) { return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\""); }
 
+    /** Kiểm tra xem file lưu trữ ký ức A.I có tồn tại trên thiết bị không. */
+    public static boolean hasMemoryFile() {
+        try {
+            Fi f = memFile();
+            return f != null && f.exists();
+        } catch (Throwable ignored) { return false; }
+    }
+
+    /** Xóa file lưu trữ ký ức của A.I trên thiết bị và đặt lại bộ nhớ trong RAM về mặc định. */
+    public static boolean clearMemory() {
+        boolean deleted = false;
+        try {
+            Fi f = memFile();
+            if (f != null && f.exists()) deleted = f.delete();
+        } catch (Throwable err) {
+            Log.err("[PvpBotAI] clearMemory failed", err);
+        }
+        mem.matches = 0;
+        mem.playerKills = 0;
+        mem.aiKills = 0;
+        mem.accepted1v2 = 0;
+        mem.afkHelped = 0;
+        mem.learnedUnit = 0;
+        mem.learnedPilot = 0;
+        mem.learnedBarrack = 0;
+        mem.lastPlayer = "";
+        mem.favStyle = "balanced";
+        mem.learnedTurret = "";
+        memLoaded = false;
+        return deleted;
+    }
+
     // ------------------------------------------------------------------ Khởi tạo & Tra cứu
 
     public static void init() {

@@ -955,6 +955,7 @@ public class NewModePvp {
     }
 
     static final String NOTIF_POS_X = "newex-notif-btn-x", NOTIF_POS_Y = "newex-notif-btn-y";
+    static final Color notifTmpCol = new Color();
 
     static void addNotifHud() {
         if (Vars.headless || notifHudBtn != null || Vars.ui == null || Vars.ui.hudGroup == null) return;
@@ -964,7 +965,7 @@ public class NewModePvp {
         btn.update(() -> {
             if (notifUnread > 0) {
                 float pulse = 0.55f + 0.45f * Mathf.sin(Time.time * 0.18f);
-                btn.setColor(Color.gold.cpy().lerp(Color.white, pulse * 0.45f));
+                btn.setColor(notifTmpCol.set(Color.gold).lerp(Color.white, pulse * 0.45f));
                 btn.setText("[gold]★ " + tr("TB", "LOG") + " (" + notifUnread + ")[]");
             } else {
                 btn.setColor(Color.white);
@@ -1288,7 +1289,17 @@ public class NewModePvp {
         EcEnt ent = ecCache.get(team.id);
         if (ent != null && now >= ent.t && now - ent.t < 20) return ent.list;
         final ArrayList<Tile> out = new ArrayList<>();
-        Groups.build.each(b -> { try { if (b.block instanceof CoreBlock && b.team != team && b.team != Team.derelict) out.add(b.tile); } catch (Throwable err) {} });
+        try {
+            for (mindustry.game.Teams.TeamData td : Vars.state.teams.active) {
+                if (td == null || td.team == team || td.team == Team.derelict) continue;
+                for (int i = 0; i < td.cores.size; i++) {
+                    CoreBlock.CoreBuild cb = td.cores.get(i);
+                    if (cb != null && cb.isValid() && cb.tile != null) out.add(cb.tile);
+                }
+            }
+        } catch (Throwable err) {
+            Groups.build.each(b -> { try { if (b.block instanceof CoreBlock && b.team != team && b.team != Team.derelict) out.add(b.tile); } catch (Throwable ignored) {} });
+        }
         EcEnt n = new EcEnt(); n.t = now; n.list = out;
         ecCache.put(team.id, n);
         return out;
@@ -4386,7 +4397,7 @@ public class NewModePvp {
                 if (full && soldSyncT <= 0) { soldSyncT = 60; soldierSync(); }
                 bulletStatT -= Time.delta;
                 if (bulletStatT <= 0) { bulletStatT = 30; bulletStatOn = anyBulletStat(); }
-                if (bulletStatOn) Groups.bullet.each(NewModePvp::eachBullet);
+                if (bulletStatOn && !Groups.bullet.isEmpty()) Groups.bullet.each(NewModePvp::eachBullet);
                 wallT -= Time.delta;
                 if (full && wallT <= 0) { wallT = 30; eachPl(NewModePvp::eachWall); }
                 syncT -= Time.delta;

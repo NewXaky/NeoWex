@@ -497,8 +497,8 @@ public final class Sta {
                 final int perk = field.perkTier;
                 final float hpPercent = (perk == 5) ? 0.05f : 0.01f;
 
-                Groups.unit.each(u -> {
-                    if (u != null && u.isValid() && u.team == vTeam && Mathf.dst(u.x, u.y, fx, fy) <= r) {
+                mindustry.entities.Units.nearby(vTeam, fx - r, fy - r, r * 2f, r * 2f, u -> {
+                    if (u != null && u.isValid() && !u.dead && Mathf.dst2(u.x, u.y, fx, fy) <= r * r) {
                         float baseDmg = 330f;
                         if (perk == 1) baseDmg *= 1.50f;
                         float dmg = baseDmg + (u.maxHealth * hpPercent);

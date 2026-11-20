@@ -212,7 +212,8 @@ public final class DamageDisplay {
         }
         if (Vars.state.isPaused()) return;
         Rect b = Core.camera.bounds(rect);
-        Groups.unit.intersect(b.x, b.y, b.width, b.height, (Cons<Unit>) u -> scanUnit(u, m));
+        final boolean showHeal = m.equals("popup") && Core.settings.getBool("show-heal-popup", true);
+        Groups.unit.intersect(b.x, b.y, b.width, b.height, (Cons<Unit>) u -> scanUnit(u, m, showHeal));
 
         for (int i = popups.size - 1; i >= 0; i--) {
             Popup p = popups.get(i);
@@ -235,7 +236,7 @@ public final class DamageDisplay {
         }
     }
 
-    private static void scanUnit(Unit u, String m) {
+    private static void scanUnit(Unit u, String m, boolean showHeal) {
         if (!u.isValid() || u.health == Float.POSITIVE_INFINITY) return;
         Float last = hpCache.get(u.id);
         if (last != null) {
@@ -246,7 +247,7 @@ public final class DamageDisplay {
                 if (crit) addCrit(u, diff, u.hitSize, true);
                 if (m.equals("eatsuki")) addEat(u, diff, u.hitSize, true, false);
                 else if (m.equals("popup") && !crit) addFloat(u, -diff, u.hitSize, true, false);
-            } else if (diff <= -0.8f && m.equals("popup") && Core.settings.getBool("show-heal-popup", true)) {
+            } else if (diff <= -0.8f && showHeal) {
                 // Chặn lỗi nhảy số hồi máu ảo trên client do đồng bộ snapshot ngay sau khi gây sát thương
                 boolean recentDmg = Vars.net.client() && (Time.time - lastDmgAt.getOrDefault(u.id, -999f) < 28f);
                 if (!recentDmg) addFloat(u, -diff, u.hitSize, true, false);
