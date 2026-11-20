@@ -212,6 +212,8 @@ public class NexMod extends Mod {
         Thermion.init(); // gắn bar + buildType cho block hjson (bài 29b)
 
         NexBlackHole.init(); // lỗ đen + lõi đen đè lên glow (shaders/blackhole.frag)
+        newex.content.NexSounds.init(); // hệ thống 24 âm thanh pháo NeoWex
+        newex.graphics.NexDarkGraphics.init(); // đồ họa viền đen NeoWex
 
         // SplashFx phải khởi tạo SAU CÙNG (JS gốc require splash-fx cuối main.js).
         SplashFx.init();

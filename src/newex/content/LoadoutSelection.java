@@ -1112,6 +1112,9 @@ public final class LoadoutSelection {
         final TextButton btnAutoFps = toggleBtn(isEn() ? "Auto hide effects & Slow-mo x0.8 when FPS < 20" : "Tự ẩn effect & Slow motion x0.8 khi FPS < 20", 0.8f, autoLowFpsSetting);
         content.add(btnAutoFps).size(280f, 48f).pad(4f).row();
 
+        final TextButton btnDarkBorder = toggleBtn(isEn() ? "NeoWex Dark Border Graphics\n[gray](Cinematic black vignette around screen edges)[]" : "Đồ họa viền đen NeoWex\n[gray](Khung viền đen tăng tương phản màn hình)[]", 0.8f, Core.settings.getBool(newex.graphics.NexDarkGraphics.BORDER_KEY, true));
+        content.add(btnDarkBorder).size(280f, 54f).pad(4f).row();
+
         content.add(isEn() ? "[accent]-- ENERGY BLOCK GRAPHICS (REDSTONE / CONDUIT) --[]" : "[accent]-- ĐỒ HỌA KHỐI NĂNG LƯỢNG (REDSTONE / COMDUIK) --[]").padTop(10f).row();
         final TextButton btnRedstoneFx = toggleBtn(isEn() ? "Full Redstone/Conduit Effects\n[gray](Disable to boost FPS when mass building)[]" : "Hiệu ứng Redstone/Comduik đầy đủ\n[gray](Tắt đi để tăng FPS khi xây hàng loạt)[]", 0.8f, Core.settings.getBool("newex-redstone-fx", false));
         content.add(btnRedstoneFx).size(280f, 54f).pad(4f).row();
@@ -1233,6 +1236,7 @@ public final class LoadoutSelection {
             Core.settings.put("newex-max-turrets", (int) Math.floor(slider.getValue()));
             applyFpsOptimizationLevel((int) Math.floor(fpsSlider.getValue()));
             Core.settings.put("newex-auto-low-fps", btnAutoFps.isChecked());
+            Core.settings.put(newex.graphics.NexDarkGraphics.BORDER_KEY, btnDarkBorder.isChecked());
             Core.settings.put("newex-redstone-fx", btnRedstoneFx.isChecked());
 
             int hp = Mathf.clamp(Strings.parseInt(hpField.getText(), 0), 0, 999);
