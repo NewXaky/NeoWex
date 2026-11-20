@@ -108,12 +108,12 @@ final class GearItems {
         d(S_HELM, 0, "Mũ đồng", "Copper Cap", "copper-wall,mender", 0, 2, 7, 1);
         d(S_HELM, 0, "Kính ngắm vụn", "Scrap Scope", "scrap-wall,scrap", 5, 3, 12, 1);
         d(S_HELM, 1, "Mũ chiến binh", "Warrior Helm", "titanium-wall,mender", 0, 3, 7, 3, 8, 1);
-        d(S_HELM, 1, "Kính xạ thủ", "Marksman Visor", "segment,lancer,mender", 5, 4, 7, 4);
+        d(S_HELM, 1, "Kính xạ thủ", "Marksman Visor", "lancer,mender", 5, 4, 7, 4);
         d(S_HELM, 2, "Mũ Korynd", "Korynd Helm", "korynd,thorium-wall", 0, 5, 1, 3, 12, 4, 3, -2);
         d(S_HELM, 3, "Vương miện Sallowyr", "Sallowyr Crown", "sallowyr,force-projector", 7, 8, 8, 5, 5, 4, 4, -3);
         d(S_HELM, 4, "Mão Hư Vô", "Void Diadem", "newex,surge-wall", 7, 12, 5, 8, 12, 6, 0, -3, 4, -3);
         // ---- Giáp
-        d(S_ARMOR, 0, "Áo vải", "Cloth Vest", "mender,copper-wall", 0, 2, 1, 1, 3, -1);
+        d(S_ARMOR, 0, "Áo vải", "Cloth Vest", "copper-wall", 0, 2, 1, 1, 3, -1);
         d(S_ARMOR, 0, "Giáp da", "Leather Armor", "scrap-wall-large,copper-wall-large", 1, 3, 0, 1);
         d(S_ARMOR, 1, "Giáp titan", "Titan Plate", "titanium-wall-large,titanium-wall", 1, 4, 0, 3, 3, -1);
         d(S_ARMOR, 1, "Áo giáp phản lực", "Reactive Vest", "plastanium-wall,thorium-wall", 1, 3, 11, 4, 4, -1);
@@ -127,7 +127,7 @@ final class GearItems {
         d(S_BOOTS, 1, "Giày thúc đẩy", "Thruster Boots", "overflow-gate,titanium-conveyor", 3, 4, 11, 3, 1, -1);
         d(S_BOOTS, 2, "Giày Zoj", "Zoj Boots", "zoj,plastanium-conveyor", 3, 8, 4, 5, 11, 2, 1, -2);
         d(S_BOOTS, 3, "Giày Plasanod", "Plasanod Boots", "plasanod,armored-conveyor", 3, 11, 4, 8, 8, 3, 0, -3, 1, -2);
-        d(S_BOOTS, 4, "Giày Ánh Sáng", "Lightstep Boots", "phase-conveyor,starlight", 3, 16, 4, 12, 8, 5, 11, 3, 2, -4, 0, -4);
+        d(S_BOOTS, 4, "Giày Ánh Sáng", "Lightstep Boots", "starlight,phase-conveyor", 3, 16, 4, 12, 8, 5, 11, 3, 2, -4, 0, -4);
         // ---- Nhẫn
         d(S_RING, 0, "Nhẫn đồng", "Copper Ring", "copper", 6, 2, 8, 1);
         d(S_RING, 0, "Nhẫn chì", "Lead Ring", "lead", 9, 1, 8, 2);
@@ -142,48 +142,48 @@ final class GearItems {
         d(S_CHARM, 1, "Bùa plastanium", "Plastanium Charm", "plastanium", 12, 4, 13, 3, 3, -1);
         d(S_CHARM, 1, "Bùa kích thích", "Stimulant Charm", "pyratite,blast-compound", 4, 4, 13, 4);
         d(S_CHARM, 2, "Bùa Berrybyr", "Berrybyr Charm", "berrybyr,phase-fabric", 13, 8, 12, 4, 8, 3, 0, -2);
-        d(S_CHARM, 3, "Bùa Sallowyr", "Sallowyr Charm", "blast-compound,sallowyr,surge-alloy", 13, 12, 12, 6, 9, 5, 2, -3, 3, -3, 14, 10);
-        d(S_CHARM, 4, "Bùa Pha Lê Hư Vô", "Void Crystal Charm", "obs,newex-obsidis,newex-starlight", 13, 18, 12, 10, 9, 8, 7, 8, 1, -4, 3, -4);
+        d(S_CHARM, 3, "Bùa Sallowyr", "Sallowyr Charm", "sallowyr,surge-alloy", 13, 12, 12, 6, 9, 5, 2, -3, 3, -3, 14, 10);
+        d(S_CHARM, 4, "Bùa Pha Lê Hư Vô", "Void Crystal Charm", "newex-obsidis,newex-starlight", 13, 18, 12, 10, 9, 8, 7, 8, 1, -4, 3, -4);
         // ---- Vật phẩm cửa hàng (chỉ mua, không rơi từ quái đợt)
         shop("Bùa Dịch Chuyển", "Recall Charm", "phase-fabric,phase-conveyor", K_TP, 1,
             "Kỹ năng: đứng yên 3s để dịch chuyển về căn cứ (hồi 30s). Nút hiện ở góc dưới bên phải khi có trong túi hoặc đã lắp.", "Skill: stand still 3s to teleport to base (30s cooldown). Button at bottom-right while in bag or equipped.");
-        shop("Bùa May Mắn", "Lucky Charm", "metaglass,surge-alloy,plastanium", K_LUCK, 3,
+        shop("Bùa May Mắn", "Lucky Charm", "surge-alloy,plastanium", K_LUCK, 3,
             "Nội tại (cần lắp): +10% tỉ lệ kích hoạt rơi vật phẩm từ quái đợt.", "Passive (equip): +10% item drop chance from wave monsters.");
-        shop("Nước Tăng Tốc", "Haste Potion", "overdrive-projector,pyratite", K_HASTE, 1,
+        shop("Nước Tăng Tốc", "Haste Potion", "pyratite,overdrive-projector", K_HASTE, 1,
             "Tiêu hao: +150% tốc độ di chuyển trong 10s. Nút ở góc dưới bên phải khi có trong túi.", "Consumable: +150% move speed for 10s. Button at bottom-right while in bag.");
         // ---- Vật phẩm kỹ năng chế độ Chiến tranh (giữ ID sau 44 để tương thích dữ liệu lưu cũ)
         sk(S_BOOTS, R_EPIC, "Giày Xung Phong", "Charge Boots", "plastanium-conveyor,titanium-conveyor", SK_MOVE_ATK,
             "Kỹ năng: Khi di chuyển, mỗi 5s tăng 1% tấn công (tối đa 15%).",
             "Skill: While moving, +1% attack every 5s (max 15%).", 3, 5, 2, 3);
-        sk(S_WEAPON, R_EPIC, "Song Đao Truy Kích", "Pursuit Blades", "swarmer,swordoder,arc", SK_KILL_SPD,
+        sk(S_WEAPON, R_EPIC, "Song Đao Truy Kích", "Pursuit Blades", "swordoder,arc", SK_KILL_SPD,
             "Kỹ năng: Khi tiêu diệt mục tiêu, nhận tăng tốc độ 50% trong 6s.",
             "Skill: On kill, gain +50% speed for 6s.", 2, 6, 4, 4);
-        sk(S_RING, R_MYTHIC, "Nhẫn Huyết Chú", "Bloodspell Ring", "dormant-cyst,starlight,surge-alloy", SK_KILL_SKILL_ATK,
+        sk(S_RING, R_MYTHIC, "Nhẫn Huyết Chú", "Bloodspell Ring", "starlight,surge-alloy", SK_KILL_SKILL_ATK,
             "Kỹ năng: Khi tiêu diệt mục tiêu, tăng 1% tấn công cho các kỹ năng của unit player (tối đa 500%).",
             "Skill: On kill, +1% attack for player unit skills (max 500%).", 2, 6, 6, 6, 7, 4);
-        sk(S_CHARM, R_LEGEND, "Bùa Tài Lộc", "Fortune Charm", "graphite,surge-alloy,phase-fabric", SK_MIN_PT,
+        sk(S_CHARM, R_LEGEND, "Bùa Tài Lộc", "Fortune Charm", "surge-alloy,phase-fabric", SK_MIN_PT,
             "Kỹ năng: Mỗi phút nhận 1 điểm.",
             "Skill: Gain 1 point every minute.", 8, 3, 12, 3);
         sk(S_ARMOR, R_LEGEND, "Giáp Phục Hận", "Vengeance Armor", "surge-wall-large,thorium-wall-large", SK_DEATH_CDR,
             "Kỹ năng: Khi bị kẻ địch là player tiêu diệt, giảm 50% thời gian hồi sinh và hồi chiêu kỹ năng pilot.",
             "Skill: When killed by an enemy player, -50% respawn time and pilot skill cooldown.", 0, 5, 1, 6);
-        sk(S_WEAPON, R_EPIC, "Kiếm Kết Liễu", "Executioner Blade", "fuse,swordoder,thorium", SK_EXEC50,
+        sk(S_WEAPON, R_EPIC, "Kiếm Kết Liễu", "Executioner Blade", "swordoder,thorium", SK_EXEC50,
             "Kỹ năng: Gây thêm 15% sát thương lên mục tiêu dưới 50% máu.",
             "Skill: Deal +15% bonus damage to targets below 50% HP.", 2, 5, 5, 3);
-        sk(S_ARMOR, R_LEGEND, "Giáp Trọng Lực", "Gravity Plate", "plastanium-wall-large,raykstone", SK_SLOW_ALL1,
+        sk(S_ARMOR, R_LEGEND, "Giáp Trọng Lực", "Gravity Plate", "raykstone,plastanium-wall-large", SK_SLOW_ALL1,
             "Kỹ năng: Khi tốc độ di chuyển dưới 6,9 ô/giây, tất cả chỉ số tăng +1 cấp.",
             "Skill: While move speed is below 6.9 tiles/s, all stats gain +1 level.", 0, 4, 1, 5, 3, -2);
         sk(S_HELM, R_LEGEND, "Khiên Sinh Mệnh", "Lifeline Aegis", "force-projector,phase-fabric", SK_LOWHP_SHIELD,
             "Kỹ năng: Khi máu dưới 50%, nhận 1 lớp khiên bằng 50% máu tối đa (hồi chiêu 45s).",
             "Skill: Below 50% HP, gain a shield equal to 50% max HP (45s cooldown).", 0, 5, 8, 3);
-        sk(S_CHARM, R_EPIC, "Ngọc Tinh Thông", "Mastery Orb", "uranilum-shard,starlight,silicon", SK_SKILL_EXP,
+        sk(S_CHARM, R_EPIC, "Ngọc Tinh Thông", "Mastery Orb", "starlight,silicon", SK_SKILL_EXP,
             "Kỹ năng: Tiêu diệt mục tiêu bằng kỹ năng của unit nhận +150 EXP; khi nhấn dùng kỹ năng nhận +50% EXP trong 10s (không cộng dồn).",
             "Skill: Killing a target with a unit skill grants +150 EXP; casting a skill grants +50% EXP for 10s (non-stacking).", 4, 3, 6, 3);
-        sk(S_RING, R_MYTHIC, "Lõi Quang Tuyến", "Prism Core", "lancer,newex-starlight", SK_CORE_LASER,
+        sk(S_RING, R_MYTHIC, "Lõi Quang Tuyến", "Prism Core", "newex-starlight,lancer", SK_CORE_LASER,
             "Kỹ năng: Giảm mọi chỉ số -1 cấp; đổi lại Lõi bắn 1 tia laser gây 1000 ST/giây (+1% máu tối đa lên unit player, giảm 20% lên unit lính).",
             "Skill: -1 to all stats; in exchange your Core fires a laser dealing 1000 dmg/s (+1% max HP vs player units, -20% vs soldiers).", 2, 1);
         teamBuffDefId = n;
-        sk(S_CHARM, R_MYTHIC, "Ấn Quang Huy", "Radiant Crest", "surge-alloy,newex-berrybyr", SK_TEAM_BUFF,
+        sk(S_CHARM, R_MYTHIC, "Ấn Quang Huy", "Radiant Crest", "newex-berrybyr,surge-alloy", SK_TEAM_BUFF,
             "Kỹ năng: Đánh trúng mục tiêu tích 1 tầng Tinh Quang Cộng Hưởng; đủ 100 tầng giúp cả phe nhận +10% Tấn công & +10% Giáp trong 20s.",
             "Skill: On hit, gain 1 stack of Astral Resonance; at 100 stacks, grants the whole team +10% ATK & +10% Armor for 20s.", 2, 4, 1, 4);
     }

@@ -2468,48 +2468,25 @@ public class NewModePvp {
     }
 
 
-    // ===== PHAN 5: bot ctx (khung), chi so hieu dung, ky nang phi cong Xaky/Neo/Vanhau (JS 426-525, 2789-3129) =====
-    /** JS newBotCtx(): kieu Object cho truong chua ro; tinh chinh o phan bot. `_unit` cua JS -> botUnit. */
-    static final class Seen { int u, pi; }
-    static final class BotMem { String id; int pos; }
-    static final class BotIdle { String id; float t; }
-    static final class BotCtx {
-        Player botPl;
-        float botBuyT, botScanT, botDbgT, botRetreatT, botNoBuyT, botNoAtkT, botPlanT, botBaseT, botIncomeT, botMin, botCoreHit, botCoreHp,
-            botAlertT, botFightT, botMissionT, botRebuildCd, botSkipT, botStuckT, botLastX, botLastY, botIdleT, botSaveCost, botSeenAt = -1e9f, botSeenT,
-            botSwapT0, botScoutT0, botSm = 1, botNoShotT, botResetT0, botDeadT = 60,
-            botPathT, botPathGx, botPathGy, botPathDx = Float.NaN, botPathDy,
-            botEpT, botEncT, botHitT, botFleeT, botRevengeT, botNpT, botEngR, botEngScanT;
-        int botEnc;
-        boolean botEngOn, botHome, botBuyTrip, botAttack, botSwapPend, botScout, botResetPend, botPathOk = true, botPathWait;
-        Unit botSkip, botTarget, botEp, botNp, botHuntU, botEngTgt; Entityc botHitBy; Integer botKillerId;
-        Anch botBase, botEnemyPos; Seen botSeen;
-        final HashMap<Integer, BotMem> botMem = new HashMap<>();
-        final HashMap<Integer, BotIdle> botIdle = new HashMap<>();
-        final HashMap<String, Boolean> botBad = new HashMap<>();
-        final HashMap<String, Float> botBan = new HashMap<>();
-    }
-    static final ArrayList<BotCtx> bots = new ArrayList<>();
-    static BotCtx BC = new BotCtx();
-    static final int BOT_MAX = 8;
+    // ===== PHAN 5: Uy quyen A.I doc lap (PvpBotAI), chi so hieu dung, ky nang phi cong =====
+    static final ArrayList<PvpBotAI.Agent> bots = PvpBotAI.agents;
+    static final int BOT_MAX = PvpBotAI.BOT_MAX;
     static final HashMap<Integer, Integer> soldierOwner = new HashMap<>();
     static boolean pvbOn() { return setBool(KEY_PVB, false); }
     static boolean bvbOn() { return setBool(KEY_BVB, false); }
-    static BotCtx botOf(int id) { for (int i = 0; i < bots.size(); i++) if (bots.get(i).botPl.id == id) return bots.get(i); return null; }
-    static BotCtx botUnitOf(Unit u) { if (u == null) return null; for (int i = 0; i < bots.size(); i++) { Player bp = bots.get(i).botPl; if (bp instanceof BotPlayer && ((BotPlayer) bp)._unit == u) return bots.get(i); } return null; }
-    static boolean isBotId(int id) { return id <= BOT_ID && id > BOT_ID - 64; }
-    static boolean isBotPl(Player p) { return p != null && isBotId(p.id) && botOf(p.id) != null; }
+    static PvpBotAI.Agent botOf(int id) { return PvpBotAI.botOf(id); }
+    static PvpBotAI.Agent botUnitOf(Unit u) { return PvpBotAI.botUnitOf(u); }
+    static boolean isBotId(int id) { return PvpBotAI.isBotId(id); }
+    static boolean isBotPl(Player p) { return PvpBotAI.isBotPl(p); }
+    static void botManage() { PvpBotAI.manage(); }
+    static void botTick() { PvpBotAI.tick(); }
+    static void replaceBot(Player pl) { PvpBotAI.replaceBot(pl); }
     static Player ownerPl(Unit u) {
         if (u == null) return null;
         Player p = null;
         try { p = u.getPlayer(); } catch (Throwable err) {}
-        if (p == null && bots.size() > 0) { BotCtx b = botUnitOf(u); if (b != null) p = b.botPl; }
+        if (p == null && bots.size() > 0) { PvpBotAI.Agent b = botUnitOf(u); if (b != null) p = b.botPl; }
         return p;
-    }
-    static int botSmart() {
-        int n = 0; Team t = BC.botPl.team();
-        for (int i = 0; i < bots.size(); i++) if (bots.get(i).botPl.team() == t) n++;
-        return Math.max(1, n);
     }
 
     // ===== chi so hieu dung =====
@@ -3898,917 +3875,7 @@ public class NewModePvp {
     }
 
 
-    // ===== PHAN 10: Bot A.I (1) - nguoi choi gia, tao/xoa/thay bot, chon muc tieu, di chuyen, ban/hoc pháo (JS 4303-4684) =====
-    /** JS makeBotPl: object gia {id,name,admin,shooting,deathTimer,team(),unit(),uuid()} -> lop con cua Player (khong bao gio add vao Groups). */
-    static final class BotPlayer extends Player {
-        Team _team; Unit _unit;
-        @Override public Team team() { return _team; }
-        @Override public void team(Team t) { _team = t; }
-        @Override public Unit unit() { return _unit; }
-        @Override public void unit(Unit x) {
-            _unit = x;
-            if (x != null) { try { x.controller(new NoAI()); } catch (Throwable err) {} }
-        }
-        @Override public String uuid() { return "bot:" + id; }
-    }
-    static Player makeBotPl(Team team, int id, int k) {
-        BotPlayer o = new BotPlayer();
-        o.id = id;
-        o.name = "[orange]BOT[] NexBot" + (k > 0 ? " " + (k + 1) : "");
-        o.admin = false; o.shooting = false; o.deathTimer = 0; o._team = team; o._unit = null;
-        return o;
-    }
-    static boolean plPending() {
-        for (Player p : Groups.player) if (!seenPl.containsKey(p.id)) return true;
-        return false;
-    }
-    static Team botTeam() {
-        if (plPending()) return null;
-        Seq<Team> tl = pvpTeams();
-        for (int i = 0; i < tl.size; i++) {
-            Team t = tl.get(i);
-            if (t.cores().size == 0) continue;
-            boolean human = false;
-            for (Player p : Groups.player) if (p.team() == t) { human = true; break; }
-            if (!human) return t;
-        }
-        return null;
-    }
-    static void wipeBuilt(St st) {
-        Defs defs = droneDefs();
-        for (int i = 0; i < st.p.size(); i++) if (st.p.get(i) >= 0) removeTurret(st.p.get(i), defs.map.get(st.d.get(i)));
-    }
-    static void createBot(Team team) {
-        int k = 0;
-        while (botOf(BOT_ID - k) != null) k++;
-        BotCtx ctx = new BotCtx();
-        ctx.botPl = makeBotPl(team, BOT_ID - k, k);
-        bots.add(ctx);
-        Player pl = ctx.botPl;
-        seenPl.put(pl.id, team);
-        St st = bind(pl);
-        int[] pils = {PILOT_XIKI, PILOT_XAKY, PILOT_HIST};
-        st.pi = pils[k % pils.length];
-        St src = null;
-        for (int i = 0; i < bots.size(); i++) {
-            if (bots.get(i) == ctx || bots.get(i).botPl.team() != team) continue;
-            St s0 = byId.get(bots.get(i).botPl.id);
-            if (s0 != null && (src == null || s0.lv > src.lv)) src = s0;
-        }
-        if (src != null) { st.lv = src.lv; st.s = src.s.clone(); st.b = src.b; st.pts = (int) Math.floor(src.pts * 0.5); changed(); }
-        if (bots.size() == 1) toastAll("[#" + team.color + "]■[] " + tr("[accent]Bot NexBot giữ chỗ đối thủ - có người vào sẽ nhường chỗ.", "[accent]NexBot holds the opponent slot - it leaves when a player joins."), 4f);
-    }
-    static void removeBot(boolean wipe, BotCtx ctx) {
-        if (ctx == null) ctx = BC;
-        Player p = ctx.botPl;
-        if (p == null) return;
-        bots.remove(ctx);
-        St st = byId.get(p.id);
-        if (wipe && st != null) { try { wipeBuilt(st); } catch (Throwable err) {} }
-        Unit u = ((BotPlayer) p)._unit;
-        try { if (u != null && u.isValid()) Call.unitDespawn(u); } catch (Throwable err) { try { u.remove(); } catch (Throwable err2) {} }
-        byId.remove(p.id); seenPl.remove(p.id); prevUnit.remove(p.id); store.remove(p.uuid());
-        if (BC == ctx) BC = new BotCtx();
-        changed();
-    }
-    static void replaceBot(Player pl) {
-        if (bots.size() == 0) return;
-        BotCtx ctx = bots.get(0);
-        Player bp = ctx.botPl;
-        St bst = byId.get(bp.id), hst = bind(pl);
-        boolean inherit = bst != null && hst.lv <= 1 && hst.exp <= 0 && hst.d.size() == 0;
-        if (inherit) {
-            byId.put(pl.id, bst);
-            store.put(getUid(pl), bst);
-            for (int i = 0; i < bst.p.size(); i++) {
-                if (!(bst.p.get(i) >= 0)) continue;
-                Building b = Vars.world.build(bst.p.get(i));
-                if (b != null) hostOwner.put(b.id, pl.id);
-            }
-        }
-        removeBot(!inherit, ctx);
-    }
-    static ArrayList<Team> botDesired() {
-        ArrayList<Team> out = new ArrayList<>();
-        Seq<Team> tl = pvpTeams();
-        if (bvbOn()) { for (int i = 0; i < tl.size; i++) if (tl.get(i).cores().size > 0) out.add(tl.get(i)); return out; }
-        int n = Groups.player.size();
-        if (n < 1) return out;
-        if (pvbOn()) {
-            Team bt = bots.size() > 0 ? bots.get(0).botPl.team() : null;
-            if (bt == null || bt.cores().size == 0) {
-                Team ht = pvbHumanTeam();
-                bt = null;
-                for (int i = 0; i < tl.size; i++) if (tl.get(i) != ht && tl.get(i).cores().size > 0) { bt = tl.get(i); break; }
-                if (bt == null) bt = claimCore();
-            }
-            if (bt != null) for (int i = 0; i < Math.min(n, BOT_MAX); i++) out.add(bt);
-            return out;
-        }
-        if (n != 1) return out;
-        if (bots.size() > 0) { out.add(bots.get(0).botPl.team()); return out; }
-        Team t = botTeam();
-        if (t == null) t = claimCore();
-        if (t == null) logOnce("botnoteam", "bot: không có đội/lõi trống để đặt bot (cores: " + derelictCores().size() + ")", true);
-        else out.add(t);
-        return out;
-    }
-    static void botManage() {
-        if (!isFull() || Vars.state.gameOver || winning) { logOnce("botinactive", "bot: chế độ chưa active (isFull=" + isFull() + ")", true); return; }
-        if (plPending()) return;
-        ArrayList<Team> want = botDesired();
-        HashMap<Integer, Integer> need = new HashMap<>();
-        for (Team t : want) need.merge(t.id, 1, Integer::sum);
-        for (int i = bots.size() - 1; i >= 0; i--) {
-            Team t = bots.get(i).botPl.team();
-            Integer c = need.get(t.id);
-            if (c != null && c > 0) need.put(t.id, c - 1); else removeBot(true, bots.get(i));
-        }
-        for (Map.Entry<Integer, Integer> e : need.entrySet()) {
-            Team tm = Team.get(e.getKey());
-            for (int k = 0; k < e.getValue(); k++) { createBot(tm); logOnce("botmade" + tm.id + "_" + k, "bot đã vào đội " + tm.name, true); }
-        }
-    }
-
-    static final float BOT_PLAYER_AGGRO = 900;
-    static boolean botEnemyOk(Unit e, Unit u) { return e != null && e != BC.botSkip && e.isValid() && !e.dead && e.team != u.team; }
-    static final class Pw { Unit u, best; CoreBlock.CoreBuild core; Team wt; float bd, pr2; }
-    static Unit pickWave(Unit u, CoreBlock.CoreBuild core, float pr) {
-        final Pw c = new Pw();
-        c.u = u; c.core = core; c.wt = Vars.state.rules.waveTeam; c.best = null; c.bd = BOT_LEASH * BOT_LEASH;
-        Groups.unit.each(e -> {
-            if (!botEnemyOk(e, c.u)) return;
-            boolean isWave = e.team == c.wt, isSold = !isWave && soldierOwner.containsKey(e.id);
-            if (!isWave && !isSold) return;
-            if (Mathf.dst2(c.core.x, c.core.y, e.x, e.y) > BOT_LEASH * BOT_LEASH) return;
-            float d = Mathf.dst2(c.u.x, c.u.y, e.x, e.y);
-            if (isSold) { if (d > BOT_PLAYER_AGGRO * BOT_PLAYER_AGGRO) return; d *= 0.6f; }
-            d *= 0.5f + 0.5f * Math.max(0f, Math.min(1f, e.health / Math.max(1f, e.maxHealth)));
-            if (d < c.bd) { c.bd = d; c.best = e; }
-        });
-        float pr0 = pr > 0 ? pr : BOT_PLAYER_AGGRO;
-        c.pr2 = pr0 * pr0;
-        eachPl(p -> {
-            Unit e = p.unit();
-            if (e == null || !botEnemyOk(e, c.u) || e.team == c.wt) return;
-            float d = Mathf.dst2(c.u.x, c.u.y, e.x, e.y);
-            if (d <= c.pr2 && d < c.bd) { c.bd = d; c.best = e; }
-        });
-        return c.best;
-    }
-    static boolean botUnfavorable(Unit u) {
-        float hp = u.health + u.shield;
-        if (u.health / u.maxHealth < 0.3f) return true;
-        float myDps = Math.max(1f, u.type.estimateDps());
-        final float[] acc = new float[3];
-        Groups.unit.each(e -> {
-            if (e.team == u.team || e.dead || !e.isValid() || Mathf.dst2(u.x, u.y, e.x, e.y) > 450 * 450) return;
-            if (e.team == Team.derelict) return;
-            acc[0] += e.health + e.shield; acc[1] += Math.max(1f, e.type.estimateDps()); acc[2]++;
-        });
-        if (acc[2] == 0) return false;
-        float tDie = hp / acc[1], tKill = acc[0] / myDps;
-        return tDie < tKill * 0.8f;
-    }
-    /** Ket qua getPathPosition (API v157 chua kiem; phan xa). null = khong goi duoc. */
-    static final class PathRes { boolean unreachable, move; float dx, dy; }
-    static PathRes pathQuery(Unit u, Vec2 goal) {
-        try {
-            if (!pathMTried) { pathMTried = true; for (java.lang.reflect.Method m : Vars.controlPath.getClass().getMethods()) if (m.getName().equals("getPathPosition") && m.getParameterCount() == 3) { pathM = m; break; } }
-            if (pathM == null) return null;
-            Object r = pathM.invoke(Vars.controlPath, u, goal, goal);
-            if (r == null) return null;
-            PathRes p = new PathRes();
-            p.unreachable = fldB(r, "unreachable", false); p.move = fldB(r, "move", false);
-            Object d = fld(r, "dest", null);
-            if (d instanceof Vec2) { p.dx = ((Vec2) d).x; p.dy = ((Vec2) d).y; }
-            return p;
-        } catch (Throwable err) { logOnce("botpath", "controlPath lỗi, dùng đi thẳng: " + err, false); return null; }
-    }
-    static boolean botGo(Unit u, float tx, float ty, float stopDist) {
-        Vec2 v = Tmp.v1;
-        float dist = Mathf.dst(u.x, u.y, tx, ty);
-        if (dist <= stopDist) { v.setZero(); u.movePref(v); return true; }
-        BC.botPathT -= Time.delta;
-        boolean needQuery = BC.botPathT <= 0 || Float.isNaN(BC.botPathDx) || Math.abs(tx - BC.botPathGx) > 24 || Math.abs(ty - BC.botPathGy) > 24;
-        if (needQuery) {
-            BC.botPathT = 6; BC.botPathGx = tx; BC.botPathGy = ty; BC.botPathOk = true; BC.botPathWait = false; BC.botPathDx = tx; BC.botPathDy = ty;
-            botGoal.set(tx, ty);
-            PathRes r = pathQuery(u, botGoal);
-            if (r != null) {
-                if (r.unreachable) BC.botPathOk = false;
-                else if (r.move) { BC.botPathDx = r.dx; BC.botPathDy = r.dy; }
-                else BC.botPathWait = true;
-            }
-        }
-        if (BC.botPathWait) { v.setZero(); u.movePref(v); return true; }
-        v.set(BC.botPathDx - u.x, BC.botPathDy - u.y);
-        if (v.len() > 0.1f) v.setLength(u.speed()); else v.setZero();
-        u.movePref(v);
-        return BC.botPathOk;
-    }
-    static void spawnBotUnit() {
-        CoreBlock.CoreBuild core = BC.botPl.team().core();
-        if (core == null) return;
-        St st = bind(BC.botPl);
-        UnitType t = tierType(activeTier(st));
-        Pos pos = corePosOf(core, t);
-        if (pos == null) return;
-        Unit nu = t.create(BC.botPl.team());
-        nu.set(pos.x, pos.y);
-        nu.rotation = pos.rot;
-        try { nu.spawnedByCore = false; } catch (Throwable err) {}
-        nu.add();
-        BC.botPl.unit(nu);
-        prevUnit.put(BC.botPl.id, nu);
-        spawnFx(pos.x, pos.y);
-    }
-    static int botBagCount(St st) { int n = 0; for (int i = 0; i < st.p.size(); i++) if (st.p.get(i) == IN_BAG) n++; return n; }
-
-    static final int BOT_IDLE_SELL = 5400, BOT_BAN_TICKS = 7200;
-    static void botSellIdle(Player pl, St st) {
-        if (st.p.size() != st.d.size()) return;
-        Defs defs = droneDefs();
-        float now = Time.time; boolean sold = false;
-        for (int i = st.d.size() - 1; i >= 0; i--) {
-            int pos = st.p.get(i);
-            if (!(pos >= 0)) continue;
-            Def d = defs.map.get(st.d.get(i));
-            Building b = Vars.world.build(pos);
-            if (d == null || b == null || b.block != d.block) continue;
-            boolean act = true;
-            if (b instanceof Turret.TurretBuild) { Turret.TurretBuild tb = (Turret.TurretBuild) b; try { act = tb.isShooting() || tb.target != null; } catch (Throwable err) {} } // JS: b.isShooting() tren khoi khong phai phao nem loi -> act giu true
-            BotIdle r = BC.botIdle.get(pos);
-            if (r == null || !r.id.equals(d.id) || act) { BotIdle n = new BotIdle(); n.id = d.id; n.t = now; BC.botIdle.put(pos, n); continue; }
-            if (now - r.t < Math.max(2400f, BOT_IDLE_SELL - 600 * (BC.botSm - 1))) continue;
-            st.pts += turretSellValue(st, d);
-            BC.botBad.put(b.tile.x + "," + b.tile.y, true);
-            BC.botBan.put(d.id, now + BOT_BAN_TICKS);
-            removeTurret(pos, d);
-            st.d.remove(i); st.p.remove(i);
-            BC.botIdle.remove(pos);
-            sold = true;
-            Log.info("[NexPvp] bot bán " + d.id + " (không bắn), điểm=" + st.pts);
-        }
-        if (sold) { BC.botMem.clear(); BC.botNoBuyT = 0; changed(); }
-    }
-
-    static final class LearnPos { String id; int dx, dy; }
-    static final class Learn { final HashMap<String, Integer> b = new HashMap<>(), e = new HashMap<>(); final ArrayList<LearnPos> pos = new ArrayList<>(); }
-    static Learn botLearn(Player pl) {
-        Learn out = new Learn();
-        BotCtx bo = botOf(pl.id);
-        final Integer kid = bo != null ? bo.botKillerId : null;
-        final Player[] best = {null}; final int[] bn = {-1};
-        eachPl(p -> {
-            if (p == pl || p.team() == pl.team() || p.team() == Vars.state.rules.waveTeam) return;
-            St s0 = byId.get(p.id);
-            if (kid != null && p.id == kid && s0 != null) { best[0] = p; bn[0] = 1000000000; return; }
-            if (s0 != null && s0.d.size() > bn[0]) { bn[0] = s0.d.size(); best[0] = p; }
-        });
-        if (best[0] == null) return out;
-        St s1 = byId.get(best[0].id);
-        CoreBlock.CoreBuild ec = best[0].team().core();
-        for (int i = 0; i < s1.d.size(); i++) {
-            String id = s1.d.get(i);
-            int pp = s1.p.get(i);
-            if (pp == EQUIPPED) out.e.merge(id, 1, Integer::sum);
-            else if (pp >= 0) {
-                out.b.merge(id, 1, Integer::sum);
-                Building b = Vars.world.build(pp);
-                if (b != null && ec != null) { LearnPos lp = new LearnPos(); lp.id = id; lp.dx = b.tile.x - ec.tile.x; lp.dy = b.tile.y - ec.tile.y; out.pos.add(lp); }
-            }
-        }
-        return out;
-    }
-    static final int[][] BOT_JIT = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {2, 0}, {-2, 0}, {0, 2}, {0, -2}};
-    static int[] botLearnSpot(CoreBlock.CoreBuild core, ArrayList<Tile> ec, Def d, Learn L) {
-        for (int sg = -1; sg <= 1; sg += 2)
-            for (LearnPos lp : L.pos) {
-                if (!lp.id.equals(d.id)) continue;
-                for (int[] j : BOT_JIT) {
-                    int tx = core.tile.x + sg * lp.dx + j[0], ty = core.tile.y + sg * lp.dy + j[1];
-                    if (canBuildAt(core, ec, d.block, tx, ty)) return new int[]{tx, ty};
-                }
-            }
-        return null;
-    }
-    /** Can: builtCount(St) (phan Cua hang) va botFindSpot(Player, Def) -> int[]{x,y} (phan bot 2). */
-    static boolean botRebuild(Player pl) {
-        St st = bind(pl);
-        CoreBlock.CoreBuild core = pl.team().core();
-        if (core == null || st.p.size() != st.d.size()) return true;
-        Defs defs = droneDefs();
-        ArrayList<Tile> ec = enemyCores(core.team);
-        Learn L = botLearn(pl);
-        boolean ok = true, did = false;
-        for (int i = 0; i < st.d.size(); i++) {
-            if (st.p.get(i) != IN_BAG) continue;
-            if (builtCount(st) >= maxBuilt()) break;
-            Def d = defs.map.get(st.d.get(i));
-            if (d == null) continue;
-            int pos = -1;
-            BotMem m = BC.botMem.get(i);
-            if (m != null && m.id.equals(st.d.get(i)) && m.pos >= 0) { Tile tl = Vars.world.tile(m.pos); if (tl != null) pos = placeTurret(pl, d, tl.x, tl.y); }
-            if (pos < 0) {
-                int[] sp = botLearnSpot(core, ec, d, L);
-                if (sp == null) sp = botFindSpot(pl, d);
-                if (sp != null) pos = placeTurret(pl, d, sp[0], sp[1]);
-            }
-            if (pos >= 0) { st.p.set(i, pos); did = true; } else ok = false;
-        }
-        if (did) changed();
-        return ok;
-    }
-
-
-    // ===== PHAN 11: Bot A.I (2) - vong lap bot, nhin/doi theo dich, ve nha, duoi/ne (JS 4686-5030) =====
-    static final float BOT_COMBAT_R = 650, BOT_SEE_R = 640, BOT_NOSHOT_RESET = 2700, BOT_SCOUT_EVERY = 5400, BOT_ENG_SCAN = 300;
-    static Unit botPickDefend(Unit u, CoreBlock.CoreBuild core) {
-        final Unit[] best = {null}, pb = {null};
-        final float[] bd = {1e12f}, pbd = {1e12f};
-        final float corePad = core.block.size * Vars.tilesize / 2f + 48;
-        Groups.unit.each(e -> {
-            if (!botEnemyOk(e, u) || e.team == Team.derelict) return;
-            float d = Mathf.dst2(core.x, core.y, e.x, e.y), lim = e.range() + corePad;
-            if (d > lim * lim) return;
-            boolean isP = e.isPlayer() || (bots.size() > 0 && botUnitOf(e) != null);
-            if (isP) { if (d < pbd[0]) { pbd[0] = d; pb[0] = e; } }
-            else if (d < bd[0]) { bd[0] = d; best[0] = e; }
-        });
-        return pb[0] != null ? pb[0] : best[0];
-    }
-    static void botTick() {
-        for (int i = 0; i < bots.size(); i++) {
-            BC = bots.get(i);
-            try { botTickOne(); } catch (Throwable err) { logOnce("bottick", "bot tick failed: " + err, false); }
-        }
-    }
-    static float[] botGearRanges(Player pl, Unit u) {
-        St st = byId.get(pl.id);
-        float mx = 0, mn = 1e18f;
-        if (st != null) for (Def d : equipList(st, droneDefs())) { float r = turretRange(d); if (r > mx) mx = r; if (r < mn) mn = r; }
-        if (mx <= 0) { try { mx = u.type.maxRange; } catch (Throwable err) {} mn = mx; }
-        return new float[]{Math.max(48f, mx), Math.max(48f, mn)};
-    }
-    static void botTickOne() {
-        Player pl = BC.botPl;
-        BC.botSm = botSmart();
-        if (pl == null || !isFull() || Vars.state.isPaused()) return;
-        final CoreBlock.CoreBuild core = pl.team().core();
-        if (core == null) return;
-        BotPlayer bpl = (BotPlayer) pl;
-        Unit u = bpl._unit;
-        if (u != null && (!u.isValid() || u.dead)) {
-            bpl._unit = null; u = null; BC.botTarget = null;
-            St st0 = bind(pl);
-            BC.botDeadT = Math.max(60, RESPAWN_SEC[Math.min(RESPAWN_SEC.length, Math.max(1, activeTier(st0))) - 1] * 60);
-        }
-        if (u == null) { BC.botDeadT -= Time.delta; if (BC.botDeadT <= 0) spawnBotUnit(); return; }
-        float[] gr = botGearRanges(pl, u);
-        float maxR = gr[0], minR = gr[1];
-        BC.botDbgT -= Time.delta;
-        if (BC.botDbgT <= 0) {
-            BC.botDbgT = 600;
-            final int[] acc = {0, 99999};
-            final Team wt0 = Vars.state.rules.waveTeam;
-            Groups.unit.each(e -> { if (e.team == wt0 && !e.dead) { acc[0]++; int dd = Math.round(Mathf.dst(core.x, core.y, e.x, e.y)); if (dd < acc[1]) acc[1] = dd; } });
-            St st1 = bind(pl);
-            Log.info("[NexPvp] botdbg unit=" + u.type.name + " pos=" + u.tileX() + "," + u.tileY() + " core=" + core.tileX() + "," + core.tileY() + " wave=" + Vars.state.wave + " waveUnits=" + acc[0] + " nearest=" + acc[1]
-                + " target=" + (BC.botTarget != null) + " pts=" + st1.pts + " turrets=" + builtCount(st1) + " ctrl=" + u.controller().getClass().getSimpleName() + " paused=" + Vars.state.isPaused());
-        }
-        BC.botScanT -= Time.delta;
-        if (BC.botTarget == null || !BC.botTarget.isValid() || BC.botTarget.dead || BC.botScanT <= 0) {
-            if (BC.botScanT <= 0) BC.botScanT = 20;
-            Unit nt = BC.botFightT > 0 ? botPickDefend(u, core) : null;
-            if (nt == null) nt = pickWave(u, core, maxR);
-            BC.botTarget = nt;
-            if (nt != null) logOnce("botfound", "bot: thấy unit wave " + nt.type.name + " cách " + Math.round(Mathf.dst(core.x, core.y, nt.x, nt.y)), true);
-        }
-        BC.botSeenT -= Time.delta;
-        if (BC.botSeenT <= 0) { BC.botSeenT = 30; try { botSee(u); } catch (Throwable err) { logOnce("botsee", "bot see failed: " + err, false); } }
-        boolean shotNow = false;
-        try { shotNow = u.isShooting(); } catch (Throwable err) {}
-        if (shotNow || BC.botAttack || BC.botScout || BC.botHome || BC.botBuyTrip || BC.botFightT > 0 || BC.botSwapPend || BC.botResetPend) BC.botNoShotT = 0;
-        else if ((BC.botNoShotT += Time.delta) > BOT_NOSHOT_RESET) { BC.botNoShotT = 0; BC.botResetPend = true; BC.botResetT0 = Time.time; Log.info("[NexPvp] bot không bắn gì, về nhà biến về để reset"); }
-        BC.botIncomeT += Time.delta;
-        if (BC.botIncomeT >= 3600) {
-            BC.botIncomeT = 0; BC.botMin++;
-            St stI = bind(pl);
-            stI.pts += Math.round((1 + (float) Math.floor(BC.botMin / 5)) * (1 + 0.35f * (BC.botSm - 1)));
-            changed();
-        }
-        BC.botIdleT -= Time.delta;
-        if (BC.botIdleT <= 0) { BC.botIdleT = 60; try { botSellIdle(pl, bind(pl)); } catch (Throwable err) { logOnce("botidle", "bot idle sell failed: " + err, false); } }
-        if (BC.botSkipT > 0) { BC.botSkipT -= Time.delta; if (BC.botSkipT <= 0) BC.botSkip = null; }
-        if (BC.botRetreatT > 0) BC.botRetreatT -= Time.delta;
-        if (BC.botNoBuyT > 0) BC.botNoBuyT -= Time.delta;
-        if (BC.botNoAtkT > 0) BC.botNoAtkT -= Time.delta;
-        if (BC.botFightT > 0) BC.botFightT -= Time.delta;
-        if (BC.botRebuildCd > 0) BC.botRebuildCd -= Time.delta;
-
-        St stM = bind(pl);
-        for (int mi = 0; mi < stM.p.size(); mi++) if (stM.p.get(mi) >= 0) { BotMem bm = new BotMem(); bm.id = stM.d.get(mi); bm.pos = stM.p.get(mi); BC.botMem.put(mi, bm); }
-        ShieldRec shR = coreShield.get(core.id);
-        int shN = shR != null ? shR.hitN : 0;
-        if ((BC.botCoreHp > 0 && core.health < BC.botCoreHp - 0.5f) || shN != BC.botCoreHit) {
-            if (BC.botFightT <= 0) BC.botAlertT = 900; else BC.botFightT = 900;
-        }
-        BC.botCoreHit = shN;
-        BC.botCoreHp = core.health;
-        boolean needRb = BC.botRebuildCd <= 0 && botBagCount(stM) > 0 && builtCount(stM) < maxBuilt();
-        if (BC.botAlertT > 0 || needRb) {
-            BC.botMissionT += Time.delta;
-            if (BC.botMissionT > 1500) { BC.botMissionT = 0; BC.botAlertT = 0; BC.botRebuildCd = 1800; }
-            else {
-                BC.botBaseT -= Time.delta;
-                if (BC.botBase == null || BC.botBaseT <= 0) { BC.botBase = botFindBase(u, core); BC.botBaseT = 120; }
-                u.controlWeapons(false, false);
-                botGo(u, BC.botBase != null ? BC.botBase.x : core.x, BC.botBase != null ? BC.botBase.y : core.y, 8);
-                if (botIsBase(u)) {
-                    if (needRb && !botRebuild(pl)) BC.botRebuildCd = 1800;
-                    boolean wasAlert = BC.botAlertT > 0;
-                    if (botRecall(pl, u, core)) { BC.botMissionT = 0; BC.botAlertT = 0; if (wasAlert) BC.botFightT = 900; }
-                }
-                BC.botLastX = u.x; BC.botLastY = u.y;
-                return;
-            }
-        } else BC.botMissionT = 0;
-        float hpf = u.health / u.maxHealth;
-        Unit t = BC.botTarget;
-        boolean combat = t != null && t.isValid() && !t.dead && Mathf.dst(u.x, u.y, t.x, t.y) <= BOT_COMBAT_R;
-
-        BC.botEpT -= Time.delta;
-        if (BC.botEpT <= 0) { BC.botEpT = 20; BC.botEp = botNearestPlayer(u); }
-        Unit ep = BC.botEp;
-        boolean epNear = ep != null && ep.isValid() && !ep.dead && Mathf.dst(u.x, u.y, ep.x, ep.y) <= BOT_SEE_R * 0.7f;
-        if (BC.botEncT > 0) BC.botEncT -= Time.delta;
-        if (BC.botEnc == 3 && (BC.botHuntU == null || !BC.botHuntU.isValid() || BC.botHuntU.dead || hpf < 0.15f)) { BC.botEnc = 0; BC.botHuntU = null; BC.botEncT = 600; }
-        if (BC.botEnc != 3 && BC.botEncT <= 0 && ep != null && (epNear || BC.botHitT > 0)) {
-            double rr = Math.random();
-            BC.botEnc = rr < 0.2 ? 1 : (rr < 0.5 ? 2 : 3);
-            BC.botEncT = BC.botEnc == 2 ? 1800 : 3600;
-            if (BC.botEnc == 1) { BC.botRetreatT = 240; BC.botFleeT = Math.max(BC.botFleeT, 300f); }
-            else if (BC.botEnc == 3) { BC.botHuntU = ep; BC.botRetreatT = 0; BC.botFleeT = 0; }
-        }
-        boolean quiet = BC.botEnc == 3 || (BC.botEnc == 2 && BC.botEncT > 0);
-        if (combat && botUnfavorable(u) && !(quiet && epNear)) { BC.botRetreatT = 240; BC.botFleeT = Math.max(BC.botFleeT, 300f); }
-        if (BC.botHitT > 0) {
-            BC.botHitT -= Time.delta;
-            if (BC.botEnc == 1) { if (BC.botRetreatT < 120) BC.botRetreatT = 120; BC.botFleeT = 600; }
-        } else if (BC.botRevengeT > 0) BC.botRevengeT -= Time.delta;
-        if (BC.botFleeT > 0) BC.botFleeT -= Time.delta;
-        BC.botPlanT -= Time.delta;
-        if (BC.botPlanT <= 0) { BC.botPlanT = Math.max(45f, 120 - 20 * (BC.botSm - 1)); botPlan(pl, u, core, combat, hpf); }
-        boolean onBase = botIsBase(u);
-        if (BC.botHome || BC.botRetreatT > 0 || BC.botFleeT > 0 || BC.botBuyTrip) {
-            BC.botBaseT -= Time.delta;
-            if (BC.botBase == null || BC.botBaseT <= 0) { BC.botBase = botFindBase(u, core); BC.botBaseT = 120; }
-        }
-        float bx = BC.botBase != null ? BC.botBase.x : core.x, by = BC.botBase != null ? BC.botBase.y : core.y;
-
-        if (BC.botEnc == 3 && !BC.botHome && BC.botHuntU != null) {
-            botChase(u, BC.botHuntU, maxR, minR);
-        } else if (BC.botHome || BC.botRetreatT > 0 || BC.botFleeT > 0) {
-            botGo(u, bx, by, 8);
-            if (onBase && ((BC.botHome && (hpf < 0.7f || BC.botSwapPend || BC.botResetPend)) || BC.botFleeT > 0 || BC.botRetreatT > 0) && botRecall(pl, u, core)) return;
-            BC.botNpT -= Time.delta;
-            if (BC.botNpT <= 0) { BC.botNpT = 10; BC.botNp = botNearestPlayer(u); }
-            Unit at = (BC.botNp != null && BC.botNp.isValid() && !BC.botNp.dead) ? BC.botNp : t;
-            if (at != null && at.isValid() && !at.dead && Mathf.dst(u.x, u.y, at.x, at.y) <= maxR) { u.lookAt(at.x, at.y); u.aim(at.x, at.y); u.controlWeapons(true, true); }
-            else u.controlWeapons(false, false);
-        } else if (combat) {
-            botChase(u, t, maxR, minR);
-        } else if (BC.botBuyTrip) {
-            botGo(u, bx, by, 8);
-            u.controlWeapons(false, false);
-            if (onBase) {
-                BC.botBuyT -= Time.delta;
-                if (BC.botBuyT <= 0) { BC.botBuyT = 60; if (!botShop(pl)) BC.botNoBuyT = 1800; }
-            }
-        } else if (BC.botAttack && BC.botEnemyPos != null) {
-            float gx = BC.botEnemyPos.x, gy = BC.botEnemyPos.y;
-            Unit ge = botEnemyUnit(u);
-            if (ge != null) { gx = ge.x; gy = ge.y; }
-            float dist = Mathf.dst(u.x, u.y, gx, gy);
-            if (!botGo(u, gx, gy, maxR * 0.75f)) { BC.botAttack = false; BC.botNoAtkT = 1800; }
-            u.lookAt(gx, gy); u.aim(gx, gy);
-            u.controlWeapons(true, dist <= maxR);
-        } else if (BC.botScout) {
-            Unit ge = botEnemyUnit(u);
-            if (ge == null || !botGo(u, ge.x, ge.y, BOT_SEE_R * 0.8f)) { BC.botScout = false; BC.botSeenAt = Time.time - BOT_SCOUT_EVERY + 1800; }
-            u.controlWeapons(false, false);
-        } else if (t != null) {
-            botChase(u, t, maxR, minR);
-        } else {
-            botGo(u, core.x, core.y, BOT_HOME_R);
-            u.controlWeapons(false, false);
-        }
-        BC.botLastX = u.x; BC.botLastY = u.y;
-    }
-
-    static Seen botSwapWant(St st) {
-        if (BC.botSeen == null || st.lv < FREE_SWITCH_LEVEL) return null;
-        int k = Math.min(TIER_MAX, Math.max(1, BC.botSeen.u));
-        int nu = (k == tierCap(st.lv)) ? 0 : k;
-        int pi = BC.botSeen.pi;
-        if (pi == PILOT_EMPIX && st.lv < EMPIX_MIN_LEVEL) pi = st.pi;
-        if (nu == st.u && pi == st.pi) return null;
-        Seen w = new Seen(); w.u = nu; w.pi = pi;
-        return w;
-    }
-    static void botSee(Unit u) {
-        final Seen[] seen = {null};
-        eachPl(p -> {
-            if (seen[0] != null || p == BC.botPl || p.team() == u.team || p.team() == Vars.state.rules.waveTeam) return;
-            Unit e = p.unit(); St s0 = byId.get(p.id);
-            if (e == null || e.dead || !e.isValid() || s0 == null) return;
-            if (Mathf.dst2(u.x, u.y, e.x, e.y) > BOT_SEE_R * BOT_SEE_R) return;
-            Seen s = new Seen(); s.u = activeTier(s0); s.pi = s0.pi;
-            seen[0] = s;
-        });
-        if (seen[0] == null) return;
-        BC.botSeen = seen[0];
-        BC.botSeenAt = Time.time;
-        BC.botScout = false;
-        if (!BC.botSwapPend && botSwapWant(bind(BC.botPl)) != null) { BC.botSwapPend = true; BC.botSwapT0 = Time.time; }
-    }
-    static void botApplySwap(Player pl) {
-        if (!BC.botSwapPend) return;
-        BC.botSwapPend = false;
-        St st = bind(pl);
-        Seen w = botSwapWant(st);
-        if (w == null) return;
-        st.u = w.u; st.pi = w.pi;
-        changed();
-        Log.info("[NexPvp] bot đổi theo địch: unit=" + activeTier(st) + " pilot=" + st.pi);
-    }
-    static boolean botRecall(Player pl, Unit u, CoreBlock.CoreBuild core) {
-        if (!canReturnCore(u, core)) return false;
-        spawnFx(u.x, u.y);
-        try { Call.unitDespawn(u); } catch (Throwable err) { try { u.remove(); } catch (Throwable e2) {} }
-        ((BotPlayer) pl)._unit = null;
-        BC.botTarget = null; BC.botHome = false; BC.botRetreatT = 0; BC.botEnc = 0; BC.botHuntU = null;
-        try { botApplySwap(pl); } catch (Throwable err) { logOnce("botswap", "bot swap failed: " + err, false); }
-        BC.botResetPend = false; BC.botFleeT = 0; BC.botNoShotT = 0; BC.botDeadT = 90;
-        return true;
-    }
-    static void botStrafe(Unit u, Unit t, float maxR, float dist) {
-        float dx = t.x - u.x, dy = t.y - u.y, len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
-        int sgn = (((int) Math.floor(Time.time / 100) + (u.id & 1)) % 2 == 0) ? 1 : -1;
-        float px = -dy / len * sgn, py = dx / len * sgn;
-        float back = dist < maxR * 0.45f ? -0.9f : (dist > maxR * 0.7f ? 0.5f : 0f);
-        Vec2 v = Tmp.v1;
-        v.set(px * 0.8f + dx / len * back, py * 0.8f + dy / len * back);
-        if (v.len() > 0.05f) v.setLength(u.speed()); else v.setZero();
-        u.movePref(v);
-    }
-    static void botChase(Unit u, Unit t, float maxR, float minR) {
-        if (BC.botEngTgt != t) { BC.botEngTgt = t; BC.botEngR = 0; BC.botEngOn = false; }
-        float useR = BC.botEngR > 0 ? BC.botEngR : maxR, dist = Mathf.dst(u.x, u.y, t.x, t.y);
-        if (useR >= 110 && dist <= useR * 0.9f && dist > 20) {
-            if (minR < maxR) {
-                if (!BC.botEngOn) { BC.botEngOn = true; BC.botEngScanT = BOT_ENG_SCAN; }
-                else if ((BC.botEngScanT -= Time.delta) <= 0) { BC.botEngScanT = BOT_ENG_SCAN; if (dist > minR) BC.botEngR = minR; }
-            }
-            BC.botStuckT = 0;
-            u.lookAt(t.x, t.y); u.aim(t.x, t.y); u.controlWeapons(true, true);
-            if (t.team != Vars.state.rules.waveTeam) botStrafe(u, t, useR, dist);
-            return;
-        }
-        BC.botEngOn = false;
-        boolean reach = botGo(u, t.x, t.y, useR * 0.75f);
-        if (!reach) { BC.botSkip = t; BC.botSkipT = 180; BC.botTarget = null; }
-        if (dist > useR * 0.75f && Mathf.dst(u.x, u.y, BC.botLastX, BC.botLastY) < 0.3f) BC.botStuckT += Time.delta; else BC.botStuckT = 0;
-        if (BC.botStuckT > 300) { BC.botSkip = t; BC.botSkipT = 180; BC.botTarget = null; BC.botStuckT = 0; }
-        u.lookAt(t.x, t.y); u.aim(t.x, t.y);
-        u.controlWeapons(true, dist <= useR);
-    }
-    static boolean botIsBase(Unit u) { Tile t = Vars.world.tileWorld(u.x, u.y); return t != null && isCoreZoneFloor(t.floor()); }
-    static Anch botFindBase(Unit u, CoreBlock.CoreBuild core) {
-        ArrayList<Tile> ec = enemyCores(core.team);
-        int tx = u.tileX(), ty = u.tileY(), bd = Integer.MAX_VALUE;
-        Tile best = null;
-        for (int dx = -60; dx <= 60; dx += 2) for (int dy = -60; dy <= 60; dy += 2) {
-            Tile t = Vars.world.tile(tx + dx, ty + dy);
-            if (t == null || t.solid() || t.build != null || !isCoreZoneFloor(t.floor())) continue;
-            if (!ourSide(core, ec, t.x, t.y)) continue;
-            int d = dx * dx + dy * dy;
-            if (d < bd) { bd = d; best = t; }
-        }
-        return best == null ? null : new Anch(best.worldx(), best.worldy());
-    }
-
-
-    // ===== PHAN 12: Bot A.I (3) - suc manh, mua sam, nang chi so, tim cho xay (JS 5032-5402) =====
-    // Can (phan Cua hang, JS 6187-6210): builtCount(St), equipCount(St), equipSlots(St) -> int.
-    static float botPower(St st) {
-        Defs defs = droneDefs();
-        float w = st.lv * 10 + st.b * 8;
-        for (int i = 0; i < st.d.size(); i++) { Def d = defs.map.get(st.d.get(i)); if (d != null && st.p.get(i) >= 0) w += d.cost * 6; }
-        return w;
-    }
-    static float botEnemyPower(Player pl) {
-        final Team tm = pl.team();
-        final float[] best = {0};
-        eachPl(p -> { if (p.team() != tm) best[0] = Math.max(best[0], botPower(bind(p))); });
-        return best[0];
-    }
-    static Unit botNearestPlayer(Unit u) {
-        final Unit[] r = {null}; final float[] bd = {1e12f};
-        eachPl(p -> {
-            if (p.team() == u.team || p.team() == Vars.state.rules.waveTeam) return;
-            Unit e = p.unit();
-            if (e == null || e.dead || !e.isValid()) return;
-            float d = Mathf.dst2(u.x, u.y, e.x, e.y);
-            if (d < bd[0]) { bd[0] = d; r[0] = e; }
-        });
-        return r[0];
-    }
-    static Unit botEnemyUnit(Unit u) {
-        final Unit[] r = {null};
-        eachPl(p -> { if (r[0] != null) return; Unit e = p.unit(); if (e != null && botEnemyOk(e, u) && e.team != Vars.state.rules.waveTeam) r[0] = e; });
-        return r[0];
-    }
-
-    static int botOwn(St st, String id, boolean eq) {
-        int c = 0;
-        for (int k = 0; k < st.d.size(); k++) if (st.d.get(k).equals(id) && (eq ? st.p.get(k) == EQUIPPED : st.p.get(k) >= 0)) c++;
-        return c;
-    }
-    static int botLrn(St st, Learn L, Def d, boolean slotFree) {
-        return Math.max(0, cnt(L.b, d.id) - botOwn(st, d.id, false)) + (slotFree ? Math.max(0, cnt(L.e, d.id) - botOwn(st, d.id, true)) : 0);
-    }
-    static final class LnInfo { int need, gain; }
-    static LnInfo botLearnInfo(Player pl, St st) {
-        LnInfo out = new LnInfo();
-        if (st.p.size() != st.d.size()) return out;
-        Defs defs = droneDefs();
-        Learn L = botLearn(pl);
-        boolean multi = multiTurretOn();
-        float now = Time.time;
-        boolean hasEx = false;
-        for (int i = 0; i < st.d.size(); i++) {
-            Def dd = defs.map.get(st.d.get(i));
-            if (!(st.p.get(i) >= 0) || dd == null || botOwn(st, st.d.get(i), false) <= cnt(L.b, st.d.get(i))) continue;
-            out.gain += turretSellValue(st, dd);
-            hasEx = true;
-        }
-        boolean slotFree = equipCount(st) < equipSlots(st), full = builtCount(st) >= maxBuilt();
-        for (Def d : defs.list) {
-            if (botNoTurret(d.kind) || !d.equip) continue;
-            if (!multi && ownedCount(st, d.id) >= 1) continue;
-            Float bn = BC.botBan.get(d.id);
-            if (bn != null && bn > now) continue;
-            boolean eq = slotFree && cnt(L.e, d.id) > botOwn(st, d.id, true);
-            boolean bd = cnt(L.b, d.id) > botOwn(st, d.id, false);
-            if (!eq && !(bd && (!full || hasEx))) continue;
-            int c = turretCost(st, d);
-            if (out.need == 0 || c < out.need) out.need = c;
-        }
-        return out;
-    }
-    static boolean botWantsBuy(St st, LnInfo ln) {
-        if (ln != null && ln.need > 0) return st.pts + ln.gain >= ln.need;
-        Defs defs = droneDefs();
-        int minC = 1000000000;
-        if (builtCount(st) < maxBuilt()) {
-            for (Def d : defs.list) {
-                if (botNoTurret(d.kind) || !d.equip) continue;
-                if (!multiTurretOn() && ownedCount(st, d.id) >= 1) continue;
-                minC = Math.min(minC, turretCost(st, d));
-            }
-        }
-        if (st.b < BARRACKS.length) minC = Math.min(minC, barrackCost(st.b));
-        return st.pts >= minC;
-    }
-    static final int[] BOT_STAT_W = {3, 2, 3, 1, 2, 1, 1, 1, 1, 1, 0};
-    static void botSpendStats(Player pl, St st, int reserve) {
-        if (GearItems.war()) return;   // Chiến tranh: bot cũng không nâng chỉ số (dựa vào vật phẩm rơi)
-        int guard = 60;
-        while (st.pts - reserve >= 1 && guard-- > 0) {
-            int bk = -1; float bv = 1e12f;
-            for (int k = 0; k < STATS.length && k < BOT_STAT_W.length; k++) {
-                if (!(BOT_STAT_W[k] > 0) || st.s[k] >= statMax(k)) continue;
-                float v = (float) st.s[k] / BOT_STAT_W[k];
-                if (v < bv) { bv = v; bk = k; }
-            }
-            if (bk < 0) break;
-            st.pts--; st.s[bk]++;
-        }
-        changed();
-    }
-    static void botPlan(Player pl, Unit u, CoreBlock.CoreBuild core, boolean combat, float hpf) {
-        BC.botHome = hpf < 0.7f;
-        if (BC.botSwapPend) { if (Time.time - BC.botSwapT0 > 3600) BC.botSwapPend = false; else BC.botHome = true; }
-        if (BC.botResetPend) { if (Time.time - BC.botResetT0 > 3600) BC.botResetPend = false; else BC.botHome = true; }
-        St st = bind(pl);
-        LnInfo ln = botLearnInfo(pl, st);
-        BC.botSaveCost = (ln.need > 0 && st.pts + ln.gain < ln.need) ? ln.need : 0;
-        BC.botBuyTrip = !combat && !BC.botHome && BC.botNoBuyT <= 0 && botWantsBuy(st, ln);
-        if (st.pts - ln.need >= 1 && !BC.botBuyTrip && (BC.botNoBuyT > 0 || !botWantsBuy(st, ln))) {
-            try { botSpendStats(pl, st, ln.need); } catch (Throwable err) { logOnce("botstats", "bot stats failed: " + err, false); }
-        }
-        final Team wt = Vars.state.rules.waveTeam;
-        final int[] cntw = {0};
-        Groups.unit.each(e -> { if (e.team == wt && !e.dead && Mathf.dst2(core.x, core.y, e.x, e.y) < 900 * 900) cntw[0]++; });
-        int nearWave = cntw[0];
-        BC.botAttack = false;
-        Unit sgE = botEnemyUnit(u);
-        if (BC.botScout) {
-            if (sgE == null || hpf < 0.7f || nearWave >= 6 || Time.time - BC.botScoutT0 > 3600) { BC.botScout = false; BC.botSeenAt = Time.time - BOT_SCOUT_EVERY + 1800; }
-        } else if (sgE != null && !combat && !BC.botHome && !BC.botSwapPend && hpf > 0.8f && nearWave < 4 && Time.time - BC.botSeenAt > BOT_SCOUT_EVERY) {
-            BC.botScout = true; BC.botScoutT0 = Time.time;
-        }
-    }
-    static int[] botFindSpot(Player pl, Def def) {
-        CoreBlock.CoreBuild core = pl.team().core();
-        if (core == null) return null;
-        ArrayList<Tile> ec = enemyCores(core.team);
-        Block blk = def.block;
-        int minR = (int) (Math.ceil(core.block.size / 2.0) + Math.ceil(blk.size / 2.0) + 1);
-        for (int i = 0; i < BOT_SPOT_TRIES; i++) {
-            double a = Math.random() * 360, r = minR + Math.random() * Math.random() * BOT_SPOT_RANGE;
-            int tx = (int) Math.round(core.tile.x + Mathf.cosDeg((float) a) * r), ty = (int) Math.round(core.tile.y + Mathf.sinDeg((float) a) * r);
-            if (canBuildAt(core, ec, blk, tx, ty)) return new int[]{tx, ty};
-        }
-        return null;
-    }
-    static boolean botBadSpot(int[] sp) { return sp != null && BC.botBad.get(sp[0] + "," + sp[1]) != null; }
-
-    static final class Cand { Def d; boolean eq; int ls; }
-    static final class Ex { int i, v; }
-    static ArrayList<Ex> botExcess(St st, Defs defs, Learn L) {
-        ArrayList<Ex> out = new ArrayList<>();
-        for (int i = 0; i < st.d.size(); i++) {
-            Def dd = defs.map.get(st.d.get(i));
-            if (!(st.p.get(i) >= 0) || dd == null || botOwn(st, st.d.get(i), false) <= cnt(L.b, st.d.get(i))) continue;
-            Ex e = new Ex(); e.i = i; e.v = turretSellValue(st, dd); out.add(e);
-        }
-        out.sort((a, b) -> a.v - b.v);
-        return out;
-    }
-    /** 1 = da mua, 2 = dang de danh, 0 = khong co gi hoc duoc. */
-    static int botBuyLearned(Player pl, St st, Defs defs, Learn L, CoreBlock.CoreBuild core0, boolean slotFree) {
-        BC.botSaveCost = 0;
-        boolean multi = multiTurretOn();
-        float now = Time.time;
-        ArrayList<Tile> ec = enemyCores(core0.team);
-        ArrayList<Cand> list = new ArrayList<>();
-        for (Def d : defs.list) {
-            if (botNoTurret(d.kind) || !d.equip) continue;
-            if (!multi && ownedCount(st, d.id) >= 1) continue;
-            Float bn = BC.botBan.get(d.id);
-            if ((bn != null && bn > now) || botLrn(st, L, d, slotFree) <= 0) continue;
-            Cand c = new Cand(); c.d = d; c.eq = slotFree && cnt(L.e, d.id) > botOwn(st, d.id, true); list.add(c);
-        }
-        list.sort((a, b) -> { int x = (b.eq ? 1 : 0) - (a.eq ? 1 : 0); return x != 0 ? x : a.d.cost - b.d.cost; });
-        for (Cand cd : list) {
-            Def d = cd.d; boolean isEq = cd.eq; int[] spot = null;
-            if (!isEq) {
-                spot = botLearnSpot(core0, ec, d, L);
-                if (botBadSpot(spot)) spot = null;
-                for (int k = 0; k < 6 && spot == null; k++) { int[] sp = botFindSpot(pl, d); if (sp != null && !botBadSpot(sp)) spot = sp; }
-                if (spot == null) { logOnce("botnospot:" + d.id, "bot: không có chỗ xây " + d.id + ", thử loại khác", true); continue; }
-            }
-            int need = turretCost(st, d);
-            boolean needSlot = !isEq && builtCount(st) >= maxBuilt();
-            ArrayList<Ex> ex = botExcess(st, defs, L);
-            int gain = 0;
-            for (Ex e : ex) gain += e.v;
-            if (needSlot && ex.size() == 0) continue;
-            if (st.pts < need && st.pts + gain < need) { if (BC.botSaveCost == 0 || need < BC.botSaveCost) BC.botSaveCost = need; continue; }
-            int guard = 0;
-            while ((st.pts < need || (needSlot && builtCount(st) >= maxBuilt())) && guard++ < 12) {
-                ex = botExcess(st, defs, L);
-                if (ex.size() == 0) break;
-                int k = ex.get(0).i;
-                Def dd = defs.map.get(st.d.get(k));
-                st.pts += turretSellValue(st, dd);
-                removeTurret(st.p.get(k), dd);
-                Log.info("[NexPvp] bot bán " + dd.id + " (thừa so với địch) lấy điểm mua " + d.id);
-                st.d.remove(k); st.p.remove(k);
-                BC.botMem.clear();
-                need = turretCost(st, d);
-            }
-            if (st.pts < need || (needSlot && builtCount(st) >= maxBuilt())) { changed(); continue; }
-            if (isEq) {
-                st.pts -= need; st.d.add(d.id); st.p.add(EQUIPPED);
-                Log.info("[NexPvp] bot gắn " + d.id + " (học theo địch)");
-                changed();
-                return 1;
-            }
-            int pos = placeTurret(pl, d, spot[0], spot[1]);
-            if (pos < 0) { changed(); continue; }
-            Log.info("[NexPvp] bot xây " + d.id + " tại " + spot[0] + "," + spot[1] + " (học theo địch, còn " + (st.pts - need) + " điểm)");
-            st.pts -= need; st.d.add(d.id); st.p.add(pos);
-            changed();
-            return 1;
-        }
-        return BC.botSaveCost > 0 ? 2 : 0;
-    }
-    static boolean botShop(Player pl) {
-        St st = bind(pl);
-        if (st.p.size() != st.d.size()) return false;
-        Defs defs = droneDefs();
-        int nb = builtCount(st);
-        boolean full = nb >= maxBuilt();
-        int bl = st.b;
-        LnInfo lnI = botLearnInfo(pl, st);
-        if (bl < BARRACKS.length && st.pts - barrackCost(bl) >= lnI.need) {
-            boolean weaker = botEnemyPower(pl) > botPower(st);
-            if (full || bl < 1 + nb / 2 || weaker) {
-                st.pts -= barrackCost(bl);
-                st.b = bl + 1;
-                Log.info("[NexPvp] bot nâng nhà máy lính lên cấp " + st.b);
-                changed();
-                return true;
-            }
-        }
-        int wi = -1;
-        if (full) {
-            for (int i = 0; i < st.d.size(); i++) {
-                Def dd = defs.map.get(st.d.get(i));
-                if (!(st.p.get(i) >= 0) || dd == null) continue;
-                if (wi < 0 || dd.cost < defs.map.get(st.d.get(wi)).cost) wi = i;
-            }
-            if (wi < 0) return false;
-        }
-        int wc = full ? defs.map.get(st.d.get(wi)).cost : 0;
-        int wRefund = full ? turretSellValue(st, defs.map.get(st.d.get(wi))) : 0;
-        Learn L = botLearn(pl);
-        CoreBlock.CoreBuild core0 = pl.team().core();
-        if (core0 == null) return false;
-        boolean slotFree = equipCount(st) < equipSlots(st);
-        int rl = botBuyLearned(pl, st, defs, L, core0, slotFree);
-        if (rl == 1) return true;
-        if (rl == 2) return false;
-        if (slotFree) {
-            int enE = 0;
-            for (int v : L.e.values()) enE += v;
-            if (enE == 0) {
-                ArrayList<Def> rc = new ArrayList<>();
-                float tn = Time.time;
-                for (Def d : defs.list) {
-                    if (botNoTurret(d.kind) || !d.equip) continue;
-                    if (!multiTurretOn() && ownedCount(st, d.id) >= 1) continue;
-                    Float bn = BC.botBan.get(d.id);
-                    if ((bn != null && bn > tn) || turretCost(st, d) > st.pts) continue;
-                    rc.add(d);
-                }
-                if (rc.size() > 0) {
-                    Def rd = rc.get((int) Math.floor(Math.random() * rc.size()));
-                    st.pts -= turretCost(st, rd); st.d.add(rd.id); st.p.add(EQUIPPED);
-                    Log.info("[NexPvp] bot gắn ngẫu nhiên " + rd.id + " (địch chưa trang bị)");
-                    changed();
-                    return true;
-                }
-            }
-        }
-        ArrayList<Cand> cands = new ArrayList<>();
-        float now = Time.time;
-        for (Def d : defs.list) {
-            if (botNoTurret(d.kind) || !d.equip) continue;
-            if (turretCost(st, d) > st.pts + wRefund) continue;
-            if (full && d.cost < wc * Math.max(1.2f, 2 - 0.15f * (BC.botSm - 1))) continue;
-            if (full && d.id.equals(st.d.get(wi))) continue;
-            if (!multiTurretOn() && ownedCount(st, d.id) >= 1) continue;
-            Float bn = BC.botBan.get(d.id);
-            if (bn != null && bn > now) continue;
-            Cand c = new Cand(); c.d = d; c.ls = botLrn(st, L, d, slotFree) > 0 ? 1 : 0; cands.add(c);
-        }
-        cands.sort((x, y) -> { int s = y.ls - x.ls; return s != 0 ? s : y.d.cost - x.d.cost; });
-        ArrayList<Tile> ec0 = enemyCores(core0.team);
-        for (Cand cd : cands) {
-            Def best = cd.d;
-            if (slotFree && cnt(L.e, best.id) > botOwn(st, best.id, true)) {
-                int ep = turretCost(st, best);
-                if (ep > st.pts) continue;
-                st.pts -= ep; st.d.add(best.id); st.p.add(EQUIPPED);
-                Log.info("[NexPvp] bot gắn " + best.id + " (học theo địch)");
-                changed();
-                return true;
-            }
-            int[] spot = botLearnSpot(core0, ec0, best, L);
-            if (botBadSpot(spot)) spot = null;
-            if (spot == null) for (int k = 0; k < 6 && spot == null; k++) { int[] sp = botFindSpot(pl, best); if (sp != null && !botBadSpot(sp)) spot = sp; }
-            if (spot == null) { logOnce("botnospot:" + best.id, "bot: không có chỗ xây " + best.id + ", thử loại khác", true); continue; }
-            int pos = placeTurret(pl, best, spot[0], spot[1]);
-            if (pos < 0) continue;
-            int bPrice = turretCost(st, best);
-            if (full) {
-                st.pts += wRefund;
-                removeTurret(st.p.get(wi), defs.map.get(st.d.get(wi)));
-                st.d.remove(wi); st.p.remove(wi);
-            }
-            Log.info("[NexPvp] bot xây " + best.id + " tại " + spot[0] + "," + spot[1] + " (còn " + (st.pts - bPrice) + " điểm)");
-            st.pts -= bPrice; st.d.add(best.id); st.p.add(pos);
-            changed();
-            return true;
-        }
-        return false;
-    }
-
+    // ===== PHAN 10-12: Bot A.I cu da duoc tach va viet lai hoan toan thanh PvpBotAI.java =====
 
     // ===== PHAN 13: vong cap nhat chinh, wave ngau nhien, sat thuong phu (JS 5405-5760) =====
     static final int KILL_CREDIT_TICKS = 900;
@@ -4983,8 +4050,8 @@ public class NewModePvp {
         if (b.team != null && b.team != tgt.team) { Hit h = new Hit(); h.team = b.team; h.t = Time.time; teamHit.put(tgt.id, h); }
         if (o == null || teamOf(o) == tgt.team) return;
         try {
-            BotCtx bb = botUnitOf(tgt);
-            if (bb != null && teamOf(o) != Vars.state.rules.waveTeam && o instanceof Unit && ownerPl((Unit) o) != null) { bb.botHitT = 300; bb.botHitBy = o; }
+            PvpBotAI.Agent bb = botUnitOf(tgt);
+            if (bb != null && teamOf(o) != Vars.state.rules.waveTeam && o instanceof Unit && ownerPl((Unit) o) != null) { bb.hitT = 300; bb.hitBy = o; }
         } catch (Throwable err) {}
         boolean isUnitOwner = o instanceof Unit;
         Integer apid;
@@ -5192,12 +4259,11 @@ public class NewModePvp {
         try {
             Hit kr = lastHitBy.get(u.id);
             Player up0 = u.getPlayer();
-            BotCtx bu0 = botUnitOf(u);
+            PvpBotAI.Agent bu0 = botUnitOf(u);
             Integer upid = up0 != null ? Integer.valueOf(up0.id) : (bu0 != null ? Integer.valueOf(bu0.botPl.id) : null);
             if (upid != null) bumpKc(upid, 2);
             if (bu0 != null && kr != null && Time.time - kr.t <= KILL_CREDIT_TICKS && kr.pid != bu0.botPl.id) {
-                bu0.botKillerId = kr.pid;
-                Log.info("[NexPvp] bot bị hạ bởi player " + kr.pid + ", quét và học theo pháo của người đó");
+                bu0.killerId = kr.pid;
             }
             if (kr != null && Time.time - kr.t <= KILL_CREDIT_TICKS) bumpKc(kr.pid, upid != null ? 1 : 0);
         } catch (Throwable err) {}
@@ -5213,7 +4279,7 @@ public class NewModePvp {
                 if (sk != null && sk.team() != u.team) { float skx = killExp(u) * KILL_EXP_PCT / 100f; if (skx > 0) addExp(sk, skx); }
             }
             Player dp = u.getPlayer();
-            BotCtx dBot = dp == null ? botUnitOf(u) : null;
+            PvpBotAI.Agent dBot = dp == null ? botUnitOf(u) : null;
             Player gearKiller = (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) ? GearItems.playerById(krGear.pid) : null;
             boolean killedByEnemyPl = gearKiller != null && gearKiller.team() != u.team && isPvpTeam(gearKiller.team());
             lastHitBy.remove(u.id);
@@ -5226,6 +4292,7 @@ public class NewModePvp {
                         String vn = dp.name != null ? dp.name : "Player";
                         Call.sendMessage(tr("[scarlet]⚔ [accent]", "[scarlet]⚔ [accent]") + kn + "[] " + tr("đã hạ gục", "eliminated") + " [orange]" + vn + "[]!");
                     } catch (Throwable err) {}
+                    if (isBotPl(gearKiller)) PvpBotAI.onBotKilledPlayer(gearKiller, dp);
                 }
                 deadUnit.put(dp.id, u.id);
                 spawnBuff.remove(dp.id);
@@ -5240,9 +4307,10 @@ public class NewModePvp {
                 try { GearItems.onKilledByEnemyPlayer(dBot.botPl, byId.get(dBot.botPl.id)); } catch (Throwable err) {}
                 try {
                     String kn = gearKiller.name != null ? gearKiller.name : "Player";
-                    String vn = dBot.botPl.name != null ? dBot.botPl.name : "Bot";
+                    String vn = dBot.botPl.name != null ? dBot.botPl.name : "AI";
                     Call.sendMessage(tr("[scarlet]⚔ [accent]", "[scarlet]⚔ [accent]") + kn + "[] " + tr("đã hạ gục", "eliminated") + " [orange]" + vn + "[]!");
                 } catch (Throwable err) {}
+                PvpBotAI.onPlayerKilledBot(gearKiller, dBot.botPl);
             }
         } catch (Throwable err) {}
         if (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) {
@@ -5286,7 +4354,7 @@ public class NewModePvp {
         respawnLock.clear(); deadUnit.clear(); spawnBuff.clear(); swapPending.clear(); prevUnit.clear(); extPvp.clear();
         barrackT.clear(); rally.clear(); soldiers.clear(); soldierOwner.clear(); mountSt.clear(); lastHitBy.clear(); teamHit.clear();
         passiveT = PASSIVE_INTERVAL; logged.clear(); rolled.clear(); rolledN = 0; winning = false; seenBoth = false; dirty = false; syncT = 0; stVer++;
-        bots.clear(); BC = new BotCtx(); autoPauseFixed = false;
+        PvpBotAI.clear(); autoPauseFixed = false;
         restoreStore();
         if (!Vars.net.client()) {
             Time.run(2f, () -> {
@@ -5336,6 +4404,7 @@ public class NewModePvp {
     }
     static final String BAD_SPOT = "[scarlet]Vị trí không hợp lệ: phải là nền đặt lõi còn trống ở nửa map phe ta!";
     static void defineRequests() {
+        PvpBotAI.init();
         ChaosMode.define();
         GearItems.define();
         // payload "i" = +1 điểm; "i|10" = +10 điểm (không đủ 10 thì nâng đúng số điểm đang có, cũng không vượt mức tối đa của chỉ số)
@@ -5605,7 +4674,7 @@ public class NewModePvp {
         dirty = true;
     }
     static String plName(int pid) {
-        if (isBotId(pid)) return "[orange]NexBot" + (BOT_ID - pid + 1) + "[]";
+        if (isBotId(pid)) return PvpBotAI.displayName(pid);
         String n = "#" + pid;
         for (Player p : Groups.player) if (p.id == pid) n = String.valueOf(p.name);
         return n;
