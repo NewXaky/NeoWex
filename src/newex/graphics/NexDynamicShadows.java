@@ -117,8 +117,7 @@ public final class NexDynamicShadows {
 
     private static float lastFboScale = -1f;
     private static float lastCachedAngle = -999f;
-    private static float lastCachedCamX = 0f, lastCachedCamY = 0f, lastCachedCamW = 0f;
-    private static float dynLightRedrawAcc = 0f;
+    private static float lastCachedCamX = 0f, lastCachedCamY = 0f, lastCachedCamW = 1f, lastCachedCamH = 1f;
 
     private static final ObjectMap<UnitType, TextureRegion> origShadowMap = new ObjectMap<>();
     private static final ObjectMap<UnitType, TextureRegion> origSoftShadowMap = new ObjectMap<>();
@@ -486,8 +485,9 @@ public final class NexDynamicShadows {
         if (!enabled || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
         if (emptyRegion == null) emptyRegion = Core.atlas.find("clear");
 
+        // Dùng Time.globalTime (thời gian khung hình thực mượt 60/120Hz) thay vì Time.time để bóng xoay mượt tuyệt đối, không bị khựng theo tick
         final float rotTicks = 1620f * 60f;
-        final float cycleProgress = rotateShadows ? (Time.time / rotTicks) % 1f : 0f;
+        final float cycleProgress = rotateShadows ? (Time.globalTime / rotTicks) % 1f : 0f;
         final float angle = 210f + cycleProgress * 360f;
         final float cosA = Mathf.cosDeg(angle);
         final float sinA = Mathf.sinDeg(angle);
@@ -588,14 +588,13 @@ public final class NexDynamicShadows {
             });
         }
 
-        float camMoveThreshold = Vars.mobile ? Math.max(0.45f, camW * 0.006f) : Math.max(0.10f, camW * 0.0018f);
-        float camZoomThreshold = Vars.mobile ? Math.max(0.55f, camW * 0.007f) : Math.max(0.18f, camW * 0.0028f);
-
+        // Cập nhật FBO ngay khi camera dịch chuyển hoặc góc mặt trời xoay nhẹ (0.025 độ) để bóng bám chặt mặt đất 100%, không bao giờ giật cục!
         final boolean needsRedraw = shadDirty
-            || Math.abs(angle - lastCachedAngle) > 0.8f
-            || Math.abs(camX - lastCachedCamX) > camMoveThreshold
-            || Math.abs(camY - lastCachedCamY) > camMoveThreshold
-            || Math.abs(camW - lastCachedCamW) > camZoomThreshold;
+            || Math.abs(angle - lastCachedAngle) > 0.025f
+            || Math.abs(camX - lastCachedCamX) > 0.001f
+            || Math.abs(camY - lastCachedCamY) > 0.001f
+            || Math.abs(camW - lastCachedCamW) > 0.001f
+            || Math.abs(camH - lastCachedCamH) > 0.001f;
 
         if (needsRedraw) {
             shadDirty = false;
@@ -603,6 +602,7 @@ public final class NexDynamicShadows {
             lastCachedCamX = camX;
             lastCachedCamY = camY;
             lastCachedCamW = camW;
+            lastCachedCamH = camH;
         }
 
         final float rawTilePixels = (Vars.tilesize / Core.camera.width) * Core.graphics.getWidth();
@@ -684,13 +684,6 @@ public final class NexDynamicShadows {
                         }
 
                         Draw.flush();
-                        Draw.blend(Blending.disabled);
-                        Draw.color(0f, 0f, 0f, 0f);
-                        eraseAllFootprints(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                        eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                        eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                        Draw.flush();
-                        Draw.blend(Blending.normal);
                         scratchA.end();
 
                         // 2) Pass blur ngang (scratchA -> scratchB)
@@ -701,7 +694,7 @@ public final class NexDynamicShadows {
                         Draw.flush();
                         scratchB.end();
 
-                        // 3) Pass blur dọc (scratchB -> shadowOut) + xóa lại chân tường/khối + làm tan bóng quanh nguồn sáng
+                        // 3) Pass blur dọc (scratchB -> shadowOut) + xóa 1 lần duy nhất chân tường/khối/sàn + làm tan bóng quanh nguồn sáng (giảm 50% lệnh vẽ CPU!)
                         shadowOut.begin();
                         Gl.clearColor(0f, 0f, 0f, 0f);
                         Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
@@ -745,7 +738,8 @@ public final class NexDynamicShadows {
 
             if (enabled && hasShadowContent && globalFade > 0.005f && shadowRegOut != null && shadowRegOut.texture != null) {
                 Draw.color(Color.white, alpha * globalFade);
-                Draw.rect(shadowRegOut, camX, camY, camW, camH);
+                // Vẽ theo đúng tọa độ thế giới đã chụp FBO (lastCachedCamX/Y/W/H) để bóng ghim cố định xuống mặt đất 100%, không trượt theo camera!
+                Draw.rect(shadowRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
                 Draw.color();
             }
             if (!unitShadows.isEmpty()) {
