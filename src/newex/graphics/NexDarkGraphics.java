@@ -20,8 +20,12 @@ import mindustry.game.EventType.ContentInitEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.graphics.Layer;
 import mindustry.type.UnitType;
+import mindustry.ui.Styles;
+import mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable;
 import mindustry.world.Block;
 import mindustry.world.blocks.defense.turrets.Turret;
+import arc.scene.ui.TextButton;
+import arc.scene.ui.layout.Table;
 
 import java.nio.IntBuffer;
 
@@ -35,7 +39,9 @@ public final class NexDarkGraphics {
     public static final String BORDER_KEY = "newex-dark-border";
     public static final String SATURATION_KEY = "newex-saturation";
     public static final String BLOOM_KEY = "newex-dark-border-str";
+    public static final String BLOOM_COLOR_KEY = "newex-bloom-color";
     public static final Color VIOLET_OUTLINE = Color.valueOf("241738");
+    private static final Color bloomCol = Color.valueOf("8f47f0");
 
     private static final String VERT_SRC =
         "attribute vec4 a_position;\n" +
@@ -53,6 +59,7 @@ public final class NexDarkGraphics {
         "uniform vec2 u_invsize;\n" +
         "uniform float u_saturation;\n" +
         "uniform float u_bloom;\n" +
+        "uniform vec3 u_bloomColor;\n" +
         "varying vec2 v_texCoords;\n" +
         "vec3 brightTap(vec2 uv){\n" +
         "    vec3 col = texture2D(u_texture, uv).rgb;\n" +
@@ -81,8 +88,8 @@ public final class NexDarkGraphics {
         "        acc += brightTap(v_texCoords + vec2(0.0,  r2.y)) * 0.06;\n" +
         "        acc += brightTap(v_texCoords + vec2(0.0, -r2.y)) * 0.06;\n" +
         "        float glowAmt = max(acc.r, max(acc.g, acc.b));\n" +
-        "        vec3 violetTint = vec3(0.56, 0.28, 0.94) * glowAmt;\n" +
-        "        vec3 softBloom = mix(violetTint, acc * vec3(0.78, 0.56, 1.05), 0.28);\n" +
+        "        vec3 customTint = u_bloomColor * glowAmt;\n" +
+        "        vec3 softBloom = mix(customTint, acc * (u_bloomColor * 0.65 + vec3(0.35)), 0.28);\n" +
         "        float centerBright = smoothstep(0.72, 0.98, max(rgb.r, max(rgb.g, rgb.b)));\n" +
         "        vec3 haloOnly = softBloom * (1.0 - centerBright * 0.62);\n" +
         "        rgb = 1.0 - (1.0 - rgb) * (1.0 - clamp(haloOnly * (0.98 * u_bloom), 0.0, 0.84));\n" +
@@ -94,12 +101,14 @@ public final class NexDarkGraphics {
 
     static final class PostShader extends Shader {
         float invW = 1f, invH = 1f, sat = 1f, bloom = 0.65f;
+        float br = 0.56f, bg = 0.28f, bb = 0.94f;
         PostShader() { super(VERT_SRC, FRAG_SRC); }
         @Override
         public void apply() {
             setUniformf("u_invsize", invW, invH);
             setUniformf("u_saturation", sat);
             setUniformf("u_bloom", bloom);
+            setUniformf("u_bloomColor", br, bg, bb);
         }
     }
 
@@ -157,15 +166,18 @@ public final class NexDarkGraphics {
         try {
             if (!Core.settings.has(SATURATION_KEY)) Core.settings.put(SATURATION_KEY, 100);
             if (!Core.settings.has(BLOOM_KEY)) Core.settings.put(BLOOM_KEY, 65);
+            if (!Core.settings.has(BLOOM_COLOR_KEY)) Core.settings.put(BLOOM_COLOR_KEY, "8f47f0");
+            loadBloomColor();
 
             boolean en = false;
             try {
                 String loc = Core.settings.getString("locale", "default");
                 en = loc != null && loc.toLowerCase().startsWith("en");
             } catch (Throwable ignored) {}
+            final boolean isEn = en;
 
             final String satTitle = en ? "Saturation (Color Intensity)" : "Độ bão hòa màu (Saturation)";
-            final String bloomTitle = en ? "Violet Bloom Glow (NeoWex)" : "Độ sáng Bloom tím (NeoWex)";
+            final String bloomTitle = en ? "Bloom Glow Intensity (NeoWex)" : "Độ sáng viền Bloom (NeoWex)";
             final String offTxt = en ? "Off" : "Tắt";
 
             try {
@@ -177,8 +189,47 @@ public final class NexDarkGraphics {
 
             Vars.ui.settings.graphics.sliderPref(SATURATION_KEY, 100, 0, 200, 5, i -> i + "%");
             Vars.ui.settings.graphics.sliderPref(BLOOM_KEY, 65, 0, 100, 5, i -> i <= 0 ? offTxt : i + "%");
+            Vars.ui.settings.graphics.pref(new SettingsTable.Setting("newex-bloom-color-picker") {
+                @Override
+                public void add(SettingsTable table) {
+                    Table row = new Table();
+                    row.left();
+                    final TextButton pickBtn = new TextButton(isEn ? "Pick Bloom Color" : "Chọn màu Bloom (Bảng màu)", Styles.defaultt);
+                    pickBtn.update(() -> pickBtn.setColor(bloomCol.cpy().lerp(Color.white, 0.25f)));
+                    pickBtn.clicked(() -> {
+                        if (Vars.ui != null && Vars.ui.picker != null) {
+                            Vars.ui.picker.show(bloomCol.cpy(), c -> {
+                                bloomCol.set(c);
+                                Core.settings.put(BLOOM_COLOR_KEY, bloomCol.toString());
+                            });
+                        }
+                    });
+                    row.add(pickBtn).height(40f).padRight(8f);
+                    // Các nút màu mẫu nhanh êm mắt (Tím thạch anh, Xanh băng, Hồng sakura, Vàng hoàng kim, Xanh lục bảo)
+                    final String[] presets = {"8f47f0", "38bdf8", "f472b6", "fbbf24", "34d399"};
+                    for (final String hex : presets) {
+                        final Color pc = Color.valueOf(hex);
+                        TextButton sw = new TextButton("■", Styles.defaultt);
+                        sw.setColor(pc);
+                        sw.clicked(() -> {
+                            bloomCol.set(pc);
+                            Core.settings.put(BLOOM_COLOR_KEY, hex);
+                        });
+                        row.add(sw).size(36f, 36f).padRight(4f);
+                    }
+                    table.add(row).left().padTop(2f).padBottom(6f).row();
+                }
+            });
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] registerGraphicsSettings failed", err);
+        }
+    }
+
+    private static void loadBloomColor() {
+        try {
+            Color.valueOf(bloomCol, Core.settings.getString(BLOOM_COLOR_KEY, "8f47f0"));
+        } catch (Throwable ignored) {
+            bloomCol.set(Color.valueOf("8f47f0"));
         }
     }
 
@@ -276,6 +327,9 @@ public final class NexDarkGraphics {
             postShader.invH = 1f / Math.max(1, curH);
             postShader.sat = curSat;
             postShader.bloom = curBloom;
+            postShader.br = bloomCol.r;
+            postShader.bg = bloomCol.g;
+            postShader.bb = bloomCol.b;
 
             Tmp.m2.set(Draw.proj());
             Draw.proj(Tmp.m1.setOrtho(0f, 0f, curW, curH));

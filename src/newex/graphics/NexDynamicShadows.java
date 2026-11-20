@@ -70,12 +70,20 @@ public final class NexDynamicShadows {
     public static final String KEY_BLUR = "newex-ds-blur";
     public static final String KEY_TINT = "newex-ds-tint";
     public static final String KEY_CONTACT = "newex-ds-contact";
+    public static final String KEY_LIGHT_ERASE = "newex-ds-light-erase";
+    public static final String KEY_SUNRAYS = "newex-ds-sunrays";
+    public static final String KEY_SUNRAY_CHANCE = "newex-ds-sunray-chance";
+    public static final String KEY_SUNRAY_DUR = "newex-ds-sunray-dur";
 
     public static boolean enabled = true;
     public static boolean dayNightCycle = true;
     public static boolean rotateShadows = true;
     public static boolean unitShadowsEnabled = true;
     public static boolean zoomFadeEnabled = true;
+    public static boolean lightEraseEnabled = true;
+    public static boolean sunraysEnabled = true;
+    public static int sunrayChancePct = 35;
+    public static int sunrayDurationSec = 9;
     /** 0 = Thấp (45%), 1 = Trung bình (65%, mặc định mượt 60fps), 2 = Cao (90%) */
     public static int graphicsQuality = 1;
     public static float shadowLength = 10f;
@@ -208,10 +216,17 @@ public final class NexDynamicShadows {
         float x, y, r, strength;
     }
 
+    static final class SunRay {
+        float x, y, width, length, age, maxLife, cloudFreq, cloudPhase;
+    }
+
     private static final Seq<UnitShadowData> unitShadows = new Seq<>(64);
     private static final Seq<UnitShadowData> unitShadowPool = new Seq<>(64);
     private static final Seq<LightSpot> dynLights = new Seq<>(64);
     private static final Seq<LightSpot> dynLightPool = new Seq<>(64);
+    private static final Seq<SunRay> activeSunRays = new Seq<>(16);
+    private static float sunrayRollAcc = 0f;
+    private static final Color tmpSunCore = new Color(), tmpSunEdge = new Color(1f, 0.92f, 0.65f, 0f);
 
     private static UnitShadowData obtainUnitShadow() {
         return unitShadowPool.size > 0 ? unitShadowPool.pop() : new UnitShadowData();
@@ -290,6 +305,10 @@ public final class NexDynamicShadows {
         blurRadius = Core.settings.getInt(KEY_BLUR, 30) / 10f;
         shadowTint = Core.settings.getInt(KEY_TINT, 60) / 100f;
         contactShadow = Core.settings.getInt(KEY_CONTACT, 45) / 100f;
+        lightEraseEnabled = Core.settings.getBool(KEY_LIGHT_ERASE, true);
+        sunraysEnabled = Core.settings.getBool(KEY_SUNRAYS, true);
+        sunrayChancePct = Mathf.clamp(Core.settings.getInt(KEY_SUNRAY_CHANCE, 35), 5, 100);
+        sunrayDurationSec = Mathf.clamp(Core.settings.getInt(KEY_SUNRAY_DUR, 9), 3, 25);
     }
 
     private static boolean isEn() {
@@ -340,6 +359,18 @@ public final class NexDynamicShadows {
                             zoomFadeEnabled = v;
                             shadDirty = true;
                         });
+                        addCheck(subBox, en ? "Light from Units, Blocks & Emitters in Shadows" : "Ánh sáng từ Unit, Khối & Nguồn sáng trong bóng đổ", KEY_LIGHT_ERASE, lightEraseEnabled, v -> {
+                            lightEraseEnabled = v;
+                            shadDirty = true;
+                        });
+                        addCheck(subBox, en ? "Morning Sunbeams (Cloud Fade Effect)" : "Tia nắng buổi sáng (từ từ tắt khi mây che)", KEY_SUNRAYS, sunraysEnabled, v -> {
+                            sunraysEnabled = v;
+                            if (!v) activeSunRays.clear();
+                        });
+                        addSlider(subBox, en ? "Sunbeam Spawn Chance" : "Tỉ lệ xuất hiện tia nắng", KEY_SUNRAY_CHANCE, sunrayChancePct, 5, 100, 5,
+                            v -> { sunrayChancePct = v; return v + "%"; });
+                        addSlider(subBox, en ? "Sunbeam Duration" : "Thời gian tồn tại tia nắng", KEY_SUNRAY_DUR, sunrayDurationSec, 3, 25, 1,
+                            v -> { sunrayDurationSec = v; return v + "s"; });
 
                         addSlider(subBox, en ? "Shadow Quality" : "Chất lượng bóng", KEY_QUALITY, graphicsQuality, 0, 2, 1,
                             v -> {
@@ -559,12 +590,18 @@ public final class NexDynamicShadows {
         final int chX1 = tx1 / ChunkCache.CHUNK_SIZE, chY1 = ty1 / ChunkCache.CHUNK_SIZE;
         final int chX2 = tx2 / ChunkCache.CHUNK_SIZE, chY2 = ty2 / ChunkCache.CHUNK_SIZE;
 
-        // Thu thập bóng unit trong vùng camera (bỏ quét dynLights mỗi 3 tick vốn làm mobile phải blur lại liên tục gây giật!)
+        // Thu thập bóng unit + ánh sáng động từ unit & đạn (vẽ quầng sáng trực tiếp lên lớp bóng mà không cần blur lại FBO!)
         freeUnitShadows();
         freeDynLights();
-        if (unitShadowsEnabled) {
+        if (unitShadowsEnabled || lightEraseEnabled) {
             Groups.unit.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Unit>) u -> {
-                if (u == null || u.dead || u.drownTime >= 0.99f) return;
+                if (u == null || u.dead) return;
+                if (lightEraseEnabled) {
+                    float lr = (u.type != null && u.type.lightRadius > 4f) ? u.type.lightRadius * 0.72f : (u.isPlayer() ? 42f : 0f);
+                    if (lr > 4f) addDynLight(u.x, u.y, lr, 0.45f);
+                    if (u.mining() && u.mineTile != null) addDynLight(u.mineTile.worldx(), u.mineTile.worldy(), 34f, 0.65f);
+                }
+                if (!unitShadowsEnabled || u.drownTime >= 0.99f) return;
                 TextureRegion usReg = NexShadowConfig.getOriginalShadow(u.type);
                 if (usReg == null || !usReg.found() || usReg == emptyRegion) return;
 
@@ -585,6 +622,13 @@ public final class NexDynamicShadows {
                 d.rotation = u.rotation;
                 d.alpha = Mathf.clamp(1f - u.elevation * 0.40f, 0.30f, 1f) * dFactor;
                 unitShadows.add(d);
+            });
+        }
+        if (lightEraseEnabled) {
+            Groups.bullet.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Bullet>) b -> {
+                if (b == null || !b.isAdded() || b.type == null) return;
+                float lr = b.type.lightRadius > 2f ? b.type.lightRadius : (b.hitSize * 2.5f + 12f);
+                if (lr > 6f) addDynLight(b.x, b.y, Math.min(72f, lr * 0.8f), 0.50f);
             });
         }
 
@@ -708,25 +752,23 @@ public final class NexDynamicShadows {
                         eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                         Draw.flush();
 
-                        Draw.blend(LIGHT_ERASE_BLEND);
-                        for (int cx = chX1; cx <= chX2; cx++) {
-                            for (int cy = chY1; cy <= chY2; cy++) {
-                                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
-                                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                                if (chunk == null || !chunk.valid || chunk.lights.isEmpty()) continue;
-                                Seq<LightSpot> lsList = chunk.lights;
-                                for (int i = 0; i < lsList.size; i++) {
-                                    LightSpot ls = lsList.get(i);
-                                    if (ls.x + ls.r < screenX1 || ls.x - ls.r > screenX2 || ls.y + ls.r < screenY1 || ls.y - ls.r > screenY2) continue;
-                                    punchSoftLight(ls.x, ls.y, ls.r, ls.strength);
+                        if (lightEraseEnabled) {
+                            Draw.blend(LIGHT_ERASE_BLEND);
+                            for (int cx = chX1; cx <= chX2; cx++) {
+                                for (int cy = chY1; cy <= chY2; cy++) {
+                                    if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                    ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                    if (chunk == null || !chunk.valid || chunk.lights.isEmpty()) continue;
+                                    Seq<LightSpot> lsList = chunk.lights;
+                                    for (int i = 0; i < lsList.size; i++) {
+                                        LightSpot ls = lsList.get(i);
+                                        if (ls.x + ls.r < screenX1 || ls.x - ls.r > screenX2 || ls.y + ls.r < screenY1 || ls.y - ls.r > screenY2) continue;
+                                        punchSoftLight(ls.x, ls.y, ls.r, ls.strength);
+                                    }
                                 }
                             }
+                            Draw.flush();
                         }
-                        for (int i = 0; i < dynLights.size; i++) {
-                            LightSpot ls = dynLights.get(i);
-                            punchSoftLight(ls.x, ls.y, ls.r, ls.strength);
-                        }
-                        Draw.flush();
                         Draw.blend(Blending.normal);
                         shadowOut.end();
 
@@ -740,6 +782,19 @@ public final class NexDynamicShadows {
                 Draw.color(Color.white, alpha * globalFade);
                 // Vẽ theo đúng tọa độ thế giới đã chụp FBO (lastCachedCamX/Y/W/H) để bóng ghim cố định xuống mặt đất 100%, không trượt theo camera!
                 Draw.rect(shadowRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
+                Draw.color();
+            }
+            // Vẽ ánh sáng ấm dịu từ Unit, Khối & Nguồn sáng chiếu sáng trong bóng đổ (nếu bật)
+            if (lightEraseEnabled && (!dynLights.isEmpty() || darkness > 0.02f)) {
+                Draw.blend(Blending.additive);
+                for (int i = 0; i < dynLights.size; i++) {
+                    LightSpot ls = dynLights.get(i);
+                    Draw.color(1f, 0.95f, 0.82f, 0.11f * ls.strength);
+                    Fill.circle(ls.x, ls.y, ls.r);
+                    Draw.color(1f, 0.97f, 0.88f, 0.18f * ls.strength);
+                    Fill.circle(ls.x, ls.y, ls.r * 0.52f);
+                }
+                Draw.blend(Blending.normal);
                 Draw.color();
             }
             if (!unitShadows.isEmpty()) {
@@ -790,6 +845,92 @@ public final class NexDynamicShadows {
                     }
                 }
             }
+        });
+
+        // Tia nắng buổi sáng chiếu xiên xuống và từ từ mờ dần khi mây trôi qua che mất
+        if (sunraysEnabled) {
+            updateAndDrawSunrays(angle, darkness, camX, camY, camW, camH);
+        }
+    }
+
+    private static void updateAndDrawSunrays(float shadowAngle, float darkness, float camX, float camY, float camW, float camH) {
+        boolean isMorningOrDay = !dayNightCycle || darkness < 0.25f;
+        if (!Vars.state.isPaused()) {
+            if (isMorningOrDay) {
+                sunrayRollAcc += Time.delta;
+                // Mỗi 2 giây thử quay tỉ lệ xuất hiện tia nắng buổi sáng
+                if (sunrayRollAcc >= 120f) {
+                    sunrayRollAcc = 0f;
+                    if (activeSunRays.size < 6 && Mathf.chance(sunrayChancePct / 100.0)) {
+                        int burst = Mathf.random(2, 3);
+                        float baseX = camX + Mathf.range(camW * 0.35f);
+                        float baseY = camY + Mathf.range(camH * 0.35f);
+                        float lifeTicks = Math.max(180f, sunrayDurationSec * 60f);
+                        for (int i = 0; i < burst && activeSunRays.size < 8; i++) {
+                            SunRay r = new SunRay();
+                            r.x = baseX + (i - 1) * Mathf.random(36f, 68f);
+                            r.y = baseY + Mathf.range(28f);
+                            r.width = Mathf.random(26f, 52f);
+                            r.length = Math.max(camW, camH) * Mathf.random(0.65f, 0.95f);
+                            r.age = 0f;
+                            r.maxLife = lifeTicks * Mathf.random(0.85f, 1.15f);
+                            r.cloudFreq = Mathf.random(0.025f, 0.045f);
+                            r.cloudPhase = Mathf.random(0f, 3.14f);
+                            activeSunRays.add(r);
+                        }
+                    }
+                }
+            }
+            for (int i = activeSunRays.size - 1; i >= 0; i--) {
+                SunRay r = activeSunRays.get(i);
+                r.age += Time.delta;
+                if (r.age >= r.maxLife || darkness > 0.42f) activeSunRays.remove(i);
+            }
+        }
+        if (activeSunRays.isEmpty()) return;
+
+        final float rayAngle = shadowAngle + 180f;
+        final float dx = Mathf.cosDeg(rayAngle), dy = Mathf.sinDeg(rayAngle);
+        final float px = -dy, py = dx;
+        final float dayVis = Mathf.clamp(1f - darkness * 2.5f, 0f, 1f);
+
+        Draw.draw(Layer.light - 2f, () -> {
+            Draw.blend(Blending.additive);
+            float clearBits = tmpSunEdge.toFloatBits();
+            for (int i = 0; i < activeSunRays.size; i++) {
+                SunRay r = activeSunRays.get(i);
+                float p = Mathf.clamp(r.age / Math.max(1f, r.maxLife));
+                // Hiện lên êm ái đầu buổi sáng rồi từ từ bị mây che mờ dần tới khi tắt hẳn
+                float fadeIn = Mathf.clamp(p / 0.18f);
+                float cloudCover = (float) Math.pow(1f - Mathf.clamp((p - 0.18f) / 0.82f), 1.6);
+                float cloudWave = 0.72f + 0.28f * Mathf.sin(r.age * r.cloudFreq + r.cloudPhase);
+                float alpha = 0.18f * fadeIn * cloudCover * cloudWave * dayVis;
+                if (alpha <= 0.003f) continue;
+
+                float halfL = r.length * 0.5f, halfW = r.width * 0.5f;
+                float x1 = r.x - dx * halfL, y1 = r.y - dy * halfL;
+                float x2 = r.x + dx * halfL, y2 = r.y + dy * halfL;
+
+                float coreBits = tmpSunCore.set(1f, 0.94f, 0.72f, alpha).toFloatBits();
+                float tipBits = tmpSunCore.set(1f, 0.92f, 0.65f, alpha * 0.25f).toFloatBits();
+
+                // Nửa trái tia nắng (rìa trong suốt -> tâm vàng ấm)
+                Fill.quad(
+                    x1 - px * halfW, y1 - py * halfW, clearBits,
+                    x1, y1, coreBits,
+                    x2, y2, tipBits,
+                    x2 - px * (halfW * 1.35f), y2 - py * (halfW * 1.35f), clearBits
+                );
+                // Nửa phải tia nắng (tâm vàng ấm -> rìa trong suốt)
+                Fill.quad(
+                    x1, y1, coreBits,
+                    x1 + px * halfW, y1 + py * halfW, clearBits,
+                    x2 + px * (halfW * 1.35f), y2 + py * (halfW * 1.35f), clearBits,
+                    x2, y2, tipBits
+                );
+            }
+            Draw.blend(Blending.normal);
+            Draw.reset();
         });
     }
 
