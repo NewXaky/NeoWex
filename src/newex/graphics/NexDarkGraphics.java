@@ -2,6 +2,7 @@ package newex.graphics;
 
 import arc.Core;
 import arc.Events;
+import arc.graphics.Blending;
 import arc.graphics.Color;
 import arc.graphics.GL20;
 import arc.graphics.Gl;
@@ -17,17 +18,15 @@ import mindustry.Vars;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.ContentInitEvent;
 import mindustry.game.EventType.Trigger;
-import mindustry.graphics.Layer;
 import mindustry.type.UnitType;
 import mindustry.world.Block;
 import mindustry.world.blocks.defense.turrets.Turret;
 
 /**
- * Đồ họa Bloom Tím ôm sát hình dáng & Saturation NeoWex (tương thích OpenGL 2.0 / Intel GPU / Mobile):
- * - KHÔNG dùng FrameBuffer lồng nhau (dùng Gl.copyTexSubImage2D tại Layer.end) -> tuyệt đối không xung đột FBO
- *   với LightRenderer (ngày/đêm), NexDynamicShadows, Bloom hay khiên lực -> không bao giờ bị đen nền!
- * - Tự động trích xuất vùng phát sáng thật trên màn hình (đạn, tia khoan ore, tia xây/phá khối, sét, kỹ năng...)
- *   và phủ quầng bloom tím thạch anh êm mắt ôm sát hình dáng + chỉnh độ bão hòa màu (Saturation).
+ * Đồ họa Bloom Tím ôm sát hình dáng & Saturation NeoWex (tương thích cả PC OpenGL 2/3 lẫn Mobile Android GLES 2/3 Mali/Adreno):
+ * - Chạy ở Trigger.postDraw (sau khi toàn bộ thế giới, bóng động, ánh sáng, bloom gốc đã vẽ xong, trước khi vẽ HUD/UI).
+ * - Dùng texture GL_RGB (chuẩn GLES 3.2 khi sao chép từ backbuffer RGB/RGBA -> tuyệt đối không bị GL_INVALID_OPERATION trên Android!).
+ * - Tự động kiểm tra lỗi GL ở khung hình đầu để không bao giờ spam log lỗi trên driver đặc biệt.
  */
 public final class NexDarkGraphics {
     public static final String BORDER_KEY = "newex-dark-border";
@@ -108,12 +107,11 @@ public final class NexDarkGraphics {
 
     private static boolean initialized = false;
     private static boolean shaderTried = false;
+    private static boolean postDisabledOnGpu = false;
     private static PostShader postShader = null;
     private static Texture screenTex = null;
     private static TextureRegion screenReg = null;
     private static int texW = 0, texH = 0;
-
-    private static final Runnable applyPost = NexDarkGraphics::renderPostPass;
 
     private NexDarkGraphics() {}
 
@@ -128,7 +126,8 @@ public final class NexDarkGraphics {
                 registerGraphicsSettings();
                 initShader();
             }));
-            Events.run(Trigger.draw, NexDarkGraphics::onDraw);
+            // Chạy ở Trigger.postDraw: sau toàn bộ thế giới + bóng + ánh sáng + bloom, trước HUD/UI!
+            Events.run(Trigger.postDraw, NexDarkGraphics::renderPostPass);
         }
     }
 
@@ -201,62 +200,73 @@ public final class NexDarkGraphics {
         return Mathf.clamp(Core.settings.getInt(BLOOM_KEY, 65), 0, 100) / 100f;
     }
 
-    private static void onDraw() {
-        if (Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
+    private static void renderPostPass() {
+        if (postDisabledOnGpu || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
+        if (Core.settings.getBool("pixelate", false)) return;
         if (!shaderTried) initShader();
         if (postShader == null) return;
-        if (Core.settings.getBool("pixelate", false)) return;
 
         float sat = readSaturation();
         float bloom = readBloomStrength();
         if (Math.abs(sat - 1f) < 0.005f && bloom < 0.005f) return;
 
-        postShader.sat = sat;
-        postShader.bloom = bloom;
-        // Chạy ở Layer.end (SAU toàn bộ thế giới, bóng, ánh sáng, bloom gốc, TRƯỚC HUD/UI) -> không bao giờ xung đột FBO!
-        Draw.draw(Layer.end, applyPost);
-    }
-
-    private static void renderPostPass() {
-        if (postShader == null) return;
         int w = Core.graphics.getWidth(), h = Core.graphics.getHeight();
         if (w <= 0 || h <= 0) return;
 
         try {
             Draw.flush();
-            if (screenTex == null || texW != w || texH != h || screenTex.getTextureObjectHandle() == 0) {
+            // Xóa cờ lỗi GL cũ (nếu có) trước khi sao chép
+            Gl.getError();
+
+            boolean needAlloc = (screenTex == null || texW != w || texH != h || screenTex.getTextureObjectHandle() == 0);
+            if (needAlloc) {
                 if (screenTex != null) { try { screenTex.dispose(); } catch (Throwable ignored) {} }
-                Pixmap pm = new Pixmap(w, h);
+                // Tạo Texture bằng Pixmap (API chuẩn Arc) rồi cấp phát lại bộ nhớ dạng GL_RGB để khớp backbuffer Android (Mali/Adreno)
+                Pixmap pm = new Pixmap(2, 2);
                 screenTex = new Texture(pm);
                 pm.dispose();
-                screenTex.setFilter(Texture.TextureFilter.linear);
-                screenTex.setWrap(Texture.TextureWrap.clampToEdge);
-                screenReg = new TextureRegion(screenTex);
-                screenReg.flip(false, true);
                 texW = w;
                 texH = h;
+                screenTex.bind(0);
+                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_LINEAR);
+                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_LINEAR);
+                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
+                Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+                Gl.texImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_RGB, w, h, 0, GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, (java.nio.Buffer) null);
+                screenReg = new TextureRegion(screenTex);
+                screenReg.flip(false, true);
+            } else {
+                screenTex.bind(0);
             }
 
-            // Sao chép trực tiếp khung hình thế giới đã vẽ vào texture (không cần bind FBO lồng nhau!)
-            screenTex.bind(0);
             Gl.copyTexSubImage2D(GL20.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+            int err = Gl.getError();
+            if (err != GL20.GL_NO_ERROR) {
+                // Nếu driver GPU mobile không cho copyTexSubImage2D từ backbuffer, tắt an toàn để không spam log lỗi GL
+                postDisabledOnGpu = true;
+                Log.warn("[NexDarkGraphics] Disabled post pass on this GPU (GL error: " + err + ")");
+                return;
+            }
 
+            postShader.sat = sat;
+            postShader.bloom = bloom;
             postShader.invW = 1f / Math.max(1, w);
             postShader.invH = 1f / Math.max(1, h);
 
             Tmp.m2.set(Draw.proj());
             Draw.proj(Tmp.m1.setOrtho(0f, 0f, w, h));
-            Draw.blend(arc.graphics.Blending.disabled);
+            Draw.blend(Blending.disabled);
             Draw.shader(postShader);
             Draw.color(Color.white, 1f);
             Draw.rect(screenReg, w * 0.5f, h * 0.5f, w, h);
             Draw.flush();
             Draw.shader();
-            Draw.blend(arc.graphics.Blending.normal);
+            Draw.blend(Blending.normal);
             Draw.proj(Tmp.m2);
             Draw.reset();
         } catch (Throwable err) {
-            Log.err("[NexDarkGraphics] post pass failed", err);
+            postDisabledOnGpu = true;
+            Log.err("[NexDarkGraphics] post pass failed, disabling", err);
         }
     }
 }
