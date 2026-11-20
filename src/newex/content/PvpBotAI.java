@@ -56,7 +56,7 @@ public final class PvpBotAI {
     static final String[] NAMES = {"Kira", "Vex", "Nova", "Sora", "Aegis", "Lumi", "Zed", "Riven"};
     static final String[] COLORS = {"#6ee7ff", "#ff8a5b", "#c084fc", "#5ce67e", "#60a5fa", "#facc15", "#cbd5e1", "#f472b6"};
 
-    enum Mode { IDLE, FARM, DEFEND, HUNT, RETREAT, SHOP }
+    enum Mode { IDLE, FARM, DEFEND, HUNT, SIEGE, RETREAT, SHOP }
 
     /** Ký ức lâu dài lưu trực tiếp trên thiết bị. */
     static final class Memory {
@@ -520,9 +520,9 @@ public final class PvpBotAI {
 
     // ------------------------------------------------------------------ Học lối chơi của Player & Biến về (Recall)
 
-    static void observePlayerStyle(Agent a, NewModePvp.St aSt) {
-        Player hp = firstHumanPlayer();
-        if (hp == null) return;
+    /** Chỉ học theo player khi trực tiếp va chạm / giao tranh PvP với player đó. */
+    static void observePlayerOnClash(Agent a, NewModePvp.St aSt, Player hp) {
+        if (hp == null || isBotPl(hp)) return;
         NewModePvp.St hSt = NewModePvp.byId.get(hp.id);
         if (hSt == null) return;
         boolean memDirty = false;
@@ -557,7 +557,7 @@ public final class PvpBotAI {
             memDirty = true;
         }
 
-        // Đánh dấu muốn biến về đổi unit/pilot nếu đủ điều kiện cấp
+        // Đánh dấu cần đổi unit/pilot học được khi đủ cấp
         boolean wantUnitSwap = aSt.lv >= NewModePvp.FREE_SWITCH_LEVEL && a.learnUnit >= 1
             && aSt.lv >= NewModePvp.tierMinLevel(a.learnUnit) && NewModePvp.activeTier(aSt) != a.learnUnit;
         boolean wantPilotSwap = a.learnPilot > 0 && aSt.pi != a.learnPilot
@@ -565,6 +565,27 @@ public final class PvpBotAI {
         if (wantUnitSwap || wantPilotSwap) a.swapPending = true;
 
         if (memDirty) saveMemory();
+    }
+
+    /** Tự động tiến hóa / đổi sang đúng loại unit hiện tại của A.I (khi lên cấp hoặc sau khi học từ PvP). */
+    static Unit ensureAgentUnitType(Agent a, Unit u, NewModePvp.St st) {
+        if (u == null || u.dead || !u.isValid()) return u;
+        mindustry.type.UnitType want = NewModePvp.tierType(NewModePvp.activeTier(st));
+        if (want == null || u.type == want) return u;
+        try {
+            float x = u.x, y = u.y, rot = u.rotation;
+            float hpRatio = u.maxHealth > 0f ? Mathf.clamp(u.health / u.maxHealth, 0.1f, 1f) : 1f;
+            NewModePvp.spawnFx(x, y);
+            try { Call.unitDespawn(u); } catch (Throwable err) { try { u.remove(); } catch (Throwable ignored) {} }
+            Unit nu = want.create(a.botPl.team());
+            nu.set(x, y);
+            nu.rotation = rot;
+            nu.health = nu.maxHealth * hpRatio;
+            nu.add();
+            a.botPl.unit(nu);
+            a.pathDx = Float.NaN;
+            return nu;
+        } catch (Throwable ignored) { return u; }
     }
 
     static void applyLearnedSwap(Agent a, NewModePvp.St st) {
@@ -680,8 +701,10 @@ public final class PvpBotAI {
         if (tgt != null) {
             float wantR = Math.max(90f, Math.min(240f, u.range() * 0.78f));
             float dst = Mathf.dst(u.x, u.y, tgt.x, tgt.y);
+            boolean isPvpDuel = tgt.team != Vars.state.rules.waveTeam && (tgt.isPlayer() || botUnitOf(tgt) != null);
             if (dst > wantR * 1.15f) goPathAfk(t, u, tgt.x, tgt.y, wantR * 0.85f);
-            else strafeTarget(u, tgt, wantR, dst, t.strafeDir);
+            else if (isPvpDuel) strafeTarget(u, tgt, wantR, dst, t.strafeDir);
+            else { Tmp.v1.setZero(); u.movePref(Tmp.v1); }
             aimAndShoot(u, tgt);
         } else {
             goPathAfk(t, u, core.x, core.y, HOME_R);
@@ -806,6 +829,9 @@ public final class PvpBotAI {
             if (a.deadT <= 0f) spawnAgentUnit(a, core, st);
             return;
         }
+        // Tự động đổi unit ngay khi lên bậc cấp mới (hoặc sau khi học đổi unit)
+        u = ensureAgentUnitType(a, u, st);
+        if (u == null || u.dead || !u.isValid()) return;
 
         // Thu nhập điểm phụ nhẹ
         a.incomeT += Time.delta;
@@ -815,11 +841,15 @@ public final class PvpBotAI {
             NewModePvp.changed();
         }
 
-        // Học lối chơi player định kỳ
+        // Chỉ học theo player khi đang va chạm / giao tranh PvP gần player
         a.learnT -= Time.delta;
         if (a.learnT <= 0f) {
-            a.learnT = 240f;
-            observePlayerStyle(a, st);
+            a.learnT = 60f;
+            Unit ep = findNearestEnemyPlayer(u);
+            if (ep != null && (a.hitT > 0f || Mathf.dst(u.x, u.y, ep.x, ep.y) <= AGGRO_R)) {
+                Player op = NewModePvp.ownerPl(ep);
+                if (op != null && !isBotPl(op)) observePlayerOnClash(a, st, op);
+            }
         }
 
         // Cảnh báo lõi bị đánh
@@ -923,7 +953,17 @@ public final class PvpBotAI {
             }
         }
 
-        // 5. Tích nhiều điểm & xa lõi -> biến về hoặc chạy về mua đồ
+        // 5. Khi đã đạt cấp 20 trở lên -> chủ động qua tấn công lõi phe đối phương!
+        if (st.lv >= 20 && !a.defensiveOrder) {
+            CoreBlock.CoreBuild eCore = findNearestEnemyCore(u.team, u.x, u.y);
+            if (eCore != null) {
+                a.mode = Mode.SIEGE;
+                a.target = findSmartTarget(u, u, COMBAT_R * 0.85f, false);
+                return;
+            }
+        }
+
+        // 6. Tích nhiều điểm & xa lõi -> biến về hoặc chạy về mua đồ
         if (st.pts >= 3 && distCore > 240f) {
             if (distCore > 500f && tryRecall(a, u, core, st)) return;
             a.mode = Mode.SHOP;
@@ -931,7 +971,7 @@ public final class PvpBotAI {
             return;
         }
 
-        // 6. Farm quái đợt (ưu tiên trong lãnh thổ)
+        // 7. Farm quái đợt (ưu tiên trong lãnh thổ)
         Unit waveMob = findSmartTarget(u, core, NewModePvp.TERRITORY_RADIUS + 220f, true);
         if (waveMob == null) waveMob = findSmartTarget(u, u, LEASH_R * 0.65f, true);
         if (waveMob != null) {
@@ -940,9 +980,27 @@ public final class PvpBotAI {
             return;
         }
 
-        // 7. Nhàn rỗi -> đứng yên hoặc lang thang tự nhiên
+        // 8. Nhàn rỗi -> đứng yên hoặc lang thang tự nhiên
         a.mode = Mode.IDLE;
         a.target = null;
+    }
+
+    static CoreBlock.CoreBuild findNearestEnemyCore(Team myTeam, float x, float y) {
+        CoreBlock.CoreBuild best = null;
+        float bestD2 = Float.MAX_VALUE;
+        Seq<Team> tms = NewModePvp.pvpTeams();
+        for (int i = 0; i < tms.size; i++) {
+            Team t = tms.get(i);
+            if (t == myTeam) continue;
+            Seq<CoreBlock.CoreBuild> cs = t.cores();
+            for (int j = 0; j < cs.size; j++) {
+                CoreBlock.CoreBuild c = cs.get(j);
+                if (c == null || !c.isValid()) continue;
+                float d2 = Mathf.dst2(x, y, c.x, c.y);
+                if (d2 < bestD2) { bestD2 = d2; best = c; }
+            }
+        }
+        return best;
     }
 
     static Unit findSmartTarget(Unit self, mindustry.gen.Posc center, float radius, boolean preferWave) {
@@ -1007,12 +1065,40 @@ public final class PvpBotAI {
             return;
         }
 
+        if (a.mode == Mode.SIEGE) {
+            CoreBlock.CoreBuild eCore = findNearestEnemyCore(u.team, u.x, u.y);
+            if (eCore != null) {
+                float coreDst = Mathf.dst(u.x, u.y, eCore.x, eCore.y);
+                float siegeR = Math.max(110f, Math.min(280f, u.range() * 0.85f));
+                if (tgt != null && tgt.team != Vars.state.rules.waveTeam && (tgt.isPlayer() || botUnitOf(tgt) != null)) {
+                    float dst = Mathf.dst(u.x, u.y, tgt.x, tgt.y);
+                    if (dst > desiredRange * 1.15f) goPath(a, u, tgt.x, tgt.y, desiredRange * 0.85f);
+                    else strafeTarget(u, tgt, desiredRange, dst, a.strafeDir);
+                    aimAndShoot(u, tgt);
+                } else {
+                    if (coreDst > siegeR) goPath(a, u, eCore.x, eCore.y, siegeR * 0.85f);
+                    else { Tmp.v1.setZero(); u.movePref(Tmp.v1); }
+                    if (coreDst <= Math.max(u.range() + 45f, COMBAT_R)) {
+                        u.aimLook(eCore.x, eCore.y);
+                        u.controlWeapons(true, true);
+                    } else aimAndShoot(u, tgt);
+                }
+                return;
+            }
+        }
+
         if (tgt != null) {
             float dst = Mathf.dst(u.x, u.y, tgt.x, tgt.y);
+            boolean isPvpDuel = tgt.team != Vars.state.rules.waveTeam && (tgt.isPlayer() || botUnitOf(tgt) != null);
             if (dst > desiredRange * 1.15f) {
                 goPath(a, u, tgt.x, tgt.y, desiredRange * 0.85f);
-            } else {
+            } else if (isPvpDuel) {
+                // Chỉ di chuyển qua lại né đạn khi solo PvP với player / A.I đối phương
                 strafeTarget(u, tgt, desiredRange, dst, a.strafeDir);
+            } else {
+                // Bắn quái đợt: đứng yên bắn, không đảo qua lại
+                Tmp.v1.setZero();
+                u.movePref(Tmp.v1);
             }
             aimAndShoot(u, tgt);
             return;
@@ -1431,6 +1517,8 @@ public final class PvpBotAI {
         }
         mem.playerKills++;
         saveMemory();
+        NewModePvp.St aSt = NewModePvp.byId.get(botPl.id);
+        if (aSt != null) observePlayerOnClash(a, aSt, killer);
         String kn = cleanName(killer);
         String line;
         switch (a.persona) {
