@@ -2,34 +2,48 @@ package newex.graphics;
 
 import arc.Core;
 import arc.Events;
+import arc.func.Cons;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
 import arc.graphics.gl.FrameBuffer;
 import arc.graphics.gl.Shader;
 import arc.math.Mathf;
+import arc.math.geom.Rect;
+import arc.struct.ObjectMap;
 import arc.util.Log;
-import arc.util.Tmp;
 import mindustry.Vars;
+import mindustry.entities.bullet.BulletType;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.ContentInitEvent;
 import mindustry.game.EventType.Trigger;
+import mindustry.gen.Bullet;
+import mindustry.gen.Groups;
+import mindustry.gen.Unit;
 import mindustry.graphics.Layer;
 import mindustry.type.UnitType;
+import mindustry.type.Weapon;
 import mindustry.world.Block;
 import mindustry.world.blocks.defense.turrets.Turret;
 
+import java.util.HashSet;
+
 /**
- * Đồ họa NeoWex (OpenGL 2.0 / GLES 2.0 tương thích Intel & Mobile):
- * 1) Áp viền đen đậm (outlineColor + outlineRadius) cho pháo & unit NeoWex.
- * 2) Hậu xử lý màn hình (FrameBuffer + Shader): tùy chỉnh Saturation (độ bão hòa màu) và viền đen (Vignette).
- * 3) Thêm thanh kéo thả Saturation & Độ đậm viền đen trực tiếp trong Cài đặt -> Đồ họa của game.
+ * Đồ họa viền đen & Saturation NeoWex (tương thích OpenGL 2.0 / Intel GPU / Mobile):
+ * 1) Đổi viền phát sáng trắng quanh đạn / pháo / unit sang viền đen đậm (outlineColor đen + giảm hào quang trắng + viền bóng đen quanh đạn/unit).
+ * 2) Hậu xử lý màn hình (FrameBuffer + Shader): tùy chỉnh Saturation (độ bão hòa màu) thời gian thực.
+ * 3) Thêm thanh kéo thả Saturation & Độ đậm viền đen vào Cài đặt -> Đồ họa của game.
  */
 public final class NexDarkGraphics {
     public static final String BORDER_KEY = "newex-dark-border";
     public static final String SATURATION_KEY = "newex-saturation";
-    public static final String VIGNETTE_KEY = "newex-dark-border-str";
-    public static final Color DARK_OUTLINE = Color.valueOf("1b1b26");
+    public static final String DARK_GLOW_KEY = "newex-dark-border-str";
+    /** Bảng màu tím êm mắt (Obsidian Violet -> Amethyst -> Soft Lavender) gây nghiện, không chói gắt. */
+    public static final Color VIOLET_OUTLINE = Color.valueOf("241738");
+    private static final Color VIOLET_OUTER = Color.valueOf("7c3aed");
+    private static final Color VIOLET_MID = Color.valueOf("a78bfa");
+    private static final Color VIOLET_INNER = Color.valueOf("3b1d66");
+    private static final Color VIOLET_LIGHT = Color.valueOf("9d7af2");
 
     private static final String VERT_SRC =
         "attribute vec4 a_position;\n" +
@@ -43,18 +57,11 @@ public final class NexDarkGraphics {
     private static final String FRAG_SRC =
         "uniform sampler2D u_texture;\n" +
         "uniform float u_saturation;\n" +
-        "uniform float u_vignette;\n" +
         "varying vec2 v_texCoords;\n" +
         "void main(){\n" +
         "    vec4 c = texture2D(u_texture, v_texCoords);\n" +
         "    float luma = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));\n" +
         "    vec3 rgb = mix(vec3(luma), c.rgb, u_saturation);\n" +
-        "    if(u_vignette > 0.001){\n" +
-        "        vec2 p = v_texCoords - vec2(0.5, 0.5);\n" +
-        "        float dist = length(p * vec2(1.18, 1.18));\n" +
-        "        float vig = smoothstep(0.36, 0.86, dist);\n" +
-        "        rgb *= (1.0 - vig * u_vignette);\n" +
-        "    }\n" +
         "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), c.a);\n" +
         "}\n";
 
@@ -63,12 +70,9 @@ public final class NexDarkGraphics {
     private static Shader postShader = null;
     private static FrameBuffer postBuf = null;
     private static boolean capturing = false;
-    private static float curSat = 1.15f;
-    private static float curVig = 0.45f;
+    private static float curSat = 1.0f;
 
-    private static final Color tmpEdge = new Color(0f, 0f, 0f, 0.72f);
-    private static final Color tmpZero = new Color(0f, 0f, 0f, 0f);
-
+    private static final Rect camRect = new Rect();
     private static final Runnable beginPost = NexDarkGraphics::beginCapture;
     private static final Runnable endPost = NexDarkGraphics::endCapture;
 
@@ -78,24 +82,23 @@ public final class NexDarkGraphics {
         if (initialized) return;
         initialized = true;
 
-        Events.on(ContentInitEvent.class, e -> applyDarkOutlines());
+        Events.on(ContentInitEvent.class, e -> applyDarkStyleToContent());
 
         if (!Vars.headless) {
             Events.on(ClientLoadEvent.class, e -> Core.app.post(() -> {
                 registerGraphicsSettings();
                 initShader();
             }));
-            Events.run(Trigger.draw, NexDarkGraphics::schedulePost);
-            Events.run(Trigger.uiDrawEnd, NexDarkGraphics::drawFallbackBorder);
+            Events.run(Trigger.draw, NexDarkGraphics::onDraw);
         }
     }
 
-    /** Thêm thanh kéo Saturation và Độ đậm viền đen vào Cài đặt -> Đồ họa của Mindustry. */
+    /** Thêm thanh kéo Saturation và Độ đậm viền đen vào Cài đặt -> Đồ họa của game. */
     private static void registerGraphicsSettings() {
         if (Vars.ui == null || Vars.ui.settings == null || Vars.ui.settings.graphics == null) return;
         try {
-            if (!Core.settings.has(SATURATION_KEY)) Core.settings.put(SATURATION_KEY, 115);
-            if (!Core.settings.has(VIGNETTE_KEY)) Core.settings.put(VIGNETTE_KEY, 45);
+            if (!Core.settings.has(SATURATION_KEY)) Core.settings.put(SATURATION_KEY, 100);
+            if (!Core.settings.has(DARK_GLOW_KEY)) Core.settings.put(DARK_GLOW_KEY, 70);
 
             boolean en = false;
             try {
@@ -103,20 +106,19 @@ public final class NexDarkGraphics {
                 en = loc != null && loc.toLowerCase().startsWith("en");
             } catch (Throwable ignored) {}
 
-            final String satTitle = en ? "NeoWex Saturation" : "Độ bão hòa màu (Saturation)";
-            final String vigTitle = en ? "NeoWex Dark Border" : "Độ đậm viền đen (NeoWex)";
+            final String satTitle = en ? "Saturation (Color Intensity)" : "Độ bão hòa màu (Saturation)";
+            final String darkTitle = en ? "Violet Glow Outline (Bullets / Units)" : "Độ sáng viền tím (Đạn / Unit)";
             final String offTxt = en ? "Off" : "Tắt";
 
-            // Đưa tên hiển thị vào bundle nếu chưa có để SettingsTable hiện chữ tiếng Việt/Anh rõ ràng
             try {
                 if (Core.bundle != null && Core.bundle.getProperties() != null) {
                     Core.bundle.getProperties().put("setting." + SATURATION_KEY + ".name", satTitle);
-                    Core.bundle.getProperties().put("setting." + VIGNETTE_KEY + ".name", vigTitle);
+                    Core.bundle.getProperties().put("setting." + DARK_GLOW_KEY + ".name", darkTitle);
                 }
             } catch (Throwable ignored) {}
 
-            Vars.ui.settings.graphics.sliderPref(SATURATION_KEY, 115, 0, 200, 5, i -> i + "%");
-            Vars.ui.settings.graphics.sliderPref(VIGNETTE_KEY, 45, 0, 100, 5, i -> i <= 0 ? offTxt : i + "%");
+            Vars.ui.settings.graphics.sliderPref(SATURATION_KEY, 100, 0, 200, 5, i -> i + "%");
+            Vars.ui.settings.graphics.sliderPref(DARK_GLOW_KEY, 70, 0, 100, 5, i -> i <= 0 ? offTxt : i + "%");
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] registerGraphicsSettings failed", err);
         }
@@ -129,50 +131,117 @@ public final class NexDarkGraphics {
             postShader = new Shader(VERT_SRC, FRAG_SRC);
             postBuf = new FrameBuffer();
         } catch (Throwable err) {
-            Log.err("[NexDarkGraphics] Failed to compile post shader, using fallback border", err);
+            Log.err("[NexDarkGraphics] Failed to compile saturation shader", err);
             postShader = null;
             postBuf = null;
         }
     }
 
-    /** Gán màu viền đen đậm và độ dày viền rõ nét cho pháo & unit NeoWex. */
-    private static void applyDarkOutlines() {
+    /** Đổi viền phát sáng trắng trên pháo, unit và đạn sang viền đen đậm sắc nét. */
+    private static void applyDarkStyleToContent() {
         try {
+            HashSet<BulletType> seen = new HashSet<>();
             for (Block blk : Vars.content.blocks()) {
-                if (blk instanceof Turret && blk.name != null && blk.name.startsWith("newex-")) {
-                    blk.outlineColor = DARK_OUTLINE;
-                    if (blk.outlineRadius < 3) blk.outlineRadius = 3;
-                }
+                if (!(blk instanceof Turret)) continue;
+                blk.outlineColor = VIOLET_OUTLINE;
+                if (blk.outlineRadius < 3) blk.outlineRadius = 3;
+                patchTurretBullets(blk, seen);
             }
             for (UnitType ut : Vars.content.units()) {
-                if (ut != null && ut.name != null && ut.name.startsWith("newex-")) {
-                    ut.outlineColor = DARK_OUTLINE;
-                    if (ut.outlineRadius < 3) ut.outlineRadius = 3;
+                if (ut == null) continue;
+                ut.outlineColor = VIOLET_OUTLINE;
+                if (ut.outlineRadius < 3) ut.outlineRadius = 3;
+                if (ut.weapons != null) {
+                    for (int i = 0; i < ut.weapons.size; i++) {
+                        Weapon w = ut.weapons.get(i);
+                        if (w != null && w.bullet != null) patchBullet(w.bullet, seen);
+                    }
                 }
             }
         } catch (Throwable err) {
-            Log.err("[NexDarkGraphics] applyDarkOutlines failed", err);
+            Log.err("[NexDarkGraphics] applyDarkStyleToContent failed", err);
         }
     }
 
+    private static void patchTurretBullets(Block blk, HashSet<BulletType> seen) {
+        try {
+            Object ammo = blk.getClass().getField("ammoTypes").get(blk);
+            if (ammo instanceof ObjectMap) {
+                for (Object v : ((ObjectMap<?, ?>) ammo).values()) {
+                    if (v instanceof BulletType) patchBullet((BulletType) v, seen);
+                }
+            }
+        } catch (Throwable ignored) {}
+        try {
+            Object shoot = blk.getClass().getField("shootType").get(blk);
+            if (shoot instanceof BulletType) patchBullet((BulletType) shoot, seen);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Chuyển hào quang sáng trắng sang sắc tím dịu (Amethyst / Soft Lavender), giữ độ tương phản êm mắt. */
+    private static void patchBullet(BulletType b, HashSet<BulletType> seen) {
+        if (b == null || !seen.add(b)) return;
+        try {
+            b.lightOpacity *= 0.45f;
+            b.lightColor = b.lightColor != null ? b.lightColor.cpy().lerp(VIOLET_LIGHT, 0.72f) : VIOLET_LIGHT.cpy();
+            try {
+                java.lang.reflect.Field bf = b.getClass().getField("backColor");
+                Object v = bf.get(b);
+                if (v instanceof Color) {
+                    bf.set(b, ((Color) v).cpy().lerp(VIOLET_OUTER, 0.48f));
+                }
+            } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {}
+        patchBullet(b.fragBullet, seen);
+        patchBullet(b.intervalBullet, seen);
+    }
+
     private static float readSaturation() {
-        return Mathf.clamp(Core.settings.getInt(SATURATION_KEY, 115), 0, 200) / 100f;
+        return Mathf.clamp(Core.settings.getInt(SATURATION_KEY, 100), 0, 200) / 100f;
     }
 
-    private static float readVignette() {
+    private static float readDarkHaloStrength() {
         if (!Core.settings.getBool(BORDER_KEY, true)) return 0f;
-        return Mathf.clamp(Core.settings.getInt(VIGNETTE_KEY, 45), 0, 100) / 100f;
+        return Mathf.clamp(Core.settings.getInt(DARK_GLOW_KEY, 70), 0, 100) / 100f;
     }
 
-    private static void schedulePost() {
+    private static void onDraw() {
         if (Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
+
+        // 1) Vẽ hào quang viền tím 3 lớp êm mắt (tím khói ngoài -> oải hương dịu -> tím đậm tạo chiều sâu) quanh đạn & unit
+        final float darkStr = readDarkHaloStrength();
+        if (darkStr > 0.01f) {
+            Rect bounds = Core.camera.bounds(camRect);
+            Draw.z(Layer.bullet - 0.08f);
+            Groups.bullet.intersect(bounds.x, bounds.y, bounds.width, bounds.height, (Cons<Bullet>) b -> {
+                if (b == null || !b.isAdded()) return;
+                float r = Math.max(3.5f, Math.min(18f, b.hitSize * 1.15f + 2.5f));
+                Draw.color(VIOLET_OUTER, 0.14f * darkStr);
+                Fill.circle(b.x, b.y, r * 1.65f);
+                Draw.color(VIOLET_MID, 0.22f * darkStr);
+                Fill.circle(b.x, b.y, r * 1.22f);
+                Draw.color(VIOLET_INNER, 0.42f * darkStr);
+                Fill.circle(b.x, b.y, r * 0.92f);
+            });
+            Draw.z(Layer.groundUnit - 0.08f);
+            Groups.unit.intersect(bounds.x, bounds.y, bounds.width, bounds.height, (Cons<Unit>) u -> {
+                if (u == null || u.dead || !u.isAdded()) return;
+                float r = Math.max(6f, u.hitSize * 0.68f + 2.5f);
+                Draw.color(VIOLET_OUTER, 0.11f * darkStr);
+                Fill.circle(u.x, u.y, r * 1.38f);
+                Draw.color(VIOLET_MID, 0.16f * darkStr);
+                Fill.circle(u.x, u.y, r * 1.12f);
+            });
+            Draw.reset();
+        }
+
+        // 2) Áp dụng bộ lọc Saturation thời gian thực nếu người chơi kéo khác 100%
         if (!shaderTried) initShader();
         if (postShader == null || postBuf == null) return;
         if (Core.settings.getBool("pixelate", false)) return;
 
         curSat = readSaturation();
-        curVig = readVignette();
-        if (Math.abs(curSat - 1f) < 0.005f && curVig < 0.005f) return;
+        if (Math.abs(curSat - 1f) < 0.005f) return;
 
         Draw.draw(Layer.floor - 9f, beginPost);
         Draw.draw(Layer.light + 5f, endPost);
@@ -203,40 +272,9 @@ public final class NexDarkGraphics {
             Draw.flush();
             postShader.bind();
             postShader.setUniformf("u_saturation", curSat);
-            postShader.setUniformf("u_vignette", curVig);
             postBuf.blit(postShader);
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] post blit failed", err);
         }
-    }
-
-    /** Dự phòng vẽ viền đen theo tọa độ màn hình chuẩn (Ortho) khi shader không khả dụng hoặc bật pixelate. */
-    private static void drawFallbackBorder() {
-        if (Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
-        if (postShader != null && postBuf != null && !Core.settings.getBool("pixelate", false)) return;
-
-        float vig = readVignette();
-        if (vig < 0.005f) return;
-
-        float w = Core.graphics.getWidth();
-        float h = Core.graphics.getHeight();
-        if (w <= 0f || h <= 0f) return;
-
-        float borderY = Math.max(28f, h * 0.075f);
-        float borderX = Math.max(28f, w * 0.055f);
-
-        float edgeCol = tmpEdge.set(0f, 0f, 0f, Mathf.clamp(vig, 0f, 0.92f)).toFloatBits();
-        float clearCol = tmpZero.toFloatBits();
-
-        Draw.flush();
-        Tmp.m2.set(Draw.proj());
-        Draw.proj(Tmp.m1.setOrtho(0f, 0f, w, h));
-        Fill.quad(0f, 0f, edgeCol, w, 0f, edgeCol, w, borderY, clearCol, 0f, borderY, clearCol);
-        Fill.quad(0f, h, edgeCol, w, h, edgeCol, w, h - borderY, clearCol, 0f, h - borderY, clearCol);
-        Fill.quad(0f, 0f, edgeCol, 0f, h, edgeCol, borderX, h, clearCol, borderX, 0f, clearCol);
-        Fill.quad(w, 0f, edgeCol, w, h, edgeCol, w - borderX, h, clearCol, w - borderX, 0f, clearCol);
-        Draw.flush();
-        Draw.proj(Tmp.m2);
-        Draw.reset();
     }
 }
