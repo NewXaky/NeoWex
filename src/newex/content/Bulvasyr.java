@@ -10,6 +10,7 @@ import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
 import arc.math.Angles;
+import arc.math.Interp;
 import arc.math.Mathf;
 import arc.math.geom.Position;
 import arc.scene.ui.layout.Table;
@@ -29,7 +30,7 @@ import mindustry.gen.Building;
 import mindustry.gen.Bullet;
 import mindustry.gen.Groups;
 import mindustry.gen.Hitboxc;
-import mindustry.gen.LegsUnit;
+import mindustry.gen.MechUnit;
 import mindustry.gen.Sounds;
 import mindustry.gen.Teamc;
 import mindustry.gen.Unit;
@@ -93,6 +94,13 @@ public final class Bulvasyr {
     private static final Color MISSILE_ORANGE = Color.valueOf("ff7b29");
     private static final Color MISSILE_CORE = Color.valueOf("fff4cc");
 
+    // Tông Bulvasyr: xanh tím đậm + giáp thép xám, điểm nhấn đỏ, vent vàng
+    private static final Color MISS_INDIGO = Color.valueOf("3b2fb8");
+    private static final Color MISS_VIOLET = Color.valueOf("7a68ff");
+    private static final Color MISS_STEEL = Color.valueOf("c9d0e0");
+    private static final Color MISS_RED = Color.valueOf("e0303c");
+    private static final Color MISS_YELLOW = Color.valueOf("ffd84a");
+
     private static final Color SHIELD_BLUE = Color.valueOf("4654c8");
     private static final Color SHIELD_STEEL = Color.valueOf("9ca6ba");
     private static final Color SHIELD_RED = Color.valueOf("d64550");
@@ -105,6 +113,7 @@ public final class Bulvasyr {
     private static Effect shieldBreakFx;
     private static Effect rocketMuzzleFx;
     private static Effect rocketHitFx;
+    private static Effect rocketSmokeFx;
 
     private Bulvasyr() {}
 
@@ -145,29 +154,46 @@ public final class Bulvasyr {
             Fill.circle(e.x, e.y, 8f * e.fout());
         });
 
-        rocketMuzzleFx = new Effect(18f, e -> {
-            Draw.color(MISSILE_CORE, MISSILE_ORANGE, e.fin());
-            Angles.randLenVectors(e.id, 5, 16f * e.fin(), e.rotation, 24f, (x, y) ->
-                Fill.circle(e.x + x, e.y + y, 2.8f * e.fout())
-            );
-            Draw.color(Color.gray, 0.45f * e.fout());
-            Angles.randLenVectors(e.id + 9, 4, 12f * e.fin(), e.rotation + 180f, 35f, (x, y) ->
-                Fill.circle(e.x + x, e.y + y, 3.5f * e.fout())
-            );
+        // Khói vệt đuôi: tím xám nở dần, tan chậm
+        rocketSmokeFx = new Effect(38f, e -> {
+            Draw.color(Tmp.c1.set(MISS_VIOLET).lerp(Color.gray, e.fin()), 0.5f * e.fout());
+            Fill.circle(e.x, e.y, 1.4f + 3.6f * e.fin(Interp.pow2Out));
         });
 
-        rocketHitFx = new Effect(24f, 80f, e -> {
-            Draw.color(MISSILE_CORE, MISSILE_ORANGE, e.fin());
-            Lines.stroke(2.2f * e.fout());
-            Lines.circle(e.x, e.y, 4f + e.fin() * 26f);
+        // Chớp lửa nòng: tia vàng-tím, vòng xung kích và khói phụt ngược
+        rocketMuzzleFx = new Effect(34f, 100f, e -> {
+            Draw.color(MISS_YELLOW, MISS_VIOLET, e.fin());
+            Drawf.tri(e.x, e.y, 8f * e.fout(), 34f * e.fout(Interp.pow2Out), e.rotation);
+            Draw.color(Color.white, e.fout());
+            Drawf.tri(e.x, e.y, 3.5f * e.fout(), 16f * e.fout(Interp.pow2Out), e.rotation);
+            Draw.color(MISS_STEEL, 0.8f * e.fout());
+            Lines.stroke(2f * e.fout());
+            Lines.circle(e.x, e.y, 3f + e.fin(Interp.pow3Out) * 22f);
+            Angles.randLenVectors(e.id, 8, 42f * e.finpow(), e.rotation + 180f, 36f, (x, y) -> {
+                Draw.color(Tmp.c2.set(MISS_STEEL).lerp(Color.gray, e.fin()), 0.5f * e.fout());
+                Fill.circle(e.x + x, e.y + y, 1.8f + 3.2f * e.fin());
+            });
+            Drawf.light(e.x, e.y, 46f * e.fout(), MISS_VIOLET, 0.7f * e.fout());
+        });
 
-            Draw.color(MISSILE_GOLD, MISSILE_ORANGE, e.fin());
-            Angles.randLenVectors(e.id, 7, 24f * e.finpow(), (x, y) ->
-                Fill.circle(e.x + x, e.y + y, 3.8f * e.fout())
+        // Nổ điện ảnh: chớp trắng, cầu lửa tím-xanh, sóng xung kích, tia lửa vàng-đỏ, khói
+        rocketHitFx = new Effect(48f, 180f, e -> {
+            Draw.color(Color.white, MISS_YELLOW, e.fin());
+            Fill.circle(e.x, e.y, 13f * e.fout(Interp.pow3Out));
+            Draw.color(MISS_VIOLET, MISS_INDIGO, e.fin());
+            Draw.alpha(0.85f * e.fout());
+            Angles.randLenVectors(e.id, 10, 32f * e.finpow(), (x, y) -> Fill.circle(e.x + x, e.y + y, 7.5f * e.fout()));
+            Draw.color(MISS_STEEL, e.fout());
+            Lines.stroke(2.8f * e.fout());
+            Lines.circle(e.x, e.y, e.fin(Interp.pow2Out) * 46f);
+            Draw.color(MISS_YELLOW, MISS_RED, e.fin());
+            Lines.stroke(1.7f * e.fout());
+            Angles.randLenVectors(e.id + 7, 14, 6f + 52f * e.finpow(), (x, y) ->
+                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 1f + 7f * e.fout())
             );
-
-            Draw.color(Color.valueOf("8be9ff"), Color.white, e.fout());
-            Fill.circle(e.x, e.y, 5.5f * e.fout());
+            Draw.color(Color.gray, 0.45f * e.fout());
+            Angles.randLenVectors(e.id + 3, 6, 40f * e.finpow(), (x, y) -> Fill.circle(e.x + x, e.y + y, 4f + 3f * e.fin()));
+            Drawf.light(e.x, e.y, 90f * e.fout(), MISS_VIOLET, 0.85f * e.fout());
         });
 
         final SalvoMissileBulletType missileBullet = new SalvoMissileBulletType();
@@ -193,17 +219,13 @@ public final class Bulvasyr {
             envDisabled = Env.none;
             drawCell = false;
 
-            // Cơ giáp 2 chân bước luân phiên (giống ảnh 1 & 2)
+            // Robot 2 chân (Mech): bước luân phiên trái/phải như Dagger/Fortress, sprite bulvasyr-leg vẽ đối xứng 2 bên
             hovering = false;
-            allowLegStep = true;
-            legCount = 2;
-            legGroupSize = 1;
-            legLength = 22f;
-            legForwardScl = 0.85f;
-            legMoveSpace = 1.4f;
-            legBaseOffset = 7f;
-            legExtension = -2f;
-            legSpeed = 0.25f;
+            canBoost = false;
+            mechStride = 7f;
+            mechFrontSway = 0.5f;
+            mechSideSway = 0.28f;
+            mechStepParticles = true;
             stepShake = 0.7f;
 
             outlineRadius = 3;
@@ -260,7 +282,7 @@ public final class Bulvasyr {
 
     // ================================================================== Custom LegsUnit với Khiên Vật Lý mạn trái
 
-    public static class BulvasyrUnit extends LegsUnit {
+    public static class BulvasyrUnit extends MechUnit {
         public float physShieldMax = -1f;
         public float physShieldHp = 0f;
         public boolean physShieldDamaged = false;
@@ -319,6 +341,12 @@ public final class Bulvasyr {
                 shieldHitFx.at(hitX, hitY, hitAngle);
             }
             return absorbed;
+        }
+
+        @Override
+        public void draw() {
+            super.draw();
+            PhysicalShieldAbility.render(this);
         }
 
         @Override
@@ -506,6 +534,7 @@ public final class Bulvasyr {
 
                     mount.recoil = 1f;
                     rocketMuzzleFx.at(sx, sy, launchAngle);
+                    Effect.shake(1.3f, 7f, sx, sy);
                     if (idx == 0 && !Vars.headless) {
                         launchSound.at(sx, sy, Mathf.random(0.92f, 1.08f), 0.75f);
                     }
@@ -526,7 +555,7 @@ public final class Bulvasyr {
     public static class SalvoMissileBulletType extends MissileBulletType {
         public SalvoMissileBulletType() {
             super(5.6f, 70f);
-            lifetime = 95f;
+            lifetime = 100f;
             width = 7.5f;
             height = 13f;
             shrinkY = 0f;
@@ -545,13 +574,14 @@ public final class Bulvasyr {
             collidesAir = true;
             collidesGround = true;
 
-            frontColor = MISSILE_CORE;
-            backColor = MISSILE_ORANGE;
-            trailColor = MISSILE_GOLD;
-            trailWidth = 2.1f;
-            trailLength = 13;
-            trailChance = 0.85f;
-            trailEffect = Fx.missileTrail;
+            frontColor = MISS_STEEL;
+            backColor = MISS_INDIGO;
+            trailColor = MISS_VIOLET;
+            hitColor = MISS_VIOLET;
+            trailWidth = 3.1f;
+            trailLength = 30;
+            trailChance = 0.9f;
+            trailEffect = rocketSmokeFx;
 
             shootEffect = Fx.none;
             smokeEffect = Fx.none;
@@ -592,6 +622,8 @@ public final class Bulvasyr {
         @Override
         public void update(Bullet b) {
             super.update(b);
+            // Điện ảnh: rời nòng chậm, động cơ bùng lên rồi vọt tới tốc độ tối đa
+            b.vel.setLength(Mathf.lerp(2.3f, 8.4f, Interp.pow2Out.apply(Mathf.clamp((b.time - 4f) / 28f))));
             if (!(b.data instanceof SwirlData)) return;
             SwirlData sd = (SwirlData) b.data;
             float off = swirlOffset(b, sd);
@@ -613,11 +645,24 @@ public final class Bulvasyr {
             float ph = sd.phase + t * SWIRL_SPEED;
             float lat = SWIRL_AMP * env * SWIRL_SPEED * Mathf.cos(ph);
             float r0 = b.rotation();
-            float tilt = Mathf.atan2(lat, speed) * Mathf.radDeg;
-            float sc = 1f + SWIRL_DEPTH * env * Mathf.cos(ph);
+            float tilt = Mathf.atan2(lat, Math.max(0.5f, b.vel.len())) * Mathf.radDeg;
+            float sc = (1f + SWIRL_DEPTH * env * Mathf.cos(ph)) * Mathf.lerp(0.55f, 1f, Interp.pow2Out.apply(Mathf.clamp(t / 10f)));
+            float heading = r0 + tilt;
+            float flick = 0.85f + Mathf.absin(Time.time + b.id, 2.3f, 0.3f);
+            float bx = b.x - Angles.trnsx(heading, height * 0.5f * sc), by = b.y - Angles.trnsy(heading, height * 0.5f * sc);
+            Draw.blend(Blending.additive);
+            Draw.color(MISS_VIOLET, 0.32f);
+            Fill.circle(b.x, b.y, 10f * sc);
+            Draw.color(MISS_YELLOW, 0.85f);
+            Drawf.tri(bx, by, 4.6f * sc, 17f * sc * flick, heading + 180f);
+            Draw.color(Color.white, 0.9f);
+            Drawf.tri(bx, by, 2.1f * sc, 9f * sc * flick, heading + 180f);
+            Draw.blend();
+            Draw.reset();
+            Drawf.light(b.x, b.y, 38f * sc, MISS_VIOLET, 0.55f);
             float w0 = width, h0 = height;
             width = w0 * sc; height = h0 * sc;
-            b.rotation(r0 + tilt);
+            b.rotation(heading);
             super.draw(b);
             b.rotation(r0);
             width = w0; height = h0;
@@ -631,6 +676,7 @@ public final class Bulvasyr {
                 dynSplash = calcAtk((Unit) b.owner) * ROCKET_SPLASH_RATIO;
             }
             hitEffect.at(x, y, b.rotation(), hitColor);
+            Effect.shake(2.4f, 10f, x, y);
             hitSound.at(x, y, hitSoundPitch, hitSoundVolume * 0.65f);
 
             // Gây sát thương nổ xuyên giáp diện rộng (pierceArmor = true)
@@ -824,9 +870,12 @@ public final class Bulvasyr {
 
     public static class PhysicalShieldAbility extends Ability {
         @Override
-        public void draw(Unit unit) {
+        public void draw(Unit unit) { /* khiên được vẽ trong BulvasyrUnit.draw() để luôn hiện đúng lớp */ }
+
+        public static void render(Unit unit) {
             if (!(unit instanceof BulvasyrUnit)) return;
             BulvasyrUnit bu = (BulvasyrUnit) unit;
+            bu.ensureShieldInit();
             if (!bu.isShieldActive()) return;
 
             float ratio = bu.shieldRatio();
@@ -835,7 +884,7 @@ public final class Bulvasyr {
             float py = bu.y + Angles.trnsy(shieldFacing, bu.hitSize * 0.48f);
 
             float zPrev = Draw.z();
-            Draw.z(Layer.groundUnit + 0.08f);
+            Draw.z(Layer.groundUnit - 0.01f);
 
             // Nếu đã có sprite bulvasyr-shield.png thì vẽ sprite; chưa có thì vẽ vector tấm khiên vát chéo đúng ảnh 1 & 2
             if (shieldRegion == null && !Vars.headless) {
@@ -871,7 +920,7 @@ public final class Bulvasyr {
             Draw.reset();
         }
 
-        private void drawVectorShieldPlate(BulvasyrUnit bu, float px, float py, float ratio) {
+        private static void drawVectorShieldPlate(BulvasyrUnit bu, float px, float py, float ratio) {
             float rot = bu.rotation;
             float fwdX = Angles.trnsx(rot, 1f), fwdY = Angles.trnsy(rot, 1f);
             float leftX = Angles.trnsx(rot + 90f, 1f), leftY = Angles.trnsy(rot + 90f, 1f);
