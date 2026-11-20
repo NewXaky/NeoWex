@@ -71,9 +71,6 @@ public final class NexDynamicShadows {
     public static final String KEY_TINT = "newex-ds-tint";
     public static final String KEY_CONTACT = "newex-ds-contact";
     public static final String KEY_LIGHT_ERASE = "newex-ds-light-erase";
-    public static final String KEY_SUNRAYS = "newex-ds-sunrays";
-    public static final String KEY_SUNRAY_CHANCE = "newex-ds-sunray-chance";
-    public static final String KEY_SUNRAY_DUR = "newex-ds-sunray-dur";
 
     public static boolean enabled = true;
     public static boolean dayNightCycle = true;
@@ -81,9 +78,6 @@ public final class NexDynamicShadows {
     public static boolean unitShadowsEnabled = true;
     public static boolean zoomFadeEnabled = true;
     public static boolean lightEraseEnabled = true;
-    public static boolean sunraysEnabled = true;
-    public static int sunrayChancePct = 35;
-    public static int sunrayDurationSec = 9;
     /** 0 = Thấp (45%), 1 = Trung bình (65%, mặc định mượt 60fps), 2 = Cao (90%) */
     public static int graphicsQuality = 1;
     public static float shadowLength = 10f;
@@ -117,11 +111,14 @@ public final class NexDynamicShadows {
 
     // Chế độ hòa trộn làm tan bóng mượt quanh nguồn sáng (dst = dst * (1 - srcAlpha))
     private static final Blending LIGHT_ERASE_BLEND = new Blending(Gl.zero, Gl.oneMinusSrcAlpha);
+    // Chế độ mặt nạ phủ bóng tường địa hình lên đúng các khối xây nằm trong vùng bóng (không đè lại lên mặt đất!)
+    private static final Blending MASK_TO_DST_ALPHA = new Blending(Gl.dstAlpha, Gl.zero);
 
-    // Chỉ cần 3 FBO duy nhất (scratchA -> scratchB -> shadowOut) thay vì 15 FBO!
-    private static FrameBuffer scratchA, scratchB, shadowOut;
-    private static TextureRegion scratchRegA, scratchRegB, shadowRegOut;
+    // 4 FBO gọn nhẹ (scratchA, scratchB, shadowOut cho mặt đất, mtnBlockShadowOut phủ bóng tường lên khối xây)
+    private static FrameBuffer scratchA, scratchB, shadowOut, mtnBlockShadowOut;
+    private static TextureRegion scratchRegA, scratchRegB, shadowRegOut, mtnBlockRegOut;
     private static boolean hasShadowContent = false;
+    private static boolean hasMtnBlockShadow = false;
 
     private static float lastFboScale = -1f;
     private static float lastCachedAngle = -999f;
@@ -216,17 +213,10 @@ public final class NexDynamicShadows {
         float x, y, r, strength;
     }
 
-    static final class SunRay {
-        float x, y, width, length, age, maxLife, cloudFreq, cloudPhase;
-    }
-
     private static final Seq<UnitShadowData> unitShadows = new Seq<>(64);
     private static final Seq<UnitShadowData> unitShadowPool = new Seq<>(64);
     private static final Seq<LightSpot> dynLights = new Seq<>(64);
     private static final Seq<LightSpot> dynLightPool = new Seq<>(64);
-    private static final Seq<SunRay> activeSunRays = new Seq<>(16);
-    private static float sunrayRollAcc = 0f;
-    private static final Color tmpSunCore = new Color(), tmpSunEdge = new Color(1f, 0.92f, 0.65f, 0f);
 
     private static UnitShadowData obtainUnitShadow() {
         return unitShadowPool.size > 0 ? unitShadowPool.pop() : new UnitShadowData();
@@ -306,9 +296,6 @@ public final class NexDynamicShadows {
         shadowTint = Core.settings.getInt(KEY_TINT, 60) / 100f;
         contactShadow = Core.settings.getInt(KEY_CONTACT, 45) / 100f;
         lightEraseEnabled = Core.settings.getBool(KEY_LIGHT_ERASE, true);
-        sunraysEnabled = Core.settings.getBool(KEY_SUNRAYS, true);
-        sunrayChancePct = Mathf.clamp(Core.settings.getInt(KEY_SUNRAY_CHANCE, 35), 5, 100);
-        sunrayDurationSec = Mathf.clamp(Core.settings.getInt(KEY_SUNRAY_DUR, 9), 3, 25);
     }
 
     private static boolean isEn() {
@@ -363,14 +350,6 @@ public final class NexDynamicShadows {
                             lightEraseEnabled = v;
                             shadDirty = true;
                         });
-                        addCheck(subBox, en ? "Morning Sunbeams (Cloud Fade Effect)" : "Tia nắng buổi sáng (từ từ tắt khi mây che)", KEY_SUNRAYS, sunraysEnabled, v -> {
-                            sunraysEnabled = v;
-                            if (!v) activeSunRays.clear();
-                        });
-                        addSlider(subBox, en ? "Sunbeam Spawn Chance" : "Tỉ lệ xuất hiện tia nắng", KEY_SUNRAY_CHANCE, sunrayChancePct, 5, 100, 5,
-                            v -> { sunrayChancePct = v; return v + "%"; });
-                        addSlider(subBox, en ? "Sunbeam Duration" : "Thời gian tồn tại tia nắng", KEY_SUNRAY_DUR, sunrayDurationSec, 3, 25, 1,
-                            v -> { sunrayDurationSec = v; return v + "s"; });
 
                         addSlider(subBox, en ? "Shadow Quality" : "Chất lượng bóng", KEY_QUALITY, graphicsQuality, 0, 2, 1,
                             v -> {
@@ -577,9 +556,11 @@ public final class NexDynamicShadows {
                 scratchA = new FrameBuffer(fw, fh); scratchRegA = flipped(scratchA);
                 scratchB = new FrameBuffer(fw, fh); scratchRegB = flipped(scratchB);
                 shadowOut = new FrameBuffer(fw, fh); shadowRegOut = flipped(shadowOut);
+                mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
                 scratchA.getTexture().setFilter(Texture.TextureFilter.linear);
                 scratchB.getTexture().setFilter(Texture.TextureFilter.linear);
                 shadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
+                mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
             } catch (Throwable err) {
                 disposeFBOs();
                 return;
@@ -772,6 +753,96 @@ public final class NexDynamicShadows {
                         Draw.blend(Blending.normal);
                         shadowOut.end();
 
+                        // 4) Phủ bóng tường địa hình lên đúng các khối xây nằm dưới bóng tường (mask bằng dstAlpha -> không đè bóng lên mặt đất!)
+                        boolean anyMtn = false, anyBuilt = false;
+                        for (int cx = chX1; cx <= chX2 && !(anyMtn && anyBuilt); cx++) {
+                            for (int cy = chY1; cy <= chY2 && !(anyMtn && anyBuilt); cy++) {
+                                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                if (chunk == null || !chunk.valid) continue;
+                                if (!chunk.mountainTiles.isEmpty()) anyMtn = true;
+                                if (chunk.hasBuiltBlocks) anyBuilt = true;
+                            }
+                        }
+                        hasMtnBlockShadow = anyMtn && anyBuilt;
+                        if (hasMtnBlockShadow) {
+                            // 4a) Vẽ riêng bóng tường địa hình vào scratchA -> blur ngang vào scratchB
+                            scratchA.begin();
+                            Gl.clearColor(0f, 0f, 0f, 0f);
+                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                            Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                            for (int cx = chX1; cx <= chX2; cx++) {
+                                for (int cy = chY1; cy <= chY2; cy++) {
+                                    if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                    ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                    if (chunk == null || !chunk.valid) continue;
+                                    Seq<ChunkCache.CasterEntry> list = chunk.casters;
+                                    for (int i = 0; i < list.size; i++) {
+                                        ChunkCache.CasterEntry e = list.get(i);
+                                        if (!e.isMtn || e.mod == 0f) continue;
+                                        if (!isExposedMountainCaster(e.x, e.y, cosA, sinA)) continue;
+                                        float whs = e.size * 0.5f + 1f;
+                                        float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
+                                        float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
+                                        float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
+                                        float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
+                                        if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
+                                        float fLen = shadowScale * e.elev * e.mod;
+                                        if (fLen < 0.2f) continue;
+                                        NexShadowConfig.drawExtruded(e.cx, e.cy, fLen, cosA, sinA, null, e.rawSize);
+                                    }
+                                }
+                            }
+                            Draw.flush();
+                            scratchA.end();
+
+                            scratchB.begin();
+                            Gl.clearColor(0f, 0f, 0f, 0f);
+                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                            applyShaderPass(1f, 0f, rawSun, scratchRegA, camX, camY, camW, camH, fw, fh);
+                            Draw.flush();
+                            scratchB.end();
+
+                            // 4b) Vẽ mặt nạ các khối xây (alpha = 1 trên khối xây, 0 trên đất trống) vào mtnBlockShadowOut
+                            mtnBlockShadowOut.begin();
+                            Gl.clearColor(0f, 0f, 0f, 0f);
+                            Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                            Draw.blend(Blending.disabled);
+                            Draw.color(1f, 1f, 1f, 1f);
+                            drawBuiltBlockMasks(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                            Draw.flush();
+
+                            // 4c) Chỉ giữ lại bóng tường địa hình ở đúng vị trí có khối xây (dstAlpha = 1) bằng MASK_TO_DST_ALPHA!
+                            Draw.blend(MASK_TO_DST_ALPHA);
+                            Draw.shader(shadowShader);
+                            shadowShader.blurDirX = 0f;
+                            shadowShader.blurDirY = 1f;
+                            Draw.color(Color.white, 1f);
+                            Draw.rect(scratchRegB, camX, camY, camW, camH);
+                            Draw.flush();
+                            Draw.shader();
+
+                            if (lightEraseEnabled) {
+                                Draw.blend(LIGHT_ERASE_BLEND);
+                                for (int cx = chX1; cx <= chX2; cx++) {
+                                    for (int cy = chY1; cy <= chY2; cy++) {
+                                        if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                                        ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                                        if (chunk == null || !chunk.valid || chunk.lights.isEmpty()) continue;
+                                        Seq<LightSpot> lsList = chunk.lights;
+                                        for (int i = 0; i < lsList.size; i++) {
+                                            LightSpot ls = lsList.get(i);
+                                            if (ls.x + ls.r < screenX1 || ls.x - ls.r > screenX2 || ls.y + ls.r < screenY1 || ls.y - ls.r > screenY2) continue;
+                                            punchSoftLight(ls.x, ls.y, ls.r, ls.strength);
+                                        }
+                                    }
+                                }
+                                Draw.flush();
+                            }
+                            Draw.blend(Blending.normal);
+                            mtnBlockShadowOut.end();
+                        }
+
                         // Khôi phục lại đúng FBO đang bind trước đó (Bloom / màn hình) để không bao giờ mất nền sàn!
                         restoreFboBinding(prevFbo);
                     }
@@ -830,6 +901,15 @@ public final class NexDynamicShadows {
             });
         }
 
+        // Phủ bóng tường địa hình lên đúng các khối xây nằm dưới bóng tường (Layer.blockOver + 0.5f -> tối cùng màu bóng, không đè lại mặt đất!)
+        Draw.draw(Layer.blockOver + 0.5f, () -> {
+            if (enabled && hasMtnBlockShadow && globalFade > 0.005f && mtnBlockRegOut != null && mtnBlockRegOut.texture != null) {
+                Draw.color(Color.white, alpha * globalFade);
+                Draw.rect(mtnBlockRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
+                Draw.color();
+            }
+        });
+
         // Cây tĩnh vẽ trên bóng
         Draw.draw(NexShadowConfig.Z_TREE, () -> {
             for (int cx = chX1; cx <= chX2; cx++) {
@@ -846,92 +926,28 @@ public final class NexDynamicShadows {
                 }
             }
         });
-
-        // Tia nắng buổi sáng chiếu xiên xuống và từ từ mờ dần khi mây trôi qua che mất
-        if (sunraysEnabled) {
-            updateAndDrawSunrays(angle, darkness, camX, camY, camW, camH);
-        }
     }
 
-    private static void updateAndDrawSunrays(float shadowAngle, float darkness, float camX, float camY, float camW, float camH) {
-        boolean isMorningOrDay = !dayNightCycle || darkness < 0.25f;
-        if (!Vars.state.isPaused()) {
-            if (isMorningOrDay) {
-                sunrayRollAcc += Time.delta;
-                // Mỗi 2 giây thử quay tỉ lệ xuất hiện tia nắng buổi sáng
-                if (sunrayRollAcc >= 120f) {
-                    sunrayRollAcc = 0f;
-                    if (activeSunRays.size < 6 && Mathf.chance(sunrayChancePct / 100.0)) {
-                        int burst = Mathf.random(2, 3);
-                        float baseX = camX + Mathf.range(camW * 0.35f);
-                        float baseY = camY + Mathf.range(camH * 0.35f);
-                        float lifeTicks = Math.max(180f, sunrayDurationSec * 60f);
-                        for (int i = 0; i < burst && activeSunRays.size < 8; i++) {
-                            SunRay r = new SunRay();
-                            r.x = baseX + (i - 1) * Mathf.random(36f, 68f);
-                            r.y = baseY + Mathf.range(28f);
-                            r.width = Mathf.random(26f, 52f);
-                            r.length = Math.max(camW, camH) * Mathf.random(0.65f, 0.95f);
-                            r.age = 0f;
-                            r.maxLife = lifeTicks * Mathf.random(0.85f, 1.15f);
-                            r.cloudFreq = Mathf.random(0.025f, 0.045f);
-                            r.cloudPhase = Mathf.random(0f, 3.14f);
-                            activeSunRays.add(r);
-                        }
+    private static void drawBuiltBlockMasks(int chX1, int chY1, int chX2, int chY2, float sX1, float sY1, float sX2, float sY2) {
+        for (int cx = chX1; cx <= chX2; cx++) {
+            for (int cy = chY1; cy <= chY2; cy++) {
+                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                if (chunk == null || !chunk.valid || !chunk.hasBuiltBlocks) continue;
+                Seq<ChunkCache.CasterEntry> list = chunk.casters;
+                for (int i = 0; i < list.size; i++) {
+                    ChunkCache.CasterEntry e = list.get(i);
+                    if (!e.isBuild) continue;
+                    float whs = e.size * 0.5f + 1f;
+                    if (e.cx + whs < sX1 || e.cx - whs > sX2 || e.cy + whs < sY1 || e.cy - whs > sY2) continue;
+                    if (e.region != null && e.region.found()) {
+                        Draw.rect(e.region, e.cx, e.cy, e.rawSize, e.rawSize);
+                    } else {
+                        Fill.rect(e.cx, e.cy, e.rawSize, e.rawSize);
                     }
                 }
             }
-            for (int i = activeSunRays.size - 1; i >= 0; i--) {
-                SunRay r = activeSunRays.get(i);
-                r.age += Time.delta;
-                if (r.age >= r.maxLife || darkness > 0.42f) activeSunRays.remove(i);
-            }
         }
-        if (activeSunRays.isEmpty()) return;
-
-        final float rayAngle = shadowAngle + 180f;
-        final float dx = Mathf.cosDeg(rayAngle), dy = Mathf.sinDeg(rayAngle);
-        final float px = -dy, py = dx;
-        final float dayVis = Mathf.clamp(1f - darkness * 2.5f, 0f, 1f);
-
-        Draw.draw(Layer.light - 2f, () -> {
-            Draw.blend(Blending.additive);
-            float clearBits = tmpSunEdge.toFloatBits();
-            for (int i = 0; i < activeSunRays.size; i++) {
-                SunRay r = activeSunRays.get(i);
-                float p = Mathf.clamp(r.age / Math.max(1f, r.maxLife));
-                // Hiện lên êm ái đầu buổi sáng rồi từ từ bị mây che mờ dần tới khi tắt hẳn
-                float fadeIn = Mathf.clamp(p / 0.18f);
-                float cloudCover = (float) Math.pow(1f - Mathf.clamp((p - 0.18f) / 0.82f), 1.6);
-                float cloudWave = 0.72f + 0.28f * Mathf.sin(r.age * r.cloudFreq + r.cloudPhase);
-                float alpha = 0.18f * fadeIn * cloudCover * cloudWave * dayVis;
-                if (alpha <= 0.003f) continue;
-
-                float halfL = r.length * 0.5f, halfW = r.width * 0.5f;
-                float x1 = r.x - dx * halfL, y1 = r.y - dy * halfL;
-                float x2 = r.x + dx * halfL, y2 = r.y + dy * halfL;
-
-                float coreBits = tmpSunCore.set(1f, 0.94f, 0.72f, alpha).toFloatBits();
-                float tipBits = tmpSunCore.set(1f, 0.92f, 0.65f, alpha * 0.25f).toFloatBits();
-
-                // Nửa trái tia nắng (rìa trong suốt -> tâm vàng ấm)
-                Fill.quad(
-                    x1 - px * halfW, y1 - py * halfW, clearBits,
-                    x1, y1, coreBits,
-                    x2, y2, tipBits,
-                    x2 - px * (halfW * 1.35f), y2 - py * (halfW * 1.35f), clearBits
-                );
-                // Nửa phải tia nắng (tâm vàng ấm -> rìa trong suốt)
-                Fill.quad(
-                    x1, y1, coreBits,
-                    x1 + px * halfW, y1 + py * halfW, clearBits,
-                    x2 + px * (halfW * 1.35f), y2 + py * (halfW * 1.35f), clearBits,
-                    x2, y2, tipBits
-                );
-            }
-            Draw.blend(Blending.normal);
-            Draw.reset();
-        });
     }
 
     private static void eraseAllFootprints(int chX1, int chY1, int chX2, int chY2, float sX1, float sY1, float sX2, float sY2) {
@@ -1025,9 +1041,11 @@ public final class NexDynamicShadows {
 
     private static void disposeFBOs() {
         hasShadowContent = false;
+        hasMtnBlockShadow = false;
         if (scratchA != null) { try { scratchA.dispose(); } catch (Throwable ignored) {} scratchA = null; scratchRegA = null; }
         if (scratchB != null) { try { scratchB.dispose(); } catch (Throwable ignored) {} scratchB = null; scratchRegB = null; }
         if (shadowOut != null) { try { shadowOut.dispose(); } catch (Throwable ignored) {} shadowOut = null; shadowRegOut = null; }
+        if (mtnBlockShadowOut != null) { try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {} mtnBlockShadowOut = null; mtnBlockRegOut = null; }
     }
 
     private static boolean isSolidAt(int x, int y) {
@@ -1095,12 +1113,13 @@ public final class NexDynamicShadows {
             final IntSeq mountainTiles = new IntSeq();
             final IntSeq treeTiles = new IntSeq();
             boolean valid = false;
+            boolean hasBuiltBlocks = false;
         }
 
         static final class CasterEntry {
             int x, y;
             float cx, cy, rawSize, size, elev, mod;
-            boolean isProp, isMtn;
+            boolean isProp, isMtn, isBuild;
             Block block;
             TextureRegion region;
             NexShadowConfig.PropType propType;
@@ -1196,7 +1215,12 @@ public final class NexDynamicShadows {
                     e.mod = NexShadowConfig.getModifier(blk);
                     e.isProp = isProp;
                     e.isMtn = isMtn;
+                    e.isBuild = isBuild;
                     e.block = blk;
+                    if (isBuild) {
+                        nc.hasBuiltBlocks = true;
+                        e.region = NexShadowConfig.getBlockSilhouette(blk);
+                    }
 
                     if (isProp) {
                         Block block = tile.block();

@@ -192,16 +192,18 @@ final class NexShadowConfig {
     static float getModifier(Block blk) {
         if (modCache.containsKey(blk)) return modCache.get(blk, 1f);
         float mod;
-        if (blk instanceof PowerNode || blk instanceof LightBlock || isMine(blk)) mod = 0.0f;
+        if (blk instanceof LightBlock) mod = 0.0f;
+        else if (blk instanceof PowerNode) mod = 0.055f;
+        else if (isMine(blk)) mod = 0.025f;
         else if (isPine(blk)) mod = 0.15f;
-        else if (isLogicOrMemory(blk)) mod = 0.04f;
+        else if (isLogicOrMemory(blk)) mod = 0.045f;
         else if (blk.isStatic() && blk.solid) mod = 0.20f;
         else {
             switch (blk.size) {
-                case 1: mod = 0.04f; break;
+                case 1: mod = 0.045f; break;
                 case 2: mod = 0.08f; break;
-                case 3: mod = 0.06f; break;
-                case 4: mod = 0.10f; break;
+                case 3: mod = 0.085f; break;
+                case 4: mod = 0.11f; break;
                 case 5: mod = 0.135f; break;
                 case 6: mod = 0.16f; break;
                 case 7: mod = 0.18f; break;
@@ -214,6 +216,16 @@ final class NexShadowConfig {
         return mod;
     }
 
+    /** Nhận diện ngoại hình (silhouette) cho mọi block (kể cả block/pháo mod không khai báo bóng riêng). */
+    static TextureRegion getBlockSilhouette(Block blk) {
+        if (blk == null) return null;
+        if (blk.fullIcon != null && blk.fullIcon.found()) return blk.fullIcon;
+        if (blk.uiIcon != null && blk.uiIcon.found()) return blk.uiIcon;
+        if (blk.region != null && blk.region.found()) return blk.region;
+        return null;
+    }
+
+    /** Nhận diện ngoại hình (silhouette) cho mọi unit kể cả unit mod không có shadowRegion. */
     static TextureRegion getOriginalShadow(UnitType type) {
         if (type == null) return null;
         TextureRegion cached = unitShadowCache.get(type);
@@ -221,8 +233,9 @@ final class NexShadowConfig {
         TextureRegion clearReg = Core.atlas.find("clear");
         TextureRegion res = null;
         if (type.shadowRegion != null && type.shadowRegion.found() && type.shadowRegion != clearReg) res = type.shadowRegion;
-        else if (type.fullIcon != null && type.fullIcon.found()) res = type.fullIcon;
-        else if (type.region != null && type.region.found()) res = type.region;
+        else if (type.fullIcon != null && type.fullIcon.found() && type.fullIcon != clearReg) res = type.fullIcon;
+        else if (type.uiIcon != null && type.uiIcon.found() && type.uiIcon != clearReg) res = type.uiIcon;
+        else if (type.region != null && type.region.found() && type.region != clearReg) res = type.region;
         if (res != null) unitShadowCache.put(type, res);
         return res;
     }
