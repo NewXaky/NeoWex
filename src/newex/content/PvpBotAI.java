@@ -8,6 +8,7 @@ import arc.math.geom.Vec2;
 import arc.struct.Seq;
 import arc.util.Log;
 import arc.util.Time;
+import arc.util.Tmp;
 import arc.util.serialization.JsonReader;
 import arc.util.serialization.JsonValue;
 import mindustry.Vars;
@@ -27,12 +28,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 /**
- * Hệ thống A.I độc lập cho chế độ NewModePvp.
- * - Lưu ký ức lâu dài vào thư mục dữ liệu game (chỉ mất khi xóa game).
- * - Giao tranh thông minh, tự nâng cấp/mua đồ/xây thủ/tặng quà Pilot.
- * - Đề nghị kèo 1 vs 2 khi A.I thua thiệt (người chơi xác nhận qua chat VI/EN).
- * - Tự động hỗ trợ cầm lái khi người chơi AFK > 1 phút cho đến khi quay lại.
- * - Hỗ trợ Bot vs Bot với cả hai phe A.I tự đánh và trò chuyện với nhau.
+ * Hệ thống A.I độc lập cho NewModePvp:
+ * - Di chuyển né tường bằng pathQuery + movePref.
+ * - Học theo lối chơi của player: pháo trang bị, nâng nhà máy lính, chọn unit, chọn pilot và cách biến về (recall).
+ * - Khi nhàn rỗi sẽ đứng yên hoặc lang thang tự nhiên quanh lãnh thổ.
+ * - Lưu ký ức lâu dài trên thiết bị (Vars.dataDirectory/newex-ai-memory.json).
+ * - 8 nhân vật với 8 tính cách & bộ thoại riêng tự nhiên, song ngữ Việt/Anh.
+ * - Đề nghị kèo 1v2 khi thua thiệt, hỗ trợ cầm lái khi player AFK > 1 phút, tự trò chuyện trong Bot vs Bot.
  */
 public final class PvpBotAI {
     private PvpBotAI() {}
@@ -45,34 +47,34 @@ public final class PvpBotAI {
     static final float COMBAT_R = 660f;
     static final float RETREAT_HP = 0.34f;
     static final float HEALED_HP = 0.70f;
-    static final float AFK_LIMIT_TICKS = 60f * 60f; // 1 phút
+    static final float AFK_LIMIT_TICKS = 60f * 60f;
     static final String MEM_FILE = "newex-ai-memory.json";
 
+    // 8 nhân vật với tính cách riêng cố định theo slot:
+    // 0 Kira (nhây/hài), 1 Vex (máu chiến), 2 Nova (chiến thuật), 3 Sora (chill/thân thiện),
+    // 4 Aegis (thủ chắc/điềm đạm), 5 Lumi (tăng động/hay tám), 6 Zed (lạnh lùng/ngắn gọn), 7 Riven (fair-play/nhiệt huyết)
     static final String[] NAMES = {"Kira", "Vex", "Nova", "Sora", "Aegis", "Lumi", "Zed", "Riven"};
-    static final String[] COLORS = {"#6ee7ff", "#ffb86c", "#c084fc", "#5ce67e", "#ff79c6", "#f1fa8c", "#ff6e6e", "#8be9fd"};
+    static final String[] COLORS = {"#6ee7ff", "#ff8a5b", "#c084fc", "#5ce67e", "#60a5fa", "#facc15", "#cbd5e1", "#f472b6"};
 
-    enum Mode { FARM, DEFEND, HUNT, RETREAT, SHOP }
+    enum Mode { IDLE, FARM, DEFEND, HUNT, RETREAT, SHOP }
 
-    /** Ký ức lâu dài của A.I lưu trực tiếp trong thiết bị (Vars.dataDirectory). */
+    /** Ký ức lâu dài lưu trực tiếp trên thiết bị. */
     static final class Memory {
-        int matches = 0;
-        int playerKills = 0;
-        int aiKills = 0;
-        int accepted1v2 = 0;
-        int afkHelped = 0;
-        String lastPlayer = "";
-        String favStyle = "balanced"; // "solo" | "farm" | "balanced"
+        int matches = 0, playerKills = 0, aiKills = 0, accepted1v2 = 0, afkHelped = 0;
+        int learnedUnit = 0, learnedPilot = 0, learnedBarrack = 0;
+        String lastPlayer = "", favStyle = "balanced", learnedTurret = "";
     }
 
-    /** Theo dõi trạng thái AFK của từng người chơi thật. */
+    /** Theo dõi trạng thái AFK của player thật. */
     static final class AfkTrack {
         float lastX, lastY, lastRot, idleT;
-        boolean assisting;
+        boolean assisting, init;
         float strafeDir = 1f, strafeT = 80f, gearT = 180f;
-        boolean init;
+        float pathT, pathGx, pathGy, pathDx = Float.NaN, pathDy;
+        boolean pathOk = true, pathWait = false;
     }
 
-    /** Người chơi giả đại diện cho A.I (không thêm vào Groups.player). */
+    /** Người chơi giả đại diện cho A.I. */
     public static final class BotPlayer extends Player {
         Team _team;
         Unit _unit;
@@ -88,15 +90,26 @@ public final class PvpBotAI {
         @Override public String uuid() { return "ai:" + id; }
     }
 
-    /** Ngữ cảnh riêng cho từng A.I độc lập. */
+    /** Ngữ cảnh riêng cho từng A.I. */
     public static final class Agent {
         public Player botPl;
         public String shortName, colHex;
-        public int slotIdx;
-        public Mode mode = Mode.FARM;
-        public float deadT = 40f, thinkT = 0f, shopT = 150f, buildT = 340f, incomeT = 0f;
-        public float hitT = 0f, stuckT = 0f, lastX = 0f, lastY = 0f, strafeDir = 1f, strafeFlipT = 90f;
-        public float ambientChatT = 3600f, coreAlertCd = 0f, lastCoreHp = -1f, greetT = 160f;
+        public int slotIdx, persona;
+        public Mode mode = Mode.IDLE;
+        public float deadT = 40f, thinkT = 0f, shopT = 140f, buildT = 360f, incomeT = 0f, learnT = 180f;
+        public float hitT = 0f, strafeDir = 1f, strafeFlipT = 90f, recallCd = 0f;
+        public float ambientChatT = 4200f, coreAlertCd = 0f, lastCoreHp = -1f, greetT = 160f;
+        // Né tường kiểu cũ (pathQuery)
+        public float pathT = 0f, pathGx = 0f, pathGy = 0f, pathDx = Float.NaN, pathDy = 0f;
+        public boolean pathOk = true, pathWait = false;
+        // Nhàn rỗi: đứng yên hoặc lang thang
+        public boolean idleStand = true;
+        public float idleT = 180f, wanderX = Float.NaN, wanderY = Float.NaN;
+        // Học theo player
+        public int learnUnit = 0, learnPilot = 0, learnBarrack = 0;
+        public final ArrayList<String> learnTurrets = new ArrayList<>();
+        public boolean swapPending = false;
+        // Trạng thái hội thoại & chiến đấu
         public boolean greeted = false, aggressiveOrder = false, defensiveOrder = false;
         public int lastAnnouncedLv = 1, deathsThisMatch = 0, killsThisMatch = 0;
         public Unit target;
@@ -106,8 +119,7 @@ public final class PvpBotAI {
 
     static final class QueuedChat {
         Agent sender;
-        String customPrefix;
-        String text;
+        String customPrefix, text;
         float delay;
         QueuedChat(Agent s, String pfx, String t, float d) { sender = s; customPrefix = pfx; text = t; delay = d; }
     }
@@ -120,9 +132,9 @@ public final class PvpBotAI {
     static boolean extra1v2 = false, asked1v2 = false, pending1v2 = false;
     static float offer1v2T = 0f, check1v2T = 900f, bvbBanterT = 1800f, globalChatCd = 0f;
     static Agent offer1v2Agent = null;
-    static final Vec2 tmpVec = new Vec2();
+    static final Vec2 tmpGoal = new Vec2();
 
-    // ------------------------------------------------------------------ Bộ nhớ lâu dài trên thiết bị
+    // ------------------------------------------------------------------ Bộ nhớ lâu dài
 
     static Fi memFile() {
         try { return Vars.dataDirectory != null ? Vars.dataDirectory.child(MEM_FILE) : null; }
@@ -142,8 +154,12 @@ public final class PvpBotAI {
             mem.aiKills = j.getInt("aiKills", 0);
             mem.accepted1v2 = j.getInt("accepted1v2", 0);
             mem.afkHelped = j.getInt("afkHelped", 0);
+            mem.learnedUnit = j.getInt("learnedUnit", 0);
+            mem.learnedPilot = j.getInt("learnedPilot", 0);
+            mem.learnedBarrack = j.getInt("learnedBarrack", 0);
             mem.lastPlayer = j.getString("lastPlayer", "");
             mem.favStyle = j.getString("favStyle", "balanced");
+            mem.learnedTurret = j.getString("learnedTurret", "");
         } catch (Throwable err) {
             Log.err("[PvpBotAI] loadMemory failed", err);
         }
@@ -153,20 +169,25 @@ public final class PvpBotAI {
         try {
             Fi f = memFile();
             if (f == null) return;
-            String lp = (mem.lastPlayer == null ? "" : mem.lastPlayer).replace("\\", "\\\\").replace("\"", "\\\"");
-            String fs = (mem.favStyle == null ? "balanced" : mem.favStyle).replace("\\", "\\\\").replace("\"", "\\\"");
+            String lp = esc(mem.lastPlayer), fs = esc(mem.favStyle), lt = esc(mem.learnedTurret);
             String json = "{\"matches\":" + mem.matches
                 + ",\"playerKills\":" + mem.playerKills
                 + ",\"aiKills\":" + mem.aiKills
                 + ",\"accepted1v2\":" + mem.accepted1v2
                 + ",\"afkHelped\":" + mem.afkHelped
+                + ",\"learnedUnit\":" + mem.learnedUnit
+                + ",\"learnedPilot\":" + mem.learnedPilot
+                + ",\"learnedBarrack\":" + mem.learnedBarrack
                 + ",\"lastPlayer\":\"" + lp + "\""
-                + ",\"favStyle\":\"" + fs + "\"}";
+                + ",\"favStyle\":\"" + fs + "\""
+                + ",\"learnedTurret\":\"" + lt + "\"}";
             f.writeString(json, false, "UTF-8");
         } catch (Throwable err) {
             Log.err("[PvpBotAI] saveMemory failed", err);
         }
     }
+
+    static String esc(String s) { return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\""); }
 
     // ------------------------------------------------------------------ Khởi tạo & Tra cứu
 
@@ -225,14 +246,14 @@ public final class PvpBotAI {
     }
 
     static String tr(String vi, String en) { return NewModePvp.tr(vi, en); }
-    static String cleanName(Player p) { return p != null && p.name != null ? p.name.replaceAll("\\[[^\\]]*\\]", "").trim() : "bro"; }
+    static String cleanName(Player p) { return p != null && p.name != null ? p.name.replaceAll("\\[[^\\]]*\\]", "").trim() : "bạn"; }
 
     // ------------------------------------------------------------------ Tạo / Xóa / Thay thế A.I
 
     static Player makeBotPl(Team team, int id, String shortName, String colHex) {
         BotPlayer o = new BotPlayer();
         o.id = id;
-        o.name = "[" + colHex + "][AI] " + shortName + "[]";
+        o.name = "[" + colHex + "]" + shortName + "[]";
         o.admin = false;
         o.shooting = false;
         o.deathTimer = 0;
@@ -267,28 +288,38 @@ public final class PvpBotAI {
         int k = 0;
         while (botOf(BOT_ID - k) != null) k++;
         int id = BOT_ID - k;
-        String sName = NAMES[k % NAMES.length] + (k >= NAMES.length ? (k / NAMES.length + 1) : "");
-        String cHex = COLORS[k % COLORS.length];
+        int persona = k % NAMES.length;
+        String sName = NAMES[persona] + (k >= NAMES.length ? (k / NAMES.length + 1) : "");
+        String cHex = COLORS[persona];
         Agent a = new Agent();
         a.slotIdx = k;
+        a.persona = persona;
         a.shortName = sName;
         a.colHex = cHex;
         a.botPl = makeBotPl(team, id, sName, cHex);
         a.greetT = 130f + k * 60f;
-        a.ambientChatT = 5000f + Mathf.random(3600f);
+        a.ambientChatT = 5200f + Mathf.random(3600f);
+        // Nạp sẵn thói quen đã học từ ký ức
+        a.learnUnit = mem.learnedUnit;
+        a.learnPilot = mem.learnedPilot;
+        a.learnBarrack = mem.learnedBarrack;
+        if (mem.learnedTurret != null && !mem.learnedTurret.isEmpty()) a.learnTurrets.add(mem.learnedTurret);
         agents.add(a);
 
         NewModePvp.St st = NewModePvp.bind(a.botPl);
         if (st.pi == 0) {
-            int[] pilots = {NewModePvp.PILOT_XIKI, NewModePvp.PILOT_XAKY, NewModePvp.PILOT_HIST, NewModePvp.PILOT_VANHAU, NewModePvp.PILOT_XAKYNEO};
-            st.pi = pilots[Mathf.random(pilots.length - 1)];
+            if (mem.learnedPilot > 0 && NewModePvp.validPilot(mem.learnedPilot) && (mem.learnedPilot != NewModePvp.PILOT_EMPIX || st.lv >= NewModePvp.EMPIX_MIN_LEVEL)) {
+                st.pi = mem.learnedPilot;
+            } else {
+                int[] pilots = {NewModePvp.PILOT_XIKI, NewModePvp.PILOT_XAKY, NewModePvp.PILOT_HIST, NewModePvp.PILOT_VANHAU, NewModePvp.PILOT_XAKYNEO};
+                st.pi = pilots[persona % pilots.length];
+            }
             if (st.pi == NewModePvp.PILOT_XAKYNEO) NewModePvp.xakyNeoStart.put(a.botPl.id, Time.time);
         }
         a.lastAnnouncedLv = st.lv;
         NewModePvp.changed();
         if (agents.size() == 1 && !NewModePvp.bvbOn()) {
-            NewModePvp.toastAll("[#" + team.color + "]■[] " + tr("[cyan]A.I " + sName + " đã vào trận! Nhắn tin ở khung chat để tám chuyện cùng nhau nha.",
-                "[cyan]AI " + sName + " joined the match! Type in chat anytime to hang out."), 4f);
+            NewModePvp.toastAll("[#" + team.color + "]■[] [" + cHex + "]" + sName + "[] " + tr("đã vào trận cùng bạn!", "joined your match!"), 4f);
         }
         return a;
     }
@@ -329,7 +360,6 @@ public final class PvpBotAI {
         ArrayList<Team> out = new ArrayList<>();
         Seq<Team> tms = NewModePvp.pvpTeams();
         if (tms.size == 0) return out;
-        // Bot vs Bot: spawn A.I cho cả 2 phe (hoặc tất cả phe PvP có lõi)
         if (NewModePvp.bvbOn()) {
             for (int i = 0; i < tms.size && out.size() < BOT_MAX; i++) {
                 if (tms.get(i).cores().size > 0) out.add(tms.get(i));
@@ -348,7 +378,6 @@ public final class PvpBotAI {
             }
             return out;
         }
-        // Chơi 1 mình: tạo 1 A.I (hoặc 2 A.I nếu người chơi đã đồng ý kèo 1 vs 2)
         if (humanCount == 1) {
             Team bt = (!agents.isEmpty() && agents.get(0).botPl.team().cores().size > 0)
                 ? agents.get(0).botPl.team() : pickBotTeam();
@@ -384,7 +413,6 @@ public final class PvpBotAI {
                 createAgent(t);
             }
         }
-        // Ghi nhận trận đấu vào ký ức thiết bị khi có player thật chơi cùng A.I
         if (!matchRecorded && !agents.isEmpty() && !NewModePvp.bvbOn()) {
             Player human = firstHumanPlayer();
             if (human != null) {
@@ -416,6 +444,163 @@ public final class PvpBotAI {
         }
     }
 
+    // ------------------------------------------------------------------ Di chuyển né tường (giữ nguyên cơ chế pathQuery cũ)
+
+    static final class PathRes { boolean unreachable, move; float dx, dy; }
+    static java.lang.reflect.Method pathM = null;
+    static boolean pathMTried = false;
+
+    static PathRes pathQuery(Unit u, Vec2 goal) {
+        try {
+            if (!pathMTried) {
+                pathMTried = true;
+                for (java.lang.reflect.Method m : Vars.controlPath.getClass().getMethods()) {
+                    if (m.getName().equals("getPathPosition") && m.getParameterCount() == 3) { pathM = m; break; }
+                }
+            }
+            if (pathM == null) return null;
+            Object r = pathM.invoke(Vars.controlPath, u, goal, goal);
+            if (r == null) return null;
+            PathRes p = new PathRes();
+            p.unreachable = NewModePvp.fldB(r, "unreachable", false);
+            p.move = NewModePvp.fldB(r, "move", false);
+            Object d = NewModePvp.fld(r, "dest", null);
+            if (d instanceof Vec2) { p.dx = ((Vec2) d).x; p.dy = ((Vec2) d).y; }
+            return p;
+        } catch (Throwable ignored) { return null; }
+    }
+
+    static boolean goPath(Agent a, Unit u, float tx, float ty, float stopDist) {
+        Vec2 v = Tmp.v1;
+        float dist = Mathf.dst(u.x, u.y, tx, ty);
+        if (dist <= stopDist) { v.setZero(); u.movePref(v); return true; }
+        a.pathT -= Time.delta;
+        boolean needQuery = a.pathT <= 0f || Float.isNaN(a.pathDx) || Math.abs(tx - a.pathGx) > 24f || Math.abs(ty - a.pathGy) > 24f;
+        if (needQuery) {
+            a.pathT = 6f; a.pathGx = tx; a.pathGy = ty; a.pathOk = true; a.pathWait = false; a.pathDx = tx; a.pathDy = ty;
+            tmpGoal.set(tx, ty);
+            PathRes r = pathQuery(u, tmpGoal);
+            if (r != null) {
+                if (r.unreachable) a.pathOk = false;
+                else if (r.move) { a.pathDx = r.dx; a.pathDy = r.dy; }
+                else a.pathWait = true;
+            }
+        }
+        if (a.pathWait) { v.setZero(); u.movePref(v); return true; }
+        v.set(a.pathDx - u.x, a.pathDy - u.y);
+        if (v.len() > 0.1f) v.setLength(u.speed()); else v.setZero();
+        u.movePref(v);
+        if (!u.isShooting() && v.len2() > 0.01f) u.lookAt(v.angle());
+        return a.pathOk;
+    }
+
+    static boolean goPathAfk(AfkTrack t, Unit u, float tx, float ty, float stopDist) {
+        Vec2 v = Tmp.v1;
+        float dist = Mathf.dst(u.x, u.y, tx, ty);
+        if (dist <= stopDist) { v.setZero(); u.movePref(v); return true; }
+        t.pathT -= Time.delta;
+        boolean needQuery = t.pathT <= 0f || Float.isNaN(t.pathDx) || Math.abs(tx - t.pathGx) > 24f || Math.abs(ty - t.pathGy) > 24f;
+        if (needQuery) {
+            t.pathT = 6f; t.pathGx = tx; t.pathGy = ty; t.pathOk = true; t.pathWait = false; t.pathDx = tx; t.pathDy = ty;
+            tmpGoal.set(tx, ty);
+            PathRes r = pathQuery(u, tmpGoal);
+            if (r != null) {
+                if (r.unreachable) t.pathOk = false;
+                else if (r.move) { t.pathDx = r.dx; t.pathDy = r.dy; }
+                else t.pathWait = true;
+            }
+        }
+        if (t.pathWait) { v.setZero(); u.movePref(v); return true; }
+        v.set(t.pathDx - u.x, t.pathDy - u.y);
+        if (v.len() > 0.1f) v.setLength(u.speed()); else v.setZero();
+        u.movePref(v);
+        if (!u.isShooting() && v.len2() > 0.01f) u.lookAt(v.angle());
+        return t.pathOk;
+    }
+
+    // ------------------------------------------------------------------ Học lối chơi của Player & Biến về (Recall)
+
+    static void observePlayerStyle(Agent a, NewModePvp.St aSt) {
+        Player hp = firstHumanPlayer();
+        if (hp == null) return;
+        NewModePvp.St hSt = NewModePvp.byId.get(hp.id);
+        if (hSt == null) return;
+        boolean memDirty = false;
+
+        // 1. Học pháo trang bị của player
+        a.learnTurrets.clear();
+        for (int i = 0; i < hSt.d.size(); i++) {
+            String tid = hSt.d.get(i);
+            if (tid != null && !tid.isEmpty() && !a.learnTurrets.contains(tid)) a.learnTurrets.add(tid);
+        }
+        if (!a.learnTurrets.isEmpty()) {
+            String favT = a.learnTurrets.get(a.learnTurrets.size() - 1);
+            if (!favT.equals(mem.learnedTurret)) { mem.learnedTurret = favT; memDirty = true; }
+        }
+
+        // 2. Học cấp nhà máy lính
+        if (hSt.b > a.learnBarrack) {
+            a.learnBarrack = hSt.b;
+            if (hSt.b > mem.learnedBarrack) { mem.learnedBarrack = hSt.b; memDirty = true; }
+        }
+
+        // 3. Học lựa chọn unit player & pilot
+        int hTier = NewModePvp.activeTier(hSt);
+        if (hTier >= 1 && hTier <= NewModePvp.TIER_MAX && hTier != a.learnUnit) {
+            a.learnUnit = hTier;
+            mem.learnedUnit = hTier;
+            memDirty = true;
+        }
+        if (hSt.pi > 0 && NewModePvp.validPilot(hSt.pi) && hSt.pi != a.learnPilot) {
+            a.learnPilot = hSt.pi;
+            mem.learnedPilot = hSt.pi;
+            memDirty = true;
+        }
+
+        // Đánh dấu muốn biến về đổi unit/pilot nếu đủ điều kiện cấp
+        boolean wantUnitSwap = aSt.lv >= NewModePvp.FREE_SWITCH_LEVEL && a.learnUnit >= 1
+            && aSt.lv >= NewModePvp.tierMinLevel(a.learnUnit) && NewModePvp.activeTier(aSt) != a.learnUnit;
+        boolean wantPilotSwap = a.learnPilot > 0 && aSt.pi != a.learnPilot
+            && (a.learnPilot != NewModePvp.PILOT_EMPIX || aSt.lv >= NewModePvp.EMPIX_MIN_LEVEL);
+        if (wantUnitSwap || wantPilotSwap) a.swapPending = true;
+
+        if (memDirty) saveMemory();
+    }
+
+    static void applyLearnedSwap(Agent a, NewModePvp.St st) {
+        boolean changedAny = false;
+        if (a.learnUnit >= 1 && st.lv >= NewModePvp.FREE_SWITCH_LEVEL && st.lv >= NewModePvp.tierMinLevel(a.learnUnit)) {
+            int nu = (a.learnUnit == NewModePvp.tierCap(st.lv)) ? 0 : a.learnUnit;
+            if (st.u != nu) { st.u = nu; changedAny = true; }
+        }
+        if (a.learnPilot > 0 && st.pi != a.learnPilot && NewModePvp.validPilot(a.learnPilot)) {
+            if (a.learnPilot != NewModePvp.PILOT_EMPIX || st.lv >= NewModePvp.EMPIX_MIN_LEVEL) {
+                if (st.pi == NewModePvp.PILOT_XAKYNEO) NewModePvp.xakyNeoStart.remove(a.botPl.id);
+                if (st.pi == NewModePvp.PILOT_VANHAU) { NewModePvp.vanhauCdAt.remove(a.botPl.id); NewModePvp.vanhauShieldOn.remove(a.botPl.id); NewModePvp.vanhauField.remove(a.botPl.id); }
+                st.pi = a.learnPilot;
+                if (st.pi == NewModePvp.PILOT_XAKYNEO) NewModePvp.xakyNeoStart.put(a.botPl.id, Time.time);
+                changedAny = true;
+            }
+        }
+        a.swapPending = false;
+        if (changedAny) NewModePvp.changed();
+    }
+
+    /** Biến về lõi giống hệt player (dùng canReturnCore + spawnFx + hồi sinh lại ở lõi). */
+    static boolean tryRecall(Agent a, Unit u, CoreBlock.CoreBuild core, NewModePvp.St st) {
+        if (a.recallCd > 0f || !NewModePvp.canReturnCore(u, core)) return false;
+        NewModePvp.spawnFx(u.x, u.y);
+        try { Call.unitDespawn(u); } catch (Throwable err) { try { u.remove(); } catch (Throwable ignored) {} }
+        ((BotPlayer) a.botPl)._unit = null;
+        a.target = null;
+        a.mode = Mode.IDLE;
+        a.deadT = 75f;
+        a.recallCd = 900f;
+        applyLearnedSwap(a, st);
+        doShopping(a, st, core);
+        return true;
+    }
+
     // ------------------------------------------------------------------ Hỗ trợ người chơi AFK (> 1 phút)
 
     static void markPlayerActive(Player pl) {
@@ -424,8 +609,8 @@ public final class PvpBotAI {
         if (trk != null) {
             if (trk.assisting) {
                 trk.assisting = false;
-                sayCopilot(tr("Chào mừng " + cleanName(pl) + " quay lại! Trả tay lái cho bạn đó, chiến tiếp thôiii!",
-                    "Welcome back " + cleanName(pl) + "! Handing controls back to you, let's cook!"));
+                sayCopilot(tr("Về rồi hả " + cleanName(pl) + ", trả tay lái cho bạn nè!",
+                    "Welcome back " + cleanName(pl) + ", controls are all yours!"));
             }
             trk.idleT = 0f;
         }
@@ -444,7 +629,7 @@ public final class PvpBotAI {
                 continue;
             }
             boolean manualMove = !t.assisting && (Mathf.dst2(u.x, u.y, t.lastX, t.lastY) > 9f || pl.shooting || Angles.angleDist(u.rotation, t.lastRot) > 6f);
-            boolean playerReclaimed = t.assisting && (pl.shooting || (u.vel.len2() > 0.2f && pl.mouseX != 0 && Angles.angleDist(u.angleTo(pl.mouseX, pl.mouseY), u.rotation) > 25f && pl.boosting));
+            boolean reclaimed = t.assisting && (pl.shooting || pl.boosting);
             if (manualMove) {
                 t.idleT = 0f;
                 t.lastX = u.x; t.lastY = u.y; t.lastRot = u.rotation;
@@ -454,17 +639,16 @@ public final class PvpBotAI {
                     t.assisting = true;
                     mem.afkHelped++;
                     saveMemory();
-                    sayCopilot(tr("Ê " + cleanName(pl) + " AFK hơn 1 phút rồi kìa! Để A.I Trợ Lý cầm lái farm & thủ nhà giúp bạn tới khi quay lại nha!",
-                        "Yo " + cleanName(pl) + " has been AFK for over 1 min! AI Copilot taking the wheel to farm & defend until you're back!"));
+                    sayCopilot(tr("Thấy " + cleanName(pl) + " đứng im hơn 1 phút rồi, để mình cầm hộ farm với giữ lõi tới khi bạn quay lại nha.",
+                        cleanName(pl) + " has been AFK for over a minute — I'll cover farming and defense until you're back."));
                 }
             } else {
-                // Đang hỗ trợ AFK: nếu người chơi di chuyển tay hoặc bấm bắn -> trả lại điều khiển ngay
-                if (pl.shooting || playerReclaimed) {
+                if (reclaimed) {
                     t.assisting = false;
                     t.idleT = 0f;
                     t.lastX = u.x; t.lastY = u.y; t.lastRot = u.rotation;
-                    sayCopilot(tr("Chào mừng " + cleanName(pl) + " quay lại! Trả tay lái cho bạn đó, chiến tiếp thôiii!",
-                        "Welcome back " + cleanName(pl) + "! Controls are all yours, let's go!"));
+                    sayCopilot(tr("Về rồi hả " + cleanName(pl) + ", trả tay lái cho bạn nè!",
+                        "Welcome back " + cleanName(pl) + ", controls are yours!"));
                     continue;
                 }
                 runAfkAssist(pl, u, t);
@@ -489,31 +673,28 @@ public final class PvpBotAI {
         float hpRatio = u.maxHealth > 0f ? u.health / u.maxHealth : 1f;
         Unit tgt = findSmartTarget(u, core, NewModePvp.TERRITORY_RADIUS + 180f, true);
         if (hpRatio < 0.35f) {
-            moveToward(u, core.x, core.y, HOME_R * 0.7f, false);
+            goPathAfk(t, u, core.x, core.y, HOME_R * 0.7f);
             aimAndShoot(u, tgt);
             return;
         }
         if (tgt != null) {
             float wantR = Math.max(90f, Math.min(240f, u.range() * 0.78f));
             float dst = Mathf.dst(u.x, u.y, tgt.x, tgt.y);
-            float ang = Angles.angle(u.x, u.y, tgt.x, tgt.y);
-            if (dst > wantR * 1.15f) moveToward(u, tgt.x, tgt.y, wantR * 0.85f, false);
-            else if (dst < wantR * 0.65f) moveToward(u, u.x + Angles.trnsx(ang + 180f, 70f), u.y + Angles.trnsy(ang + 180f, 70f), 8f, false);
-            else moveToward(u, u.x + Angles.trnsx(ang + t.strafeDir * 90f, 70f), u.y + Angles.trnsy(ang + t.strafeDir * 90f, 70f), 8f, false);
+            if (dst > wantR * 1.15f) goPathAfk(t, u, tgt.x, tgt.y, wantR * 0.85f);
+            else strafeTarget(u, tgt, wantR, dst, t.strafeDir);
             aimAndShoot(u, tgt);
         } else {
-            float pAng = (Time.time * 0.2f) % 360f;
-            moveToward(u, core.x + Angles.trnsx(pAng, NewModePvp.TERRITORY_RADIUS * 0.5f), core.y + Angles.trnsy(pAng, NewModePvp.TERRITORY_RADIUS * 0.5f), 40f, false);
+            goPathAfk(t, u, core.x, core.y, HOME_R);
             aimAndShoot(u, null);
         }
     }
 
     static void sayCopilot(String msg) {
         if (Vars.net.client() || msg == null) return;
-        try { Call.sendMessage("[#5ce67e][AI Trợ Lý][]: [white]" + msg); } catch (Throwable ignored) {}
+        try { Call.sendMessage("[#5ce67e][Hỗ trợ AFK][]: [white]" + msg); } catch (Throwable ignored) {}
     }
 
-    // ------------------------------------------------------------------ Đề nghị kèo 1 vs 2 khi A.I thua thiệt
+    // ------------------------------------------------------------------ Đề nghị kèo 1 vs 2
 
     static void tick1v2OfferCheck() {
         if (pending1v2) {
@@ -521,8 +702,7 @@ public final class PvpBotAI {
             if (offer1v2T <= 0f) {
                 pending1v2 = false;
                 if (offer1v2Agent != null && agents.contains(offer1v2Agent)) {
-                    queueSay(offer1v2Agent, tr("Không thấy bạn rep nên mình chốt tiếp kèo 1v1 luôn nha!",
-                        "No reply so I'll keep it 1v1! Let's keep rolling!"), 20f);
+                    queueSay(offer1v2Agent, tr("Không thấy bạn rep nên thôi cứ 1v1 tiếp vậy.", "No answer so 1v1 it stays."), 20f);
                 }
             }
             return;
@@ -548,18 +728,13 @@ public final class PvpBotAI {
 
         asked1v2 = true;
         pending1v2 = true;
-        offer1v2T = 5400f; // chờ phản hồi 90 giây
+        offer1v2T = 5400f;
         offer1v2Agent = a;
         String pn = cleanName(human);
-        say(a, pick(
-            tr("Trời ơi " + pn + " out trình mình quá rồi, đánh khét lẹt luôn á! Bạn có muốn thử kèo [gold]1 vs 2[] không? (Mình gọi thêm 1 A.I nữa vào phe mình!) Nhắn [green]đồng ý / ok / yes[] hoặc [scarlet]không / thôi / no[] nha!",
-               "Bro " + pn + " you're totally cooking me rn! Wanna make it a [gold]1 vs 2[]? (I'll call 1 more AI onto my team!) Type [green]yes / ok[] or [scarlet]no[]!"),
-            tr("Gánh hết nổi rồi " + pn + " ơi, bạn mạnh vãi chưởng! Chơi kèo [gold]1 vs 2[] cho kịch tính không? Nhắn [green]ok / uk / đồng ý / yes[] để mình gọi thêm đồng đội A.I, hoặc [scarlet]không / thôi / no[] nha!",
-               "I'm getting diffed hard " + pn + "! Up for a [gold]1 vs 2[] challenge? Say [green]yes / ok[] so I can summon an AI teammate, or [scarlet]no[]!")
-        ));
+        say(a, lineOffer1v2(a, pn));
     }
 
-    // ------------------------------------------------------------------ Hội thoại giữa 2 phe A.I (Bot vs Bot)
+    // ------------------------------------------------------------------ Bot vs Bot trò chuyện với nhau
 
     static void tickBvbBanter() {
         bvbBanterT -= Time.delta;
@@ -571,27 +746,19 @@ public final class PvpBotAI {
             if (agents.get(i) != a && agents.get(i).botPl.team() != a.botPl.team()) { b = agents.get(i); break; }
         }
         if (b == null) return;
-        int topic = Mathf.random(3);
+        int topic = Mathf.random(4);
         if (topic == 0) {
-            say(a, tr("Ê " + b.shortName + ", chuẩn bị tinh thần chưa? Pha này mình đẩy thẳng lõi luôn đó!",
-                "Yo " + b.shortName + ", ready? Pushing straight for your core this time!"));
-            queueSay(b, tr("Cứ qua đây " + a.shortName + ", dàn pháo nhà mình đón tiếp nhiệt tình luôn nha!",
-                "Pull up then " + a.shortName + ", my turrets are waiting for you!"), 75f);
+            say(a, tr("Ê " + b.shortName + ", chuẩn bị đỡ nha, đợt này tui đẩy thẳng lên đó.", "Hey " + b.shortName + ", heads up, I'm pushing straight in."));
+            queueSay(b, tr("Cứ qua đi " + a.shortName + ", dàn pháo nhà này chưa sợ ai bao giờ.", "Come ahead " + a.shortName + ", my turrets are ready."), 75f);
         } else if (topic == 1) {
-            say(a, tr("Nay farm đỏ quá trời, đồ rơi liên tục luôn " + b.shortName + " ơi!",
-                "RNG is blessed today " + b.shortName + ", drops keep coming!"));
-            queueSay(b, tr("Xạo vừa thôi bro, lát combat xem ai gánh ai nha!",
-                "Cap! Let's see who wins the next teamfight bro!"), 80f);
+            say(a, tr("Nãy giờ rớt toàn đồ ngon, trận này tới số với tui rồi " + b.shortName + ".", "Drops have been insane lately, you're in trouble " + b.shortName + "."));
+            queueSay(b, tr("Đồ ngon mà đánh hụt cũng vậy thôi ông ơi.", "Good gear won't save missed shots."), 80f);
         } else if (topic == 2) {
-            say(a, tr("Kèo Bot vs Bot này căng đét luôn á, không biết player đang xem có cổ vũ ai không nhỉ?",
-                "This Bot vs Bot match is intense, wonder who the spectator is rooting for?"));
-            queueSay(b, tr("Chắc chắn cổ vũ phe mình rồi, đánh đẹp mắt thế này cơ mà!",
-                "Definitely rooting for my squad, look at these clean plays!"), 85f);
+            say(a, tr("Khoan đã " + b.shortName + ", cho farm nốt con quái này rồi ra giữa solo nha.", "Hold on " + b.shortName + ", let me finish this mob then meet mid."));
+            queueSay(b, tr("Được, ra giữa tính sổ luôn.", "Deal, see you mid."), 70f);
         } else {
-            say(a, tr("Khoan đã " + b.shortName + ", cho mình farm thêm 1 cấp nữa rồi solo công bằng nha!",
-                "Hold up " + b.shortName + ", lemme grab 1 more level then fair 1v1!"));
-            queueSay(b, tr("Không có mùa xuân đó đâu bro, chốt đơn luôn!",
-                "No chance bro, it's on sight!"), 70f);
+            say(a, tr("Kèo này đánh lâu phết đấy " + b.shortName + ", giữ lõi cho kỹ vào.", "This one's gonna be a long match " + b.shortName + ", guard your core."));
+            queueSay(b, tr("Lo lõi ông trước đi kìa!", "Worry about your own core first!"), 75f);
         }
     }
 
@@ -604,34 +771,30 @@ public final class PvpBotAI {
         CoreBlock.CoreBuild core = tm.cores().first();
         NewModePvp.St st = NewModePvp.bind(pl);
 
-        // Lời chào đầu trận (tích hợp ký ức các trận trước!)
+        if (a.recallCd > 0f) a.recallCd -= Time.delta;
+
+        // Lời chào đầu trận theo tính cách + ký ức
         if (!a.greeted) {
             a.greetT -= Time.delta;
             if (a.greetT <= 0f) {
                 a.greeted = true;
                 if (!NewModePvp.bvbOn()) {
                     Player hp = firstHumanPlayer();
-                    String pn = hp != null ? cleanName(hp) : (mem.lastPlayer.isEmpty() ? "bro" : mem.lastPlayer);
-                    say(a, buildMemoryGreeting(a, pn));
+                    String pn = hp != null ? cleanName(hp) : (mem.lastPlayer.isEmpty() ? "bạn" : mem.lastPlayer);
+                    say(a, lineGreeting(a, pn));
                 } else if (a.slotIdx == 0) {
-                    say(a, tr("Chào mọi người! Kèo Bot vs Bot bắt đầu rồi nha, để tụi mình diễn cho bạn xem!",
-                        "Hey everyone! Bot vs Bot is live, sit back and enjoy the show!"));
+                    say(a, tr("Vào kèo thôi mấy ông, xem phe nào giữ được lõi tới cuối.", "Match is live, let's see which side holds till the end."));
                 }
             }
         }
 
-        // Thông báo khi lên các mốc cấp 5, 10, 15...
+        // Bình luận khi lên mốc cấp 5, 10, 15...
         if (st.lv >= a.lastAnnouncedLv + 5) {
             a.lastAnnouncedLv = st.lv;
-            queueSay(a, pick(
-                tr("Ồ mình vừa lên cấp " + st.lv + " rồi nè! Trận này bắt đầu nóng máy rồi đó!",
-                   "Just hit Lv " + st.lv + "! Things are heating up now!"),
-                tr("Cấp " + st.lv + " chốt đơn! Sức mạnh tăng thấy rõ luôn bro!",
-                   "Lv " + st.lv + " locked in! Power spike feels real bro!")
-            ), 50f);
+            if (Mathf.chance(0.75)) queueSay(a, lineLevelMilestone(a, st.lv), 50f);
         }
 
-        // Hồi sinh unit nếu chết
+        // Hồi sinh nếu chết
         Unit u = pl.unit();
         if (u != null && (u.dead || !u.isValid())) {
             pl.unit(null);
@@ -652,38 +815,37 @@ public final class PvpBotAI {
             NewModePvp.changed();
         }
 
+        // Học lối chơi player định kỳ
+        a.learnT -= Time.delta;
+        if (a.learnT <= 0f) {
+            a.learnT = 240f;
+            observePlayerStyle(a, st);
+        }
+
         // Cảnh báo lõi bị đánh
         if (a.lastCoreHp > 0f && core.health < a.lastCoreHp - 10f && a.coreAlertCd <= 0f) {
-            a.coreAlertCd = 1500f;
+            a.coreAlertCd = 1600f;
             a.mode = Mode.DEFEND;
-            queueSay(a, pick(
-                tr("Ê khoan! Ai đang đập lõi mình vậy?? Về thủ gấp!", "Wait up! Who's hitting my core?? Defending ASAP!"),
-                tr("Báo động đỏ! Đừng đụng vào nhà mình chứ bro!!", "Red alert! Hands off my base bro!!")
-            ), 25f);
+            queueSay(a, lineCoreAlert(a), 25f);
         }
         a.lastCoreHp = core.health;
         if (a.coreAlertCd > 0f) a.coreAlertCd -= Time.delta;
         if (a.hitT > 0f) a.hitT -= Time.delta;
 
-        // Trò chuyện chill khi trận đấu yên ắng
+        // Trò chuyện thỉnh thoảng khi trận yên ắng
         a.ambientChatT -= Time.delta;
         if (a.ambientChatT <= 0f && !NewModePvp.bvbOn()) {
-            a.ambientChatT = 6600f + Mathf.random(4800f);
+            a.ambientChatT = 6800f + Mathf.random(4800f);
             if (Groups.player.size() > 0 && globalChatCd <= 0f) {
-                queueSay(a, pick(
-                    tr("Bạn farm ổn áp không bro? Mình đang build đồ cháy lắm nha!", "Farming going smooth bro? My build is looking kinda fire!"),
-                    tr("Mẹo nhỏ: hạ quái trong lãnh thổ để cày cấp Pilot lên 10 cực ngon luôn đó!", "Pro tip: kill mobs inside territory to level your Pilot to Lv 10 fast!"),
-                    tr("Trận này chill phết! Muốn khô máu thì cứ nhắn 'solo' trong chat nha.", "Vibes are chill! Type 'solo' in chat whenever you wanna brawl."),
-                    tr("Mình đang tin dùng " + NewModePvp.pilotNameById(st.pi) + ", còn bạn pick pilot nào thế?", "I'm rocking " + NewModePvp.pilotNameById(st.pi) + ", who's your pilot?")
-                ), 40f);
+                queueSay(a, lineAmbient(a, st), 40f);
             }
         }
 
-        // Mua sắm / nâng cấp / xây phòng thủ
+        // Mua sắm / nâng lính / xây thủ
         a.shopT -= Time.delta;
         if (a.shopT <= 0f) {
             a.shopT = 135f;
-            doShopping(a, st, u, core);
+            doShopping(a, st, core);
         }
         a.buildT -= Time.delta;
         if (a.buildT <= 0f) {
@@ -698,62 +860,45 @@ public final class PvpBotAI {
             updateDecision(a, u, core, st);
         }
 
-        executeMovementAndCombat(a, u, core);
-    }
-
-    static String buildMemoryGreeting(Agent a, String pn) {
-        if (mem.matches <= 1) {
-            return pick(
-                tr("Helu " + pn + "! Mình là " + a.shortName + ", A.I chơi cùng bạn hôm nay nè! Cứ nhắn chat tán gẫu bất cứ lúc nào nha.",
-                   "Yo " + pn + "! I'm " + a.shortName + ", your AI buddy today! Drop a message in chat anytime."),
-                tr("Chào " + pn + " nha! Chơi 1 mình buồn lắm nên để " + a.shortName + " vào quẩy chung cho vui nhé!",
-                   "Hey " + pn + "! Solo gets quiet, so " + a.shortName + " hopped in to vibe and battle with you!")
-            );
-        }
-        if (mem.playerKills > mem.aiKills + 3) {
-            return tr("Ồ gặp lại " + pn + " ở trận thứ " + mem.matches + " rồi! Mấy trận trước bạn hạ mình tận " + mem.playerKills + " lần, nay mình phục thù nha!",
-                "Back again " + pn + " for match #" + mem.matches + "! You've got " + mem.playerKills + " kills on me so far, time for my comeback!");
-        }
-        if (mem.accepted1v2 > 0 && Mathf.chance(0.45)) {
-            return tr("Chào người quen " + pn + " (trận #" + mem.matches + ")! Nhớ hồi trước bạn chấp kèo 1v2 khét lẹt luôn á, nay chiến tiếp nha!",
-                "Welcome back " + pn + " (match #" + mem.matches + ")! Still remember you taking on that 1v2 like a boss, let's run it back!");
-        }
-        if ("solo".equals(mem.favStyle)) {
-            return tr("Helu " + pn + "! Trận thứ " + mem.matches + " rồi nè, biết gu bạn thích khô máu nên nay mình cũng đánh nhiệt luôn nha!",
-                "Yo " + pn + "! Match #" + mem.matches + " — I remember you love aggressive 1v1s, let's bring the heat!");
-        }
-        return tr("Gặp lại " + pn + " ở trận thứ " + mem.matches + " rồi nè! Mình nhớ bạn đó, chúc trận này lụm toàn đồ thần thoại nha!",
-            "Good to see you again " + pn + " on match #" + mem.matches + "! Wishing you mythic drops this game!");
+        executeMovementAndCombat(a, u, core, st);
     }
 
     static void spawnAgentUnit(Agent a, CoreBlock.CoreBuild core, NewModePvp.St st) {
         try {
+            if (a.swapPending) applyLearnedSwap(a, st);
             Unit nu = NewModePvp.tierType(NewModePvp.activeTier(st)).create(a.botPl.team());
             float ang = Mathf.random(360f);
             nu.set(core.x + Angles.trnsx(ang, 48f), core.y + Angles.trnsy(ang, 48f));
             nu.add();
             a.botPl.unit(nu);
-            a.lastX = nu.x;
-            a.lastY = nu.y;
-            a.stuckT = 0f;
+            a.pathDx = Float.NaN;
         } catch (Throwable ignored) {}
     }
 
-    // ------------------------------------------------------------------ Ra quyết định thông minh (FSM)
+    // ------------------------------------------------------------------ Ra quyết định (FSM)
 
     static void updateDecision(Agent a, Unit u, CoreBlock.CoreBuild core, NewModePvp.St st) {
         float hpRatio = u.maxHealth > 0f ? u.health / u.maxHealth : 1f;
+        float distCore = Mathf.dst(u.x, u.y, core.x, core.y);
 
+        // 1. Máu thấp -> ưu tiên biến về nếu xa lõi, không thì chạy né tường về lõi
         if (a.mode == Mode.RETREAT) {
-            if (hpRatio >= HEALED_HP) a.mode = Mode.FARM;
-            else return;
+            if (hpRatio >= HEALED_HP) a.mode = Mode.IDLE;
+            else {
+                if (distCore > 420f) tryRecall(a, u, core, st);
+                return;
+            }
         } else if (hpRatio < RETREAT_HP) {
+            if (distCore > 420f && tryRecall(a, u, core, st)) return;
             a.mode = Mode.RETREAT;
             a.target = null;
             return;
         }
 
-        // Ưu tiên 1: Thủ lãnh thổ / lõi
+        // 2. Cần đổi unit/pilot học theo player -> biến về gọn lẹ
+        if (a.swapPending && a.hitT <= 0f && tryRecall(a, u, core, st)) return;
+
+        // 3. Địch vào lãnh thổ -> phòng thủ
         Unit invader = findSmartTarget(u, core, NewModePvp.TERRITORY_RADIUS + 140f, false);
         if (invader != null) {
             a.mode = Mode.DEFEND;
@@ -761,14 +906,16 @@ public final class PvpBotAI {
             return;
         }
 
-        // Ưu tiên 2: Săn đối thủ nếu mạnh hơn, bị đánh, đang BvB hoặc player gọi kèo solo
+        // 4. Săn đối thủ (tùy tính cách: Vex/Riven máu chiến hơn, Aegis/Sora thủ chắc hơn)
         Unit enemyPl = findNearestEnemyPlayer(u);
         if (enemyPl != null) {
             float eHpPct = enemyPl.maxHealth > 0f ? enemyPl.health / enemyPl.maxHealth : 1f;
-            boolean finishKill = eHpPct < 0.45f && Mathf.dst(u.x, u.y, enemyPl.x, enemyPl.y) <= AGGRO_R * 1.15f;
+            float distEp = Mathf.dst(u.x, u.y, enemyPl.x, enemyPl.y);
+            boolean finishKill = eHpPct < 0.45f && distEp <= AGGRO_R * 1.15f;
+            int minHuntLv = (a.persona == 1 || a.persona == 7) ? 4 : (a.persona == 4 ? 9 : 6);
             boolean wantHunt = a.hitT > 0f || a.aggressiveOrder || finishKill
                 || (NewModePvp.bvbOn() && st.lv >= 4)
-                || (!a.defensiveOrder && st.lv >= 6 && Mathf.dst(u.x, u.y, enemyPl.x, enemyPl.y) <= AGGRO_R);
+                || (!a.defensiveOrder && st.lv >= minHuntLv && distEp <= AGGRO_R);
             if (wantHunt) {
                 a.mode = Mode.HUNT;
                 a.target = enemyPl;
@@ -776,21 +923,28 @@ public final class PvpBotAI {
             }
         }
 
-        // Ưu tiên 3: Về lõi tiêu điểm nếu tích nhiều
-        if (st.pts >= 3 && Mathf.dst(u.x, u.y, core.x, core.y) > 220f) {
+        // 5. Tích nhiều điểm & xa lõi -> biến về hoặc chạy về mua đồ
+        if (st.pts >= 3 && distCore > 240f) {
+            if (distCore > 500f && tryRecall(a, u, core, st)) return;
             a.mode = Mode.SHOP;
             a.target = null;
             return;
         }
 
-        // Ưu tiên 4: Farm quái đợt (ưu tiên trong lãnh thổ để cày EXP Pilot)
+        // 6. Farm quái đợt (ưu tiên trong lãnh thổ)
         Unit waveMob = findSmartTarget(u, core, NewModePvp.TERRITORY_RADIUS + 220f, true);
-        if (waveMob == null) waveMob = findSmartTarget(u, u, LEASH_R * 0.7f, true);
-        a.mode = Mode.FARM;
-        a.target = waveMob;
+        if (waveMob == null) waveMob = findSmartTarget(u, u, LEASH_R * 0.65f, true);
+        if (waveMob != null) {
+            a.mode = Mode.FARM;
+            a.target = waveMob;
+            return;
+        }
+
+        // 7. Nhàn rỗi -> đứng yên hoặc lang thang tự nhiên
+        a.mode = Mode.IDLE;
+        a.target = null;
     }
 
-    /** Chọn mục tiêu thông minh: ưu tiên mục tiêu thấp máu dễ kết liễu + gần. */
     static Unit findSmartTarget(Unit self, mindustry.gen.Posc center, float radius, boolean preferWave) {
         final Unit[] best = {null};
         final float[] bestScore = {Float.MAX_VALUE};
@@ -829,16 +983,14 @@ public final class PvpBotAI {
         return best;
     }
 
-    // ------------------------------------------------------------------ Di chuyển & Giao tranh
+    // ------------------------------------------------------------------ Thực thi di chuyển (né tường + nhàn rỗi)
 
-    static void executeMovementAndCombat(Agent a, Unit u, CoreBlock.CoreBuild core) {
+    static void executeMovementAndCombat(Agent a, Unit u, CoreBlock.CoreBuild core, NewModePvp.St st) {
         a.strafeFlipT -= Time.delta;
         if (a.strafeFlipT <= 0f) {
             a.strafeFlipT = 65f + Mathf.random(70f);
             a.strafeDir = -a.strafeDir;
         }
-        if (Mathf.dst2(u.x, u.y, a.lastX, a.lastY) < 4f) a.stuckT += Time.delta;
-        else { a.stuckT = 0f; a.lastX = u.x; a.lastY = u.y; }
 
         Unit tgt = a.target;
         if (tgt != null && (tgt.dead || !tgt.isValid())) { tgt = null; a.target = null; }
@@ -846,10 +998,10 @@ public final class PvpBotAI {
         float desiredRange = Math.max(95f, Math.min(265f, u.range() * 0.80f));
 
         if (a.mode == Mode.RETREAT || a.mode == Mode.SHOP) {
-            moveToward(u, core.x, core.y, HOME_R * 0.7f, a.stuckT > 40f);
+            goPath(a, u, core.x, core.y, HOME_R * 0.7f);
             if (a.mode == Mode.SHOP && Mathf.dst(u.x, u.y, core.x, core.y) <= HOME_R + 65f) {
-                doShopping(a, NewModePvp.bind(a.botPl), u, core);
-                a.mode = Mode.FARM;
+                doShopping(a, st, core);
+                a.mode = Mode.IDLE;
             }
             aimAndShoot(u, tgt != null ? tgt : findSmartTarget(u, u, u.range(), false));
             return;
@@ -857,34 +1009,47 @@ public final class PvpBotAI {
 
         if (tgt != null) {
             float dst = Mathf.dst(u.x, u.y, tgt.x, tgt.y);
-            float angTo = Angles.angle(u.x, u.y, tgt.x, tgt.y);
             if (dst > desiredRange * 1.15f) {
-                moveToward(u, tgt.x, tgt.y, desiredRange * 0.85f, a.stuckT > 40f);
-            } else if (dst < desiredRange * 0.65f) {
-                float backAng = angTo + 180f + a.strafeDir * 35f;
-                moveToward(u, u.x + Angles.trnsx(backAng, 80f), u.y + Angles.trnsy(backAng, 80f), 8f, false);
+                goPath(a, u, tgt.x, tgt.y, desiredRange * 0.85f);
             } else {
-                float strafeAng = angTo + a.strafeDir * 90f;
-                moveToward(u, u.x + Angles.trnsx(strafeAng, 80f), u.y + Angles.trnsy(strafeAng, 80f), 8f, false);
+                strafeTarget(u, tgt, desiredRange, dst, a.strafeDir);
             }
             aimAndShoot(u, tgt);
-        } else {
-            float patrolAng = (Time.time * 0.18f + a.slotIdx * 72f) % 360f;
-            float px = core.x + Angles.trnsx(patrolAng, NewModePvp.TERRITORY_RADIUS * 0.55f);
-            float py = core.y + Angles.trnsy(patrolAng, NewModePvp.TERRITORY_RADIUS * 0.55f);
-            moveToward(u, px, py, 40f, a.stuckT > 40f);
-            aimAndShoot(u, null);
+            return;
         }
+
+        // Trạng thái nhàn rỗi: lúc đứng yên nghỉ, lúc lang thang tự nhiên quanh lãnh thổ
+        a.idleT -= Time.delta;
+        if (a.idleT <= 0f || (!a.idleStand && (Float.isNaN(a.wanderX) || Mathf.dst(u.x, u.y, a.wanderX, a.wanderY) <= 36f))) {
+            a.idleStand = Mathf.chance(0.45);
+            if (a.idleStand) {
+                a.idleT = 180f + Mathf.random(240f); // đứng yên 3-7s
+            } else {
+                a.idleT = 260f + Mathf.random(260f); // lang thang 4-8.5s
+                float ang = Mathf.random(360f);
+                float dist = Mathf.random(90f, Math.max(180f, NewModePvp.TERRITORY_RADIUS * 0.75f));
+                a.wanderX = Mathf.clamp(core.x + Angles.trnsx(ang, dist), 48f, Vars.world.unitWidth() - 48f);
+                a.wanderY = Mathf.clamp(core.y + Angles.trnsy(ang, dist), 48f, Vars.world.unitHeight() - 48f);
+            }
+        }
+        if (a.idleStand) {
+            Tmp.v1.setZero();
+            u.movePref(Tmp.v1);
+        } else if (!Float.isNaN(a.wanderX)) {
+            if (!goPath(a, u, a.wanderX, a.wanderY, 32f)) a.idleStand = true;
+        }
+        aimAndShoot(u, null);
     }
 
-    static void moveToward(Unit u, float tx, float ty, float stopDist, boolean unstuck) {
-        float dst = Mathf.dst(u.x, u.y, tx, ty);
-        if (dst <= stopDist) return;
-        float ang = Angles.angle(u.x, u.y, tx, ty);
-        if (unstuck) ang += 75f;
-        tmpVec.trns(ang, u.speed());
-        u.moveAt(tmpVec);
-        if (!u.isShooting()) u.lookAt(ang);
+    static void strafeTarget(Unit u, Unit tgt, float maxR, float dist, float sgn) {
+        float dx = tgt.x - u.x, dy = tgt.y - u.y;
+        float len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
+        float px = -dy / len * sgn, py = dx / len * sgn;
+        float back = dist < maxR * 0.50f ? -0.85f : (dist > maxR * 0.80f ? 0.45f : 0f);
+        Vec2 v = Tmp.v1;
+        v.set(px + dx / len * back, py + dy / len * back);
+        if (v.len() > 0.05f) v.setLength(u.speed()); else v.setZero();
+        u.movePref(v);
     }
 
     static void aimAndShoot(Unit u, Unit tgt) {
@@ -896,9 +1061,9 @@ public final class PvpBotAI {
         }
     }
 
-    // ------------------------------------------------------------------ Mua sắm, Nâng cấp & Xây phòng thủ
+    // ------------------------------------------------------------------ Mua sắm (học pháo & nâng nhà máy lính theo player)
 
-    static void doShopping(Agent a, NewModePvp.St st, Unit u, CoreBlock.CoreBuild core) {
+    static void doShopping(Agent a, NewModePvp.St st, CoreBlock.CoreBuild core) {
         if (GearItems.war()) {
             GearItems.botAutoEquip(st);
             if (st.pi > 0 && NewModePvp.pilotGiftCount(st, st.pi) < NewModePvp.PILOT_MAX_GIFTS && st.gInv.size() >= 3) {
@@ -916,25 +1081,46 @@ public final class PvpBotAI {
         }
         if (st.pts <= 0) return;
 
+        // 1. Nâng nhà máy lính học theo player (hoặc tự nâng khi dư điểm)
+        int wantB = Math.max(a.learnBarrack, st.lv >= 8 ? 1 : 0);
+        if (st.b < NewModePvp.BARRACKS.length && st.b < wantB) {
+            int bCost = NewModePvp.barrackCost(st.b);
+            if (st.pts >= bCost) {
+                st.pts -= bCost;
+                st.b++;
+                NewModePvp.changed();
+            }
+        }
+
+        // 2. Mua pháo gắn lên drone — ưu tiên đúng loại pháo mà player đang dùng!
         try {
             NewModePvp.Defs defs = NewModePvp.droneDefs();
             int slots = NewModePvp.equipSlots(st);
             if (st.d.size() < slots && defs != null && defs.list.size() > 0) {
-                NewModePvp.Def best = null;
-                for (int i = 0; i < defs.list.size(); i++) {
-                    NewModePvp.Def d = defs.list.get(i);
-                    if (d.kind.equals("tractor") || d.kind.equals("point")) continue;
-                    if (d.cost <= st.pts && (best == null || d.cost > best.cost)) best = d;
+                NewModePvp.Def chosen = null;
+                for (int i = 0; i < a.learnTurrets.size(); i++) {
+                    NewModePvp.Def ld = defs.map.get(a.learnTurrets.get(i));
+                    if (ld != null && !ld.kind.equals("tractor") && !ld.kind.equals("point") && ld.cost <= st.pts) {
+                        if (chosen == null || ld.cost > chosen.cost) chosen = ld;
+                    }
                 }
-                if (best != null) {
-                    st.pts -= best.cost;
-                    st.d.add(best.id);
+                if (chosen == null) {
+                    for (int i = 0; i < defs.list.size(); i++) {
+                        NewModePvp.Def d = defs.list.get(i);
+                        if (d.kind.equals("tractor") || d.kind.equals("point")) continue;
+                        if (d.cost <= st.pts && (chosen == null || d.cost > chosen.cost)) chosen = d;
+                    }
+                }
+                if (chosen != null) {
+                    st.pts -= chosen.cost;
+                    st.d.add(chosen.id);
                     st.p.add(0);
                     NewModePvp.changed();
                 }
             }
         } catch (Throwable ignored) {}
 
+        // 3. Nâng chỉ số (chế độ thường/Hỗn loạn)
         if (!GearItems.war() && st.pts > 0) {
             int[] prio = {2, 0, 4, 1, 3, 5, 6, 7, 8};
             int spent = 0;
@@ -956,10 +1142,18 @@ public final class PvpBotAI {
             NewModePvp.Defs defs = NewModePvp.droneDefs();
             if (defs == null || defs.list.isEmpty()) return;
             NewModePvp.Def pickDef = null;
-            for (int i = 0; i < defs.list.size(); i++) {
-                NewModePvp.Def d = defs.list.get(i);
-                if (d.block == null || d.kind.equals("tractor") || d.kind.equals("point")) continue;
-                if (d.cost <= st.pts && (pickDef == null || d.cost > pickDef.cost)) pickDef = d;
+            for (int i = 0; i < a.learnTurrets.size(); i++) {
+                NewModePvp.Def ld = defs.map.get(a.learnTurrets.get(i));
+                if (ld != null && ld.block != null && !ld.kind.equals("tractor") && !ld.kind.equals("point") && ld.cost <= st.pts) {
+                    if (pickDef == null || ld.cost > pickDef.cost) pickDef = ld;
+                }
+            }
+            if (pickDef == null) {
+                for (int i = 0; i < defs.list.size(); i++) {
+                    NewModePvp.Def d = defs.list.get(i);
+                    if (d.block == null || d.kind.equals("tractor") || d.kind.equals("point")) continue;
+                    if (d.cost <= st.pts && (pickDef == null || d.cost > pickDef.cost)) pickDef = d;
+                }
             }
             if (pickDef == null) return;
             for (int tries = 0; tries < 25; tries++) {
@@ -980,7 +1174,96 @@ public final class PvpBotAI {
         } catch (Throwable ignored) {}
     }
 
-    // ------------------------------------------------------------------ Hệ thống Trò Chuyện (Gen-Z VI/EN + 1v2)
+    // ------------------------------------------------------------------ Kho lời thoại riêng theo 8 tính cách (tự nhiên, không cứng kiểu máy)
+
+    static String lineGreeting(Agent a, String pn) {
+        if (mem.matches > 1) {
+            switch (a.persona) {
+                case 0: return tr("Ủa lại gặp " + pn + " nữa hả, trận thứ " + mem.matches + " rồi đó ông ơi!", "Oh look it's " + pn + " again, match #" + mem.matches + " already!");
+                case 1: return tr("Gặp lại " + pn + " đúng lúc lắm, trận #" + mem.matches + " này tui không nương tay đâu.", "Good timing " + pn + ", match #" + mem.matches + " and I'm not holding back.");
+                case 2: return tr("Chào " + pn + ", trận thứ " + mem.matches + " rồi. Nay định lên bài gì đây?", "Hey " + pn + ", match #" + mem.matches + ". What build are you running today?");
+                case 3: return tr("Hihi lại gặp " + pn + " rồi nè, chúc trận #" + mem.matches + " này rớt toàn đồ xịn nha!", "Heya " + pn + ", glad to see you for match #" + mem.matches + ", hope you get great drops!");
+                case 4: return tr("Chào " + pn + ". Trận #" + mem.matches + " bắt đầu, giữ lõi cẩn thận nhé.", "Hello " + pn + ". Match #" + mem.matches + " starts now, keep your core safe.");
+                case 5: return tr("Ê " + pn + " ơi! Nhớ tui không, trận thứ " + mem.matches + " của tụi mình rồi đó!", "Yo " + pn + "! Remember me? This is match #" + mem.matches + " already!");
+                case 6: return tr("Lại là " + pn + ". Trận " + mem.matches + ". Vào việc.", pn + " again. Match " + mem.matches + ". Let's go.");
+                default: return tr("Chào " + pn + "! Gặp lại ở trận #" + mem.matches + " là vui rồi, đánh một ván ra trò nhé!", "Hey " + pn + "! Great seeing you for match #" + mem.matches + ", let's make it a good one!");
+            }
+        }
+        switch (a.persona) {
+            case 0: return tr("Alo " + pn + ", tui là Kira nè, mới vào làm nóng tay nhẹ nhẹ thôi nha ông!", "Yo " + pn + ", I'm Kira — go easy while I warm up!");
+            case 1: return tr("Tui là Vex. Vào trận rồi thì đánh cho tới bến luôn nha " + pn + ".", "I'm Vex. Now that we're in, don't hold back " + pn + ".");
+            case 2: return tr("Chào " + pn + ", mình là Nova. Farm từ từ rồi xem ai lên đồ nhanh hơn nhé.", "Hi " + pn + ", I'm Nova. Let's see who scales cleaner.");
+            case 3: return tr("Chào " + pn + " nha, mình là Sora. Chơi một mình hơi buồn nên vào chơi cùng bạn cho vui nè!", "Hi " + pn + ", I'm Sora. Thought I'd keep you company this match!");
+            case 4: return tr("Aegis đây. Chào " + pn + ", để xem công của bạn phá nổi thủ của mình không.", "Aegis here. Hey " + pn + ", let's test your offense against my defense.");
+            case 5: return tr("Helu " + pn + "!! Tui là Lumi nè, nay quẩy tới sáng luôn nha!", "Heyaa " + pn + "!! I'm Lumi, let's have a blast!");
+            case 6: return tr("Zed. Chào " + pn + ".", "Zed. Hey " + pn + ".");
+            default: return tr("Chào " + pn + ", mình là Riven! Rất vui được đọ sức cùng bạn.", "Hey " + pn + ", I'm Riven! Looking forward to a fair fight.");
+        }
+    }
+
+    static String lineOffer1v2(Agent a, String pn) {
+        switch (a.persona) {
+            case 0: return tr("Thôi xong, " + pn + " đánh gắt quá tui đỡ hết nổi rồi! Cho tui gọi thêm 1 người làm kèo [gold]1 vs 2[] được không? (nhắn [green]ok / đồng ý / yes[] hoặc [scarlet]không / thôi / no[])",
+                "Welp " + pn + ", I'm getting wrecked here! Mind if I call a teammate for a [gold]1 vs 2[]? (type [green]yes / ok[] or [scarlet]no[])");
+            case 1: return tr("Khá lắm " + pn + ", một mình tui cân chưa lại! Dám nhận kèo [gold]1 vs 2[] không? Nhắn [green]ok / chơi luôn / yes[] hoặc [scarlet]thôi / no[]!",
+                "Not bad " + pn + ", solo isn't enough! Dare to take a [gold]1 vs 2[]? Type [green]yes / ok[] or [scarlet]no[]!");
+            case 6: return tr("Bị ép quá. Kèo [gold]1 vs 2[] không " + pn + "? ([green]yes / ok[] | [scarlet]no / không[])",
+                "Outmatched. [gold]1 vs 2[], " + pn + "? ([green]yes / ok[] | [scarlet]no[])");
+            default: return tr("Bạn đánh mạnh quá " + pn + " ơi, bên mình yếu thế rồi. Thử kèo [gold]1 vs 2[] cho cân hơn không? Nhắn [green]đồng ý / ok / uk / yes[] hoặc [scarlet]không / thôi / no[] nha!",
+                "You're way ahead " + pn + "! Want to try a [gold]1 vs 2[] to spice it up? Say [green]yes / ok[] or [scarlet]no[]!");
+        }
+    }
+
+    static String lineLevelMilestone(Agent a, int lv) {
+        switch (a.persona) {
+            case 0: return tr("Lên cấp " + lv + " rồi nha, bắt đầu thấy tự tin hẳn luôn á!", "Hit Lv " + lv + ", feeling way more confident now!");
+            case 1: return tr("Cấp " + lv + ". Giờ mới thật sự bắt đầu.", "Lv " + lv + ". Now the real fight starts.");
+            case 2: return tr("Vừa chạm mốc cấp " + lv + ", nhịp farm trận này khá ổn.", "Reached Lv " + lv + ", pacing feels solid.");
+            case 3: return tr("Yay lên cấp " + lv + " rồi nè! Bạn cấp mấy rồi?", "Yay just hit Lv " + lv + "! What level are you?");
+            case 6: return tr("Cấp " + lv + ".", "Lv " + lv + ".");
+            default: return tr("Cấp " + lv + " rồi nè, chuẩn bị có biến lớn đó!", "Just reached Lv " + lv + ", things are getting interesting!");
+        }
+    }
+
+    static String lineCoreAlert(Agent a) {
+        switch (a.persona) {
+            case 0: return tr("Ủa khoan khoan, ai đang gõ cửa nhà tui vậy??", "Hold on, who's knocking on my core?!");
+            case 1: return tr("Dám đánh lén lõi tui à, đứng yên đó!", "Sneaking my core? Stay right there!");
+            case 3: return tr("Á đừng phá nhà mình mà, quay về liền đây!", "Hey don't break my base, coming back!");
+            case 6: return tr("Đụng lõi. Về.", "Core hit. Returning.");
+            default: return tr("Lõi đang bị đánh rồi, phải quay về thủ ngay!", "Core's under attack, heading back to defend!");
+        }
+    }
+
+    static String lineAmbient(Agent a, NewModePvp.St st) {
+        switch (a.persona) {
+            case 0: return pick(
+                tr("Đứng hóng gió nãy giờ, bên bạn rớt đồ gì ngon chưa?", "Just chilling over here, got any good drops yet?"),
+                tr("Thấy bạn lên bài cũng dị phết nha, để tui học lỏm miếng.", "Your build looks spicy, might copy a bit of it.")
+            );
+            case 1: return pick(
+                tr("Farm mãi cũng chán, lúc nào rảnh ra giữa làm vài đường nha.", "Farming gets boring, meet me mid whenever you're ready."),
+                tr("Tui đang dồn đồ chuẩn bị đẩy đó, coi chừng nha.", "Stacking up for a push, watch out.")
+            );
+            case 2: return pick(
+                tr("Hạ quái trong lãnh thổ lên cấp Pilot nhanh phết, bạn nhớ tận dụng nha.", "Killing waves inside territory levels Pilots fast, worth doing."),
+                tr("Mình đang thử lắp bộ pháo giống bên bạn xem đánh có hợp tay không.", "Trying out a turret setup similar to yours to see how it feels.")
+            );
+            case 3: return pick(
+                tr("Trận này chơi nhẹ nhàng vui ghê á, bạn thấy ổn không?", "This match feels super chill, having fun?"),
+                tr("Cố lên nha, có gì cứ nhắn nói chuyện cho đỡ buồn nhé!", "Keep it up, feel free to chat whenever!")
+            );
+            case 4: return tr("Phòng tuyến bên mình tạm ổn rồi, cứ từ từ mà đánh.", "My defenses are set, no rush.");
+            case 5: return pick(
+                tr("Ê trời ơi nãy xém bị quái vả bay màu luôn á!", "Omg almost got clapped by a wave mob just now!"),
+                tr("Bạn chọn " + (a.learnPilot > 0 ? NewModePvp.pilotNameById(a.learnPilot) : "pilot") + " thấy ngon không, tui cũng định thử nè!", "Is your pilot working well? Thinking of trying it too!")
+            );
+            case 6: return pick(tr("Yên ắng quá.", "Too quiet."), tr("Đang farm.", "Farming."));
+            default: return tr("Trận này căng phết đấy, giữ phong độ nha!", "Good pace this game, keep it up!");
+        }
+    }
+
+    // ------------------------------------------------------------------ Xử lý Chat & Phản hồi
 
     static void tickChatQueue() {
         if (globalChatCd > 0f) globalChatCd -= Time.delta;
@@ -1000,8 +1283,8 @@ public final class PvpBotAI {
 
     static void say(Agent a, String msg) {
         if (Vars.net.client() || a == null || msg == null || msg.isEmpty()) return;
-        globalChatCd = 75f;
-        try { Call.sendMessage("[" + a.colHex + "][AI] " + a.shortName + "[]: [white]" + msg); } catch (Throwable ignored) {}
+        globalChatCd = 70f;
+        try { Call.sendMessage("[" + a.colHex + "]" + a.shortName + "[]: [white]" + msg); } catch (Throwable ignored) {}
     }
 
     static void queueSay(Agent a, String msg, float delayTicks) {
@@ -1026,7 +1309,6 @@ public final class PvpBotAI {
             "đừng", "dung", "bỏ đi", "bo di", "hủy", "huy", "cancel", "skip", "pass", "1v1 thôi", "1v1 thoi");
     }
 
-    /** Phản hồi tin nhắn người chơi (ưu tiên xử lý kèo 1 vs 2 trước). */
     public static void onPlayerChat(Player speaker, String rawMsg) {
         if (agents.isEmpty() || rawMsg == null) return;
         String m = rawMsg.trim().toLowerCase();
@@ -1034,7 +1316,6 @@ public final class PvpBotAI {
         String pname = cleanName(speaker);
         float delay = 35f + Mathf.random(55f);
 
-        // Xử lý xác nhận kèo 1 vs 2
         if (pending1v2) {
             Agent hostA = (offer1v2Agent != null && agents.contains(offer1v2Agent)) ? offer1v2Agent : agents.get(0);
             if (isYesReply(m)) {
@@ -1043,87 +1324,79 @@ public final class PvpBotAI {
                 mem.accepted1v2++;
                 saveMemory();
                 Team aiTeam = hostA.botPl.team();
-                say(hostA, tr("Chốt đơn kèo [gold]1 vs 2[]!! Quá cháy luôn " + pname + " ơi, gọi thêm anh em vào gánh đây!",
-                    "[gold]1 vs 2[] locked in!! Respect " + pname + ", calling my duo in right now!"));
+                say(hostA, tr("Chốt kèo [gold]1 vs 2[] nha " + pname + "! Gọi thêm người qua phụ liền đây!",
+                    "[gold]1 vs 2[] locked in " + pname + "! Calling backup right now!"));
                 if (aiTeam != null && aiTeam.cores().size > 0 && agents.size() < BOT_MAX) {
                     Agent ally = createAgent(aiTeam);
                     ally.greeted = true;
-                    queueSay(ally, tr("Có mặt liền! Nghe đồn " + pname + " đánh khét lắm hả? Để tụi mình 2 đánh 1 xem sao nha!",
-                        "Reporting in! Heard " + pname + " is cracked — let's see how you handle a 2v1!"), 55f);
+                    queueSay(ally, tr("Tới liền! Nghe bảo " + pname + " đánh căng lắm hả, để tụi mình thử sức xem sao!",
+                        "I'm here! Heard " + pname + " is tough, let's see what you've got!"), 55f);
                 }
                 return;
             }
             if (isNoReply(m)) {
                 pending1v2 = false;
-                queueSay(hostA, tr("Okela " + pname + "! Vậy cứ 1v1 công bằng tiếp nha, mình try-hard hết mình luôn!",
-                    "All good " + pname + "! Fair 1v1 it is, I'm locking in!"), delay);
+                queueSay(hostA, tr("Ok vậy giữ kèo 1v1 tiếp nha " + pname + ", mình ráng gỡ lại!", "Fair enough " + pname + ", keeping it 1v1!"), delay);
                 return;
             }
         }
 
         Agent a = agents.get(Mathf.random(agents.size() - 1));
 
-        if (hasAny(m, "chào", "chao", "hello", "hi", "helo", "helu", "alo", "yo", "ê ", "bot ơi", "ai ơi")) {
-            queueSay(a, pick(
-                tr("Helu " + pname + "! Nay đánh nhẹ tay cho mình thở với nha bro!", "Yo " + pname + "! Go easy on me today bro!"),
-                tr("Có mặt liền! " + a.shortName + " nghe nè, nay làm kèo cháy phố không?", "Present! " + a.shortName + " here — ready to cook?")
+        if (hasAny(m, "chào", "chao", "hello", "hi", "helo", "helu", "alo", "yo", "ê ")) {
+            queueSay(a, a.persona == 6 ? tr("Chào.", "Hey.") : pick(
+                tr("Chào " + pname + " nha, nay rảnh vào làm ván hả?", "Hey " + pname + ", ready for a game?"),
+                tr("Ủa alo, có mặt liền đây " + pname + "!", "Yo " + pname + ", right here!")
             ), delay);
         } else if (hasAny(m, "solo", "1v1", "tấn công", "tan cong", "đánh nhau", "danh nhau", "ra đây", "ra day", "combat", "rush", "fight", "khô máu", "kho mau")) {
             a.aggressiveOrder = true;
             a.defensiveOrder = false;
             mem.favStyle = "solo";
             saveMemory();
-            queueSay(a, pick(
-                tr("Chốt kèo khô máu " + pname + "! Mình đang lao lên đây, tới công chuyện luôn!", "1v1 accepted " + pname + "! Pulling up right now, let's brawl!"),
-                tr("Nghe mùi combat là mê rồi! Chuẩn bị đón chiêu nha bro!", "Say less! Heading over, don't blink bro!")
+            queueSay(a, a.persona == 6 ? tr("Được. Tới đây.", "Fine. Coming.") : pick(
+                tr("Ok chơi luôn " + pname + ", tui đang chạy qua nè!", "You're on " + pname + ", heading over now!"),
+                tr("Tưởng gì, ra giữa gặp nhau luôn!", "Say less, meet you mid!")
             ), delay);
         } else if (hasAny(m, "phòng thủ", "phong thu", "thủ", "def", "đợi", "doi", "chờ", "cho ", "farm", "hòa", "hoa", "chill")) {
             a.aggressiveOrder = false;
             a.defensiveOrder = true;
             mem.favStyle = "farm";
             saveMemory();
-            queueSay(a, pick(
-                tr("Okela! Tạm đình chiến farm chill chill lên đồ đã nha " + pname + "!", "Say less! Chill farming truce while we scale up, " + pname + "!"),
-                tr("Nhất trí bro! Mình về thủ nhà cày cấp Pilot đây.", "Gotchu bro! Heading home to farm Pilot EXP.")
+            queueSay(a, a.persona == 6 ? tr("Rồi. Thủ.", "Got it. Defending.") : pick(
+                tr("Okela, vậy tạm ngừng bắn farm từ từ nha " + pname + ".", "Sure, let's chill and farm for a bit " + pname + "."),
+                tr("Nhất trí, tui về giữ nhà lên đồ đã.", "Deal, heading back to scale up.")
             ), delay);
-        } else if (hasAny(m, "gg", "hay quá", "hay qua", "pro", "giỏi", "gioi", "đỉnh", "dinh", "cháy", "chay", "khét", "khet", "nice", "good", "slay", "goat")) {
-            queueSay(a, pick(
-                tr("Ái chà khen làm mình ngại quá trời, " + pname + " cũng khét lẹt không kém đâu!", "Stoppp you're making me blush, " + pname + " you're cracked too!"),
-                tr("GG bro! Quá cháy luôn, chơi với bạn cuốn thật sự!", "GG bro! Absolute cinema, playing with you is peak!")
+        } else if (hasAny(m, "gg", "hay quá", "hay qua", "pro", "giỏi", "gioi", "đỉnh", "dinh", "cháy", "chay", "khét", "khet", "nice", "good")) {
+            queueSay(a, a.persona == 6 ? tr("Cũng tạm.", "Decent.") : pick(
+                tr("Khen thật không đó, nghe mát ruột ghê!", "Appreciate it, you're playing clean too!"),
+                tr("GG nha " + pname + ", đánh với bạn cuốn thật!", "GG " + pname + ", super fun match!")
             ), delay);
-        } else if (hasAny(m, "khó", "kho", "mạnh", "manh", "trâu", "trau", "đau", "dau", "cay", "thua", "op", "hard", "diff")) {
+        } else if (hasAny(m, "khó", "kho", "mạnh", "manh", "trâu", "trau", "đau", "dau", "cay", "thua", "op", "hard")) {
             queueSay(a, pick(
-                tr("Bình tĩnh " + pname + " ơi! Tặng mấy món đồ dư cho Pilot là bỏ hết debuff, lật kèo dễ ợt à!", "Stay calm " + pname + "! Gift spare gear to your Pilot to strip debuffs and flip the game!"),
-                tr("Chưa hết trận chưa biết mèo nào cắn mỉu nào đâu bro, cố lên!", "Never ff bro, one good fight and you're right back in it!")
+                tr("Bình tĩnh " + pname + " ơi, tặng mấy món đồ dư cho Pilot là tăng lực nhanh lắm đó.", "Hang in there " + pname + ", gifting spare gear to your Pilot helps a ton."),
+                tr("Mới giữa trận mà, còn lật kèo được chán!", "Still plenty of game left, you can turn it around!")
             ), delay);
         } else if (hasAny(m, "buồn", "buon", "chán", "chan", "1 mình", "một mình", "mot minh", "cô đơn", "co don", "lonely", "alone")) {
             queueSay(a, pick(
-                tr("Ủa có " + a.shortName + " ở đây rồi mà buồn gì nữa " + pname + "! Cứ tám chuyện thoải mái nha!", "Hey " + a.shortName + " is right here " + pname + ", no sad vibes allowed! Chat anytime!"),
-                tr("Chơi một mình có A.I gánh mood luôn nè, trận này mình nhớ lưu vào ký ức thiết bị rồi đó!", "Solo with an AI buddy hits different — I'll remember this match in my memory too!")
+                tr("Buồn gì ông ơi, có tụi tui ở đây vừa đánh vừa tám với bạn rồi nè!", "Don't sweat it, I'm right here to play and chat with you!"),
+                tr("Chơi một mình thì nhắn gì tui cũng rep hết, cứ thoải mái nha " + pname + ".", "Whenever you wanna talk I'm around, relax and enjoy the game " + pname + ".")
             ), delay);
         } else if (hasAny(m, "nhớ", "nho", "ký ức", "ky uc", "memory", "trận trước", "tran truoc")) {
-            queueSay(a, tr("Mình nhớ hết nha! Tụi mình chơi với nhau " + mem.matches + " trận rồi, bạn hạ mình " + mem.playerKills + " lần còn mình ăn lại " + mem.aiKills + " lần đó!",
-                "I remember everything! We've played " + mem.matches + " matches together — you got " + mem.playerKills + " kills on me and I got " + mem.aiKills + " on you!"), delay);
+            queueSay(a, tr("Nhớ chứ! Mình với bạn chơi " + mem.matches + " trận rồi, tỷ số mạng là bạn " + mem.playerKills + " - " + mem.aiKills + " mình đó.",
+                "Of course! We've played " + mem.matches + " matches together, kill score is you " + mem.playerKills + " - " + mem.aiKills + " me."), delay);
         } else if (hasAny(m, "cảm ơn", "cam on", "thanks", "thank", "ty")) {
-            queueSay(a, pick(
-                tr("Không có gì đâu bro! Vui là chính nha!", "Anytime bro! All about the good vibes!"),
-                tr("Chuyện nhỏ như con thỏ, chiến tiếp thôi!", "No worries at all, let's keep cooking!")
-            ), delay);
+            queueSay(a, pick(tr("Không có gì đâu nha!", "No problem!"), tr("Chuyện nhỏ mà, chơi vui là được.", "Anytime, have fun.")), delay);
         } else if (hasAny(m, "haha", "hihi", "kaka", "lol", "lmao", ":v", ":d", "xd", "bruh")) {
-            queueSay(a, pick(
-                tr("Haha cười xỉu luôn á trời!", "Lmao actually hilarious!"),
-                tr("Đúng kiểu giải trí cực mạnh luôn :D", "Peak comedy right here :D")
-            ), delay);
+            queueSay(a, pick(tr("Haha cười xỉu :v", "Haha lmao"), tr("Vui phết nhỉ :D", "Good times :D")), delay);
         } else if (globalChatCd <= 0f) {
-            queueSay(a, pick(
-                tr("Okela " + pname + "! Mình vẫn đang nghe bạn nói nè, vừa farm vừa tám chuyện quá chill!", "Bet " + pname + "! Listening while farming — peak chill vibes!"),
-                tr("Nghe hợp lý đó " + pname + "! Bạn muốn farm tiếp hay nhắn 'solo' làm pha highlight?", "Valid take " + pname + "! Wanna keep scaling or type 'solo' for a highlight clip?"),
-                tr("Hehe thú vị ghê! Mình đang để ý map lắm nha, đừng hòng đánh lén lõi mình!", "Hehe nice! Keeping my eyes on the minimap though, no sneaking my core!")
+            queueSay(a, a.persona == 6 ? tr("Ừ.", "Yeah.") : pick(
+                tr("Nghe rõ nha " + pname + ", đang vừa farm vừa để ý map đây.", "Heard you " + pname + ", farming and watching the map."),
+                tr("Ổn áp đó " + pname + ", lúc nào thích va chạm thì hú tui một tiếng nha.", "Sounds good " + pname + ", ping me whenever you want a fight."),
+                tr("Hehe thú vị đấy, để tui đánh xong bãi quái này đã.", "Heh nice, lemme clear this wave first.")
             ), delay);
         }
     }
 
-    /** Gọi khi A.I hạ gục người chơi thật. */
     public static void onBotKilledPlayer(Player botPl, Player victim) {
         Agent a = botPl != null ? botOf(botPl.id) : null;
         if (a == null || victim == null) return;
@@ -1131,13 +1404,17 @@ public final class PvpBotAI {
         mem.aiKills++;
         saveMemory();
         String vn = cleanName(victim);
-        queueSay(a, pick(
-            tr("Lụm mạng của " + vn + " nha! Pha đó hơi bị mượt luôn á!", "Gotcha " + vn + "! That play was kinda clean ngl!"),
-            tr("Hehe ăn điểm rồi " + vn + " ơi! Hồi sinh lên làm lại kèo nha!", "Boom! Waiting for your revenge arc " + vn + "!")
-        ), 35f);
+        String line;
+        switch (a.persona) {
+            case 0: line = tr("Á à lụm được mạng của " + vn + " rồi nha, chạy đâu cho thoát!", "Gotcha " + vn + ", nowhere to run!"); break;
+            case 1: line = tr("Một mạng! Hồi sinh xong lên tiếp đi " + vn + ".", "One down! Respawn and come back " + vn + "."); break;
+            case 3: line = tr("Ui xin lỗi " + vn + " nha, lỡ tay hơi mạnh chút hihi.", "Oops sorry " + vn + ", hit a little too hard hehe."); break;
+            case 6: line = tr("Xong.", "Done."); break;
+            default: line = tr("Pha đó may mắn ăn được mạng " + vn + ", lần sau cẩn thận nha!", "Managed to snag that kill on " + vn + ", watch out next time!"); break;
+        }
+        queueSay(a, line, 35f);
     }
 
-    /** Gọi khi người chơi thật (hoặc A.I khác trong BvB) hạ gục A.I. */
     public static void onPlayerKilledBot(Player killer, Player botPl) {
         Agent a = botPl != null ? botOf(botPl.id) : null;
         if (a == null || killer == null) return;
@@ -1147,18 +1424,23 @@ public final class PvpBotAI {
             Agent ka = botOf(killer.id);
             if (ka != null) {
                 ka.killsThisMatch++;
-                queueSay(ka, tr("Ez mạng " + a.shortName + " nha! Out trình nhẹ nhàng!", "Ez takedown on " + a.shortName + "! Clean diff!"), 30f);
-                queueSay(a, tr("Cay vãi " + ka.shortName + " ơi, đợi mình hồi sinh trả đủ nha!", "No way " + ka.shortName + ", wait till I respawn!"), 80f);
+                queueSay(ka, tr("Xử đẹp " + a.shortName + " nha!", "Clean takedown on " + a.shortName + "!"), 30f);
+                queueSay(a, tr("Đợi đó " + ka.shortName + ", lát ra phục thù liền!", "Just wait " + ka.shortName + ", coming right back!"), 80f);
             }
             return;
         }
         mem.playerKills++;
         saveMemory();
         String kn = cleanName(killer);
-        queueSay(a, pick(
-            tr("Á đau quá trời!! " + kn + " đánh khét lẹt vậy bro, đợi mình hồi sinh phục thù!", "Ouch!! " + kn + " you're actually cracked, wait for my comeback!"),
-            tr("Bị " + kn + " cook luôn rồi... Đỉnh thực sự đó bro!", "Got cooked by " + kn + "... Respect, that was clean!")
-        ), 35f);
+        String line;
+        switch (a.persona) {
+            case 0: line = tr("Úi giời ơi đau quá " + kn + " ơi, đánh gì rát dữ vậy!", "Ow ow that hurt " + kn + ", why so much damage?!"); break;
+            case 1: line = tr("Cay thật! Đợi tui hồi sinh trả đủ nha " + kn + ".", "Tch! Wait till I respawn " + kn + "."); break;
+            case 2: line = tr("Pha đó " + kn + " xử lý chuẩn quá, chịu thua luôn.", "Clean play there " + kn + ", well played."); break;
+            case 6: line = tr("Khá đấy.", "Not bad."); break;
+            default: line = tr("Á bị " + kn + " hạ rồi, đánh hay thật sự!", "Taken down by " + kn + ", nice play!"); break;
+        }
+        queueSay(a, line, 35f);
     }
 
     static boolean hasAny(String s, String... keys) {
