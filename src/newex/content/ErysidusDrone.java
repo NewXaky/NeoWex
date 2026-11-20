@@ -130,9 +130,9 @@ public final class ErysidusDrone {
                 };
             }
 
-            Events.on(mindustry.game.EventType.WorldLoadEvent.class, e -> droneStorage.clear());
-            Events.on(mindustry.game.EventType.UnitDestroyEvent.class, e -> {
-                if (e.unit != null) droneStorage.remove(e.unit.id);
+            Events.on(mindustry.game.EventType.WorldLoadEvent.class, ev -> droneStorage.clear());
+            Events.on(mindustry.game.EventType.UnitDestroyEvent.class, de -> {
+                if (de.unit != null) droneStorage.remove(de.unit.id);
             });
             Events.run(Trigger.update, () -> {
                 if (Vars.state.isMenu() || Vars.state.isPaused() || Groups.unit.isEmpty()) return;
