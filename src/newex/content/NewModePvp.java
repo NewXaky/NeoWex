@@ -4214,7 +4214,7 @@ public class NewModePvp {
         try {
             St ast = byId.get(apid);
             int[] as = ast != null ? GearItems.eff(ast) : null;
-            if (as != null && as.length > STAT_HEAL && as[STAT_HEAL] > 0 && statVisible(STAT_HEAL)) applyHealCut(tgt, Math.min(HEAL_CUT_MAX, as[STAT_HEAL] * hitSk * HEAL_CUT_PCT));
+            if (as != null && as.length > STAT_HEAL && as[STAT_HEAL] > 0 && statVisible(STAT_HEAL)) applyHealCut(tgt, Math.min(HEAL_CUT_MAX, Math.round(as[STAT_HEAL] * hitSk * HEAL_CUT_PCT)));
         } catch (Throwable err) {}
         try {
             St hst = byId.get(apid);
