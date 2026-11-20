@@ -115,7 +115,7 @@ public final class Bulvasyr {
 
     /** Gọi từ NexMod.loadContent(). */
     public static void create() {
-        launchSound = Vars.headless ? Sounds.none : Sounds.missileLaunch;
+        launchSound = Vars.headless ? Sounds.none : Sounds.shootSmite;
 
         shieldHitFx = new Effect(16f, e -> {
             Draw.color(Color.white, SHIELD_SPARK, e.fin());
@@ -305,10 +305,10 @@ public final class Bulvasyr {
             physShieldHp -= absorbed;
 
             if (physShieldHp <= 0.01f) {
-                physShieldHp = 0f;
-                shieldBreakFx.at(hitX, hitY, rotation + SHIELD_ANGLE_OFFSET);
-                if (!Vars.headless) Sounds.bang.at(hitX, hitY, 0.85f, 0.9f);
-            } else {
+    physShieldHp = 0f;
+    shieldBreakFx.at(hitX, hitY, rotation + SHIELD_ANGLE_OFFSET);
+    if (!Vars.headless) Sounds.explosion.at(hitX, hitY, 0.85f, 0.9f);
+} else {
                 shieldHitFx.at(hitX, hitY, hitAngle);
             }
             return absorbed;
@@ -829,9 +829,13 @@ public final class Bulvasyr {
             float y4 = bu.y + leftY * 11f - fwdY * 13f;
 
             // Viền tối kiểu Mindustry
-            Draw.color(OUTLINE_COL);
-            Lines.stroke(3.6f);
-            Lines.poly(new float[]{x1, y1, x2, y2, x3, y3, x4, y4}, 0, 8, true);
+// Viền tối kiểu Mindustry
+Draw.color(OUTLINE_COL);
+Lines.stroke(3.6f);
+Lines.line(x1, y1, x2, y2);
+Lines.line(x2, y2, x3, y3);
+Lines.line(x3, y3, x4, y4);
+Lines.line(x4, y4, x1, y1);
 
             // Mặt giáp xanh-tím (chuyển sẫm dần khi độ bền thấp, lóe vàng khi trúng đạn)
             Color plateCol = Tmp.c1.set(SHIELD_BLUE).lerp(Color.darkGray, (1f - ratio) * 0.45f).lerp(SHIELD_SPARK, bu.shieldFlash * 0.7f);
