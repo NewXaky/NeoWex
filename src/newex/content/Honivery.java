@@ -83,6 +83,7 @@ public final class Honivery {
     // ---- Hằng số kỹ năng & mạng ----
     static final String REQ = "newex-honivery-skill";
     static final String CAST = "newex-honivery-cast";
+    static final String PASSIVE_SYNC = "newex-honivery-pct";
     static final String HUD_KEY = "newex-honivery-btn";
     public static final String KEYBIND_SETTING = "newex-pvp-honivery-skill-key";
 
@@ -427,6 +428,29 @@ public final class Honivery {
         netOk = true;
         NexNet.on(REQ, Honivery::onSkillReq, false);
         NexNet.onBroadcast(CAST, Honivery::onSkillCast);
+        NexNet.onBroadcast(PASSIVE_SYNC, Honivery::onPassiveSync);
+    }
+
+    /** Khóa lưu nội tại theo player.id (không bị reset khi unit chết và hồi sinh); fallback theo -u.id nếu là AI/non-player. */
+    static int ownerKey(Unit u) {
+        if (u == null) return 0;
+        Player p = u.getPlayer();
+        if (p != null) return p.id;
+        return -Math.abs(u.id) - 1;
+    }
+
+    static void onPassiveSync(String payload) {
+        if (payload == null || payload.isEmpty()) return;
+        int c = payload.indexOf(',');
+        if (c <= 0) return;
+        try {
+            int key = Integer.parseInt(payload.substring(0, c));
+            int pct = Integer.parseInt(payload.substring(c + 1));
+            passiveStacksSrv.put(key, pct);
+            if (Vars.player != null && Vars.player.id == key) {
+                localPassivePct = pct;
+            }
+        } catch (Throwable ignored) {}
     }
 
     /** Tính sát thương đòn đánh kĩ năng (Tinh Quang Trảm) của Honivery: (90% ATK + 10% HP) * (1 + nội tại%). */
@@ -454,7 +478,7 @@ public final class Honivery {
         }
         if (Float.isNaN(ang)) ang = u.rotation;
 
-        int stack = passiveStacksSrv.getOrDefault(u.id, 0);
+        int stack = passiveStacksSrv.getOrDefault(ownerKey(u), 0);
         NexNet.broadcast(CAST, u.id + "," + u.team.id + "," + (Math.round(ang * 10f) / 10f) + "," + u.x + "," + u.y + "," + stack);
     }
 
@@ -470,6 +494,9 @@ public final class Honivery {
         int stack = p.length >= 6 ? Integer.parseInt(p[5]) : 0;
 
         Unit caster = Groups.unit.getByID(s.uid);
+        if (caster != null && Vars.player != null && Vars.player.unit() == caster) {
+            localPassivePct = stack;
+        }
         s.t = -CHARGE_T;
         s.dmg = calcBasicSlashDamage(caster, stack);
 
@@ -512,7 +539,7 @@ public final class Honivery {
         if (Vars.net.client()) {
             NexNet.send(REQ, String.valueOf(ang));
         } else {
-            int stack = passiveStacksSrv.getOrDefault(u.id, localPassivePct);
+            int stack = passiveStacksSrv.getOrDefault(ownerKey(u), localPassivePct);
             NexNet.broadcast(CAST, u.id + "," + u.team.id + "," + (Math.round(ang * 10f) / 10f) + "," + u.x + "," + u.y + "," + stack);
         }
     }
@@ -522,12 +549,17 @@ public final class Honivery {
         int extraFromHp = targetMaxHp > 10000f ? (int) (targetMaxHp / 10000f) : 0;
         int gain = 1 + extraFromHp;
 
-        int cur = passiveStacksSrv.getOrDefault(uid, 0);
+        int key = caster != null ? ownerKey(caster) : uid;
+        int cur = passiveStacksSrv.getOrDefault(key, 0);
         int next = Math.min(MAX_PASSIVE_PCT, cur + gain);
-        passiveStacksSrv.put(uid, next);
+        passiveStacksSrv.put(key, next);
 
-        if (caster != null && Vars.player != null && Vars.player.unit() == caster) {
+        if (Vars.player != null && ((caster != null && Vars.player.unit() == caster) || Vars.player.id == key)) {
             localPassivePct = next;
+        }
+        // Đồng bộ nội tại sang máy khách trong host để nút skill hiển thị đúng % và giữ nguyên sau khi hồi sinh
+        if (!Vars.net.client()) {
+            try { NexNet.broadcast(PASSIVE_SYNC, key + "," + next); } catch (Throwable ignored) {}
         }
 
         try {

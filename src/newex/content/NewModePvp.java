@@ -291,6 +291,7 @@ public class NewModePvp {
     static final int BONUS_WAVE_MAX_NEW = 150;
     static final int EQUIPPED = -1;
     static final int IN_BAG = -2; // phao trong tui do
+    static final int CORE_MOUNT = -3; // phao lap len loi
     static final String BUILD_FLOOR = "core-zone"; // chi xay phao tren nen dat loi ("" = moi nen)
     static final int EQUIP_SLOT_CAP = 12;
     static final String REQ_BARR = "newex-pvp-barr";
@@ -497,7 +498,7 @@ public class NewModePvp {
         /** Hỗn loạn: vòng thẻ đã chọn, số thẻ đã chọn, thẻ trong tay, thẻ đã gắn {pilot, thẻ}; chs = cache chỉ số +thẻ (không lưu). */
         int chRound = 0, chPicks = 0; ArrayList<Integer> chHand = new ArrayList<>(); ArrayList<int[]> chEq = new ArrayList<>(); int[] chs;
         /** Chiến tranh: túi vật phẩm (id mẫu), 6 ô trang bị (-1 = trống) và cache cấp cộng thêm (không lưu). */
-        ArrayList<Integer> gInv = new ArrayList<>(); int[] gEq = GearItems.newEq();
+        ArrayList<Integer> gInv = new ArrayList<>(); ArrayList<Byte> gInvSrc = new ArrayList<>(); int[] gEq = GearItems.newEq(); int gEqSrc = 0;
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
         int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false, gSlowBonus = false;
         void padStats() {
@@ -2078,6 +2079,79 @@ public class NewModePvp {
         knockCache.put(key, c);
         return c;
     }
+    static int coreMountCount(St st) { int n = 0; for (int i = 0; i < st.p.size(); i++) if (st.p.get(i) == CORE_MOUNT) n++; return n; }
+    static int coreMountCap(St st) { return Math.max(4, equipSlots(st)); }
+    static ArrayList<Def> coreList(St st, Defs defs) {
+        ArrayList<Def> out = new ArrayList<>();
+        if (st == null || st.p.size() != st.d.size()) return out;
+        for (int i = 0; i < st.d.size(); i++) {
+            if (st.p.get(i) != CORE_MOUNT) continue;
+            Def d = defs.map.get(st.d.get(i));
+            if (d != null) out.add(d);
+        }
+        return out;
+    }
+    static void mountCoreFire(Player pl, CoreBlock.CoreBuild core, ArrayList<Def> list) {
+        int n = list.size();
+        if (n == 0 || core == null || !core.isValid()) return;
+        hostOwner.put(core.id, pl.id);
+        float rad = core.block.size * Vars.tilesize * 0.42f;
+        for (int k = 0; k < n; k++) {
+            Def def = list.get(k);
+            if (ChaosMode.silenced(def.id) || ChaosMode.skipFrame()) continue;
+            Block blk = def.block;
+            BulletType bt = equipBullet(def);
+            if (bt == null) continue;
+            float a = k * 360f / n;
+            float mx = core.x + Angles.trnsx(a, rad), my = core.y + Angles.trnsy(a, rad);
+            String key = pl.id + ":c" + k + ":" + def.id;
+            MState stt = mountSt.get(key);
+            if (stt == null) { stt = new MState(); stt.ang = a; mountSt.put(key, stt); }
+            float reload = Math.max(1f, fldF(blk, "reload", 20f));
+            stt.rel = Math.min(reload, stt.rel + Time.delta * fldF(bt, "reloadMultiplier", 1f));
+            float range = ammoRange(def, bt);
+            final float[] bestD2 = {range * range};
+            final Unit[] tgt = {null};
+            Units.nearbyEnemies(pl.team(), mx - range, my - range, range * 2f, range * 2f, e -> {
+                if (e == null || e.dead || !e.isValid()) return;
+                float d2 = Mathf.dst2(mx, my, e.x, e.y);
+                if (d2 < bestD2[0]) { bestD2[0] = d2; tgt[0] = e; }
+            });
+            if (tgt[0] == null) { equipAng.put(key, stt.ang); continue; }
+            float want = Angles.angle(mx, my, tgt[0].x, tgt[0].y);
+            stt.ang = Angles.moveToward(stt.ang, want, fldF(blk, "rotateSpeed", 5f) * Time.delta);
+            equipAng.put(key, stt.ang);
+            if (Angles.angleDist(stt.ang, want) < Math.max(10f, fldF(blk, "shootCone", 8f)) && stt.rel >= reload) {
+                try {
+                    bt.create(core, pl.team(), mx, my, stt.ang, -1f, 1f, 1f, null);
+                    Object snd = fld(blk, "shootSound", null);
+                    if (snd instanceof arc.audio.Sound) ((arc.audio.Sound) snd).at(mx, my, 1f, 0.45f);
+                } catch (Throwable err) { logOnce("mcf:" + def.id, "core mount fire failed for " + def.id + ": " + err, false); }
+                stt.rel = stt.rel % reload;
+            }
+        }
+    }
+    static void drawCoreMounts(Player pl, CoreBlock.CoreBuild core, ArrayList<Def> list) {
+        int n = list.size();
+        if (n == 0 || core == null || !core.isValid()) return;
+        float rad = core.block.size * Vars.tilesize * 0.42f;
+        for (int k = 0; k < n; k++) {
+            Def def = list.get(k);
+            float a = k * 360f / n;
+            float mx = core.x + Angles.trnsx(a, rad), my = core.y + Angles.trnsy(a, rad);
+            String key = pl.id + ":c" + k + ":" + def.id;
+            Float ang = equipAng.get(key);
+            float rot = (ang != null ? ang : a) - 90f;
+            float sz = Math.min(20f, Math.max(10f, def.block.size * 5.2f));
+            Draw.z(Layer.blockOver + 1f);
+            Draw.color(Color.cyan, 0.55f);
+            Lines.stroke(1.1f);
+            Lines.circle(mx, my, sz * 0.52f);
+            Draw.color();
+            Draw.rect(def.block.uiIcon, mx, my, sz, sz, rot);
+            Draw.reset();
+        }
+    }
     static void eachEquip(Player pl) {
         if (!pvpOn(pl)) return;
         St st = byId.get(pl.id);
@@ -2085,13 +2159,18 @@ public class NewModePvp {
         Defs defs = droneDefs();
         Unit u = pl.unit();
         if (u != null && u.isValid() && !u.dead) mountFire(pl, equipList(st, defs), u, "u");
+        CoreBlock.CoreBuild core = pl.team() != null ? pl.team().core() : null;
+        if (core != null && core.isValid()) mountCoreFire(pl, core, coreList(st, defs));
     }
     static void eachDrawEquip(Player pl) {
         if (!pvpOn(pl)) return;
         St st = byId.get(pl.id);
         if (st == null || st.d.size() == 0 || st.p.size() != st.d.size()) return;
+        Defs defs = droneDefs();
         Unit u = pl.unit();
-        if (u != null && u.isValid()) drawMounts(pl, u, equipList(st, droneDefs()), "u");
+        if (u != null && u.isValid()) drawMounts(pl, u, equipList(st, defs), "u");
+        CoreBlock.CoreBuild core = pl.team() != null ? pl.team().core() : null;
+        if (core != null && core.isValid()) drawCoreMounts(pl, core, coreList(st, defs));
     }
     static void drawMounts(Player pl, Unit u, ArrayList<Def> list, String pfx) {
         int n = list.size();
@@ -4651,19 +4730,25 @@ public class NewModePvp {
             if (d == null) return;
             int cur = st.p.get(idx);
             if (mode.equals("u")) {
-                if (cur == EQUIPPED) st.p.set(idx, IN_BAG);
+                if (cur == EQUIPPED || cur == CORE_MOUNT) st.p.set(idx, IN_BAG);
                 else if (cur >= 0) { removeTurret(cur, d); st.p.set(idx, IN_BAG); }
                 else return;
                 changed();
                 return;
             }
-            if (cur >= 0 || cur == EQUIPPED) return;
+            if (cur >= 0 || cur == EQUIPPED || cur == CORE_MOUNT) return;
             if (mode.equals("e") && ChaosMode.noMount()) { toast(player, tr("[scarlet]Thẻ Pháo hủy diệt: không thể lắp pháo lên unit!", "[scarlet]Doom turrets card: turrets cannot be mounted on units!")); return; }
             if (mode.equals("b") && ChaosMode.noBuild()) { toast(player, tr("[scarlet]Thẻ Năm mạng: không thể xây thêm pháo!", "[scarlet]Five lives card: no more turrets can be built!")); return; }
             if (mode.equals("e")) {
                 if (!d.equip || !d.mount) { toast(player, tr("[scarlet]Pháo này không thể gắn lên unit!", "[scarlet]This turret cannot be mounted!")); return; }
                 if (equipCount(st) >= equipSlots(st)) { toast(player, tr("[scarlet]Hết ô gắn!", "[scarlet]No free mount slot!")); return; }
                 st.p.set(idx, EQUIPPED);
+            } else if (mode.equals("c")) {
+                if (player.team() == null || player.team().core() == null) { toast(player, tr("[scarlet]Không tìm thấy lõi để lắp pháo!", "[scarlet]No core found to mount turret!")); return; }
+                if (equipBullet(d) == null) { toast(player, tr("[scarlet]Pháo này không hỗ trợ lắp trực tiếp lên lõi!", "[scarlet]This turret cannot be mounted on the core!")); return; }
+                if (coreMountCount(st) >= coreMountCap(st)) { toast(player, tr("[scarlet]Đã đạt giới hạn pháo lắp trên lõi!", "[scarlet]Core mount limit reached!")); return; }
+                st.p.set(idx, CORE_MOUNT);
+                toast(player, tr("[cyan]Đã lắp pháo lên lõi!", "[cyan]Turret mounted on core!"));
             } else if (mode.equals("b")) {
                 if (builtCount(st) >= maxBuilt()) { toast(player, tr("[scarlet]Đã đạt giới hạn pháo xây!", "[scarlet]Built turret limit reached!")); return; }
                 Integer tx = parts.length > 2 ? leadInt(parts[2]) : null, ty = parts.length > 3 ? leadInt(parts[3]) : null;
@@ -5330,7 +5415,7 @@ public class NewModePvp {
     static BaseDialog bagDialog = null;
     static ArrayList<String> bagRecent = new ArrayList<>(), viewBag = new ArrayList<>();
     static void bagTouch(String id) { bagRecent.remove(id); bagRecent.add(0, id); }
-    static final class BagGroup { Def def; final ArrayList<Integer> bag = new ArrayList<>(), on = new ArrayList<>(), built = new ArrayList<>(); int n; }
+    static final class BagGroup { Def def; final ArrayList<Integer> bag = new ArrayList<>(), on = new ArrayList<>(), core = new ArrayList<>(), built = new ArrayList<>(); int n; }
     static void buildBag(MachineUi.Panel pnl) {
         Table h = pnl.header(), c = pnl.content();
         h.clear();
@@ -5360,7 +5445,7 @@ public class NewModePvp {
             BagGroup g = byType.get(def.id);
             if (g == null) { g = new BagGroup(); g.def = def; g.n = groups.size(); byType.put(def.id, g); groups.add(g); }
             int pp = st.p.get(i);
-            if (pp == EQUIPPED) g.on.add(i); else if (pp >= 0) g.built.add(i); else g.bag.add(i);
+            if (pp == EQUIPPED) g.on.add(i); else if (pp == CORE_MOUNT) g.core.add(i); else if (pp >= 0) g.built.add(i); else g.bag.add(i);
         }
         groups.sort((x, y) -> {
             int ix = viewBag.indexOf(x.def.id), iy = viewBag.indexOf(y.def.id);
@@ -5372,33 +5457,37 @@ public class NewModePvp {
             if (!gearOn) c.add("[lightgray]" + tr("Túi đồ trống. Hãy mua pháo ở tab Pháo.", "Your bag is empty. Buy turrets in the Turrets tab.") + "[]").width(W - 20f).wrap().pad(20).row();
             return;
         }
-        if (gearOn) c.add("[accent]" + tr("Pháo", "Turrets") + "[]").left().padLeft(6).padTop(10).row();
+        if (gearOn) c.add("[accent]" + tr("Pháo", "Turrets") + "[]  [cyan]" + tr("Lắp lõi: ", "Core: ") + coreMountCount(st) + "/" + coreMountCap(st) + "[]").left().padLeft(6).padTop(10).row();
+        boolean coreFull = coreMountCount(st) >= coreMountCap(st);
 
-        float btnW = narrow ? 50 : (Vars.mobile ? 70 : 62), iconSz = narrow ? 32 : (Vars.mobile ? 44 : 36);
+        float btnW = narrow ? 48 : (Vars.mobile ? 64 : 58), iconSz = narrow ? 32 : (Vars.mobile ? 44 : 36);
         for (int n = 0; n < groups.size(); n++) {
             BagGroup g = groups.get(n);
             Def def = g.def;
-            int total = g.bag.size() + g.on.size() + g.built.size();
+            int total = g.bag.size() + g.on.size() + g.core.size() + g.built.size();
             Table row = new Table(Styles.black6);
             row.margin(8);
             row.add(new Image(def.block.uiIcon)).size(iconSz).padRight(10);
             String nm = "[white]" + def.block.localizedName + "[]  [accent]x" + total + "[]"
-                + (g.on.size() > 0 ? "\n[lightgray]" + tr("Đang lắp: ", "Mounted: ") + "[white]" + g.on.size() + "[]" : "")
+                + (g.on.size() > 0 ? "\n[lightgray]" + tr("Đang lắp unit: ", "On unit: ") + "[white]" + g.on.size() + "[]" : "")
+                + (g.core.size() > 0 ? "\n[lightgray]" + tr("Đang lắp lõi: ", "On core: ") + "[cyan]" + g.core.size() + "[]" : "")
                 + (g.built.size() > 0 ? "\n[lightgray]" + tr("Đã xây: ", "Built: ") + "[white]" + g.built.size() + "[]" : "");
             row.add(nm).left().growX().wrap().minWidth(0);
             Table bt = row;
             if (narrow) { row.row(); bt = new Table(); }
             final int bagIdx = g.bag.size() > 0 ? g.bag.get(0) : -1;
-            final int backIdx = g.on.size() > 0 ? g.on.get(g.on.size() - 1) : (g.built.size() > 0 ? g.built.get(g.built.size() - 1) : -1);
+            final int backIdx = g.on.size() > 0 ? g.on.get(g.on.size() - 1) : (g.core.size() > 0 ? g.core.get(g.core.size() - 1) : (g.built.size() > 0 ? g.built.get(g.built.size() - 1) : -1));
             final int sellIdx = bagIdx >= 0 ? bagIdx : backIdx;
             final String did = def.id;
-            TextButton ub = bt.button(tr("Tháo", "Unmount"), () -> { bagTouch(did); send(REQ_MODE, backIdx + "|u"); }).size(btnW, btnH()).padLeft(6).get();
+            TextButton ub = bt.button(tr("Tháo", "Unmount"), () -> { bagTouch(did); send(REQ_MODE, backIdx + "|u"); }).size(btnW, btnH()).padLeft(4).get();
             ub.setDisabled(backIdx < 0);
-            TextButton mb = bt.button(tr("Lắp", "Mount"), () -> { bagTouch(did); send(REQ_MODE, bagIdx + "|e"); }).size(btnW, btnH()).padLeft(4).get();
+            TextButton mb = bt.button(tr("Lắp", "Mount"), () -> { bagTouch(did); send(REQ_MODE, bagIdx + "|e"); }).size(btnW, btnH()).padLeft(3).get();
             mb.setDisabled(bagIdx < 0 || slotFull || !def.equip || !def.mount);
-            TextButton bb = bt.button(tr("Xây", "Build"), () -> { bagTouch(did); startBuild(did); }).size(btnW, btnH()).padLeft(4).get();
+            TextButton cb = bt.button(tr("Lắp lõi", "Core"), () -> { bagTouch(did); send(REQ_MODE, bagIdx + "|c"); }).size(btnW + 6f, btnH()).padLeft(3).get();
+            cb.setDisabled(bagIdx < 0 || coreFull || equipBullet(def) == null);
+            TextButton bb = bt.button(tr("Xây", "Build"), () -> { bagTouch(did); startBuild(did); }).size(btnW, btnH()).padLeft(3).get();
             bb.setDisabled(bagIdx < 0 || builtFull);
-            bt.button(tr("Bán", "Sell"), () -> { bagTouch(did); send(REQ_SELL, String.valueOf(sellIdx)); }).size(btnW, btnH()).padLeft(4);
+            bt.button(tr("Bán", "Sell"), () -> { bagTouch(did); send(REQ_SELL, String.valueOf(sellIdx)); }).size(btnW, btnH()).padLeft(3);
             if (narrow) row.add(bt).colspan(2).growX().padTop(6).row();
             c.add(row).width(W).pad(3).row();
         }
@@ -5983,10 +6072,10 @@ public class NewModePvp {
         ArrayList<String[]> out = new ArrayList<>();
         UnitType ut = u.type;
         int[] s = st.s;
-        out.add(new String[]{tr("Unit đang điều khiển", "Controlled unit"), "[accent]" + ut.localizedName + "[]  " + tr("(cấp ", "(tier ") + activeTier(st) + ")"});
-        out.add(new String[]{tr("Pilot đang chiêu mộ", "Recruited pilot"), "[accent]" + ChaosMode.pilotName(st.pi) + "[]" + (ChaosMode.on() ? "  [lightgray]" + ChaosMode.equippedText(st, st.pi) + "[]" : "")});
-        if (ChaosMode.on()) out.add(new String[]{tr("Thẻ Hỗn loạn đang hoạt động", "Active Chaos cards"), ChaosMode.activeText()});
-        out.add(new String[]{tr("Máu", "Health"), Math.round(u.health) + " / " + Math.round(u.maxHealth) + "  [lightgray]" + tr("(gốc ", "(base ") + Math.round(ut.health) + ")[]"});
+        out.add(new String[]{"[#ffd166]◆ " + tr("Unit đang điều khiển", "Controlled unit") + "[]", "[#ffdf6b]" + ut.localizedName + "[]  [lightgray]" + tr("(cấp ", "(tier ") + activeTier(st) + ")[]"});
+        out.add(new String[]{"[#c792ea]★ " + tr("Pilot đang chiêu mộ", "Recruited pilot") + "[]", "[#e0b3ff]" + ChaosMode.pilotName(st.pi) + "[]" + (ChaosMode.on() ? "  [lightgray]" + ChaosMode.equippedText(st, st.pi) + "[]" : "")});
+        if (ChaosMode.on()) out.add(new String[]{"[#ff6b81]✦ " + tr("Thẻ Hỗn loạn đang hoạt động", "Active Chaos cards") + "[]", ChaosMode.activeText()});
+        out.add(new String[]{"[#6bff8e]♥ " + tr("Máu", "Health") + "[]", "[#7dff9c]" + Math.round(u.health) + "[] [lightgray]/[] [#4cd137]" + Math.round(u.maxHealth) + "[]  [lightgray]" + tr("(gốc ", "(base ") + Math.round(ut.health) + ")[]"});
         if (st.pi == PILOT_VANHAU) {
             Player vp = null;
             try { vp = ownerPl(u); } catch (Throwable err) {}
@@ -5999,22 +6088,22 @@ public class NewModePvp {
                 int left = at == null ? 0 : (int) Math.ceil((VANHAU_CD - (Time.time - at)) / 60);
                 vTxt = left > 0 ? "[lightgray]" + tr("Không có khiên (hồi chiêu ", "No shield (cooldown ") + left + "s)[]" : "[lightgray]" + tr("Chưa kích hoạt (tự bật khi máu dưới 70%)", "Inactive (auto-activates below 70% HP)") + "[]";
             }
-            out.add(new String[]{tr("Khiên VanHau (độ bền)", "VanHau shield (durability)"), vTxt});
+            out.add(new String[]{"[#48dbfb]◈ " + tr("Khiên VanHau (độ bền)", "VanHau shield (durability)") + "[]", vTxt});
         }
         float hm = u.healthMultiplier > 0 ? u.healthMultiplier : 1f;
-        out.add(new String[]{tr("Giáp", "Armor"), numStr(u.armor) + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.armor) + ")[]  " + tr("giảm sát thương nhận ", "damage taken reduced ") + numStr((1 - 1 / hm) * 100) + "%"});
-        out.add(new String[]{tr("Tấn công", "Attack"), numStr((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + tr(" sát thương/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(baseAttack(ut)) + ")  x" + numStr(u.damageMultiplier) + "[]"});
-        out.add(new String[]{tr("Tốc độ di chuyển", "Move speed"), Strings.fixed(ut.speed * u.speedMultiplier * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s") + "  [lightgray]" + tr("(gốc ", "(base ") + Strings.fixed(ut.speed * TILES_PER_SPEED, 2) + ")  x" + numStr(u.speedMultiplier) + "[]"});
-        out.add(new String[]{tr("Tốc độ bắn", "Fire rate"), "x" + numStr(u.reloadMultiplier)});
-        out.add(new String[]{tr("Tỉ lệ bạo kích", "Crit chance"), numStr(ChaosMode.critChanceShown(s[5])) + "%"});
-        out.add(new String[]{tr("Sát thương bạo kích", "Crit damage"), numStr(ChaosMode.critDmgShown(s[5], s[6])) + "%"});
-        out.add(new String[]{tr("Xuyên giáp", "Armor pierce"), (s[7] * 5) + "%"});
-        out.add(new String[]{tr("Hồi máu", "Regeneration"), numStr(u.maxHealth * s[8] * REGEN_PCT / 100) + tr(" máu/giây (khi dưới 99%)", " HP/s (below 99%)")});
-        out.add(new String[]{tr("Sát thương % máu tối đa", "Max HP % damage"), "+" + numStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + tr("% máu tối đa mục tiêu/lần trúng", "% target max HP per hit")});
-        out.add(new String[]{tr("Sát thương theo giáp", "Armor-based damage"), "+" + numStr(s[10] * DMG_PER_ARMOR * u.armor * 100) + "%"});
-        out.add(new String[]{tr("Đẩy lùi", "Knockback"), "+" + numStr(s[11] * KNOCK_PER)});
-        if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{tr("Giảm hồi máu", "Heal reduction"), Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT) + "%"});
-        out.add(new String[]{tr("Pháo gắn", "Mounted turrets"), "unit " + equipCount(st) + "/" + equipSlots(st) + tr(", xây ", ", built ") + builtCount(st) + "/" + maxBuilt()});
+        out.add(new String[]{"[#5ec8ff]■ " + tr("Giáp", "Armor") + "[]", "[#70d6ff]" + numStr(u.armor) + "[]  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.armor) + ")[]  [#a4e8ff]" + tr("giảm ST ", "dmg cut ") + numStr((1 - 1 / hm) * 100) + "%[]"});
+        out.add(new String[]{"[#ff6b6b]⚔ " + tr("Tấn công", "Attack") + "[]", "[#ff7b7b]" + numStr((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + "[]" + tr(" ST/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(baseAttack(ut)) + ")[]  [#ff9f43]x" + numStr(u.damageMultiplier) + "[]"});
+        out.add(new String[]{"[#4ef2d2]» " + tr("Tốc độ di chuyển", "Move speed") + "[]", "[#55efc4]" + Strings.fixed(ut.speed * u.speedMultiplier * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s") + "[]  [lightgray]" + tr("(gốc ", "(base ") + Strings.fixed(ut.speed * TILES_PER_SPEED, 2) + ")[]  [#81ecec]x" + numStr(u.speedMultiplier) + "[]"});
+        out.add(new String[]{"[#ffd166]⚡ " + tr("Tốc độ bắn", "Fire rate") + "[]", "[#ffeaa7]x" + numStr(u.reloadMultiplier) + "[]"});
+        out.add(new String[]{"[#ff9f43]✦ " + tr("Tỉ lệ bạo kích", "Crit chance") + "[]", "[#ffb142]" + numStr(ChaosMode.critChanceShown(s[5])) + "%[]"});
+        out.add(new String[]{"[#ff4757]✹ " + tr("Sát thương bạo kích", "Crit damage") + "[]", "[#ff6b81]" + numStr(ChaosMode.critDmgShown(s[5], s[6])) + "%[]"});
+        out.add(new String[]{"[#c792ea]◈ " + tr("Xuyên giáp", "Armor pierce") + "[]", "[#d6a2e8]" + (s[7] * 5) + "%[]"});
+        out.add(new String[]{"[#7bed9f]✚ " + tr("Hồi máu", "Regeneration") + "[]", "[#7bed9f]" + numStr(u.maxHealth * s[8] * REGEN_PCT / 100) + "[]" + tr(" máu/giây (khi dưới 99%)", " HP/s (below 99%)")});
+        out.add(new String[]{"[#ff6b81]☠ " + tr("Sát thương % máu tối đa", "Max HP % damage") + "[]", "[#ff7979]+" + numStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + "%[]" + tr(" máu tối đa mục tiêu/lần trúng", " target max HP per hit")});
+        out.add(new String[]{"[#70a1ff]⬡ " + tr("Sát thương theo giáp", "Armor-based damage") + "[]", "[#74b9ff]+" + numStr(s[10] * DMG_PER_ARMOR * u.armor * 100) + "%[]"});
+        out.add(new String[]{"[#eccc68]⇤ " + tr("Đẩy lùi", "Knockback") + "[]", "[#f6e58d]+" + numStr(s[11] * KNOCK_PER) + "[]"});
+        if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{"[#ff7f50]✖ " + tr("Giảm hồi máu", "Heal reduction") + "[]", "[#ff9f7f]" + Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT) + "%[]"});
+        out.add(new String[]{"[#f9ca24]❖ " + tr("Pháo gắn", "Mounted turrets") + "[]", "[#ffd166]unit " + equipCount(st) + "/" + equipSlots(st) + "[]  [cyan]" + tr("lõi ", "core ") + coreMountCount(st) + "/" + coreMountCap(st) + "[]  [lightgray]" + tr("xây ", "built ") + builtCount(st) + "/" + maxBuilt() + "[]"});
         return out;
     }
 
@@ -6029,9 +6118,13 @@ public class NewModePvp {
     static boolean ulistOn() { return setBool(KEY_ULIST, true); }
 
     static void addScanLines(Table p, ArrayList<String[]> lines, float pad) {
+        int idx = 0;
         for (String[] ln : lines) {
-            p.add("[lightgray]" + ln[0] + "[]").left().wrap().growX().row();
-            p.add("[white]" + ln[1] + "[]").left().wrap().growX().padBottom(pad).row();
+            Table row = new Table(idx++ % 2 == 0 ? Styles.black5 : Styles.black3);
+            row.margin(5f, 8f, 5f, 8f).left();
+            row.add(ln[0]).left().wrap().growX().row();
+            row.add("[white]" + ln[1] + "[]").left().wrap().growX();
+            p.add(row).growX().padBottom(Math.max(2f, pad * 0.6f)).row();
         }
     }
     static void openUnitDetail(final int pid) {
@@ -6047,32 +6140,45 @@ public class NewModePvp {
             p.top();
             St st = byId.get(pid);
             if (st == null) { p.add("[scarlet]" + tr("Người chơi đã rời đi.", "Player left.") + "[]").row(); return; }
-            p.add("[accent]" + plName(pid) + "[]  [white]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
+            p.add("[#ffd166]" + plName(pid) + "[]  [#4ef2d2]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
             p.add(kcText(st)).left().wrap().growX().padBottom(6).row();
             Unit u = plUnit(pid);
             if (u != null && !(u.isValid() && !u.dead)) u = null;
             ArrayList<String[]> lines = u != null ? scanLines(st, u) : null;
-            if (lines == null) p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[white]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
+            if (lines == null) p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[#ffdf6b]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
             else addScanLines(p, lines, 4f);
             boolean any = false;
-            if (GearItems.war()) {   // Chiến tranh: hiện tên vật phẩm đang lắp thay cho chỉ số đã nâng
-                p.add("[accent]" + tr("Vật phẩm đang lắp", "Equipped items") + "[]").left().padTop(6).row();
+            if (GearItems.war()) {   // Chiến tranh: hiện tên vật phẩm đang lắp + nguồn gốc (Mua / Nhặt)
+                p.add("[#ffd166]◆ " + tr("Vật phẩm đang lắp", "Equipped items") + "[]").left().padTop(8).padBottom(3).row();
+                int idx = 0;
                 for (int i = 0; i < GearItems.slots(); i++) {
                     GearItems.Def gd = GearItems.def(st.gEq[i]);
                     if (gd == null) continue;
                     any = true;
-                    p.add("[lightgray]" + GearItems.slotName(i) + "[]  " + GearItems.col(gd.rarity) + GearItems.name(gd) + "[]  [lightgray](" + GearItems.rarName(gd.rarity) + ")[]").left().wrap().growX().row();
+                    boolean bought = GearItems.isEqBought(st, i) || gd.kind > 0;
+                    String srcTag = bought
+                        ? "[#2ee6c8][" + tr("Mua", "Shop") + "][]"
+                        : "[#ffd166][" + tr("Nhặt", "Drop") + "][]";
+                    Table ir = new Table(idx++ % 2 == 0 ? Styles.black5 : Styles.black3);
+                    ir.margin(5f, 8f, 5f, 8f).left();
+                    ir.add(new Image(GearItems.icon(gd))).size(24f).padRight(8f);
+                    ir.add("[lightgray]" + GearItems.slotName(i) + "[]  " + GearItems.col(gd.rarity) + GearItems.name(gd) + "[]  [lightgray](" + GearItems.rarName(gd.rarity) + ")[]  " + srcTag).left().wrap().growX();
+                    p.add(ir).growX().padBottom(2f).row();
                 }
             } else {
-                p.add("[accent]" + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(6).row();
+                p.add("[#ffd166]◆ " + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(8).padBottom(3).row();
+                int idx = 0;
                 for (int i = 0; i < STATS.length; i++) {
                     if (!(st.s[i] > 0)) continue;
                     any = true;
-                    p.add("[lightgray]" + tr(STATS[i].vi, STATS[i].en) + "[]  [white]" + st.s[i] + "/" + statMaxLabel(i) + "[]").left().wrap().growX().row();
+                    Table sr = new Table(idx++ % 2 == 0 ? Styles.black5 : Styles.black3);
+                    sr.margin(4f, 8f, 4f, 8f).left();
+                    sr.add("[#70d6ff]" + tr(STATS[i].vi, STATS[i].en) + "[]  [#7dff9c]" + st.s[i] + "[][lightgray]/" + statMaxLabel(i) + "[]").left().wrap().growX();
+                    p.add(sr).growX().padBottom(2f).row();
                 }
             }
             if (!any) p.add("[lightgray]-[]").left().row();
-            p.add("[accent]" + tr("Pháo lắp trên unit ", "Turrets mounted ") + equipCount(st) + "/" + equipSlots(st) + "[]").left().padTop(8).row();
+            p.add("[#ffd166]❖ " + tr("Pháo lắp trên unit ", "Turrets mounted ") + equipCount(st) + "/" + equipSlots(st) + "[]").left().padTop(8).row();
             Defs defs = droneDefs();
             if (st.p.size() == st.d.size()) {
                 for (int i = 0; i < st.d.size(); i++) {
@@ -6084,8 +6190,21 @@ public class NewModePvp {
                     row.add("[white]" + def.block.localizedName + "[]  " + roleText(def.id)).left();
                     p.add(row).left().padTop(2).row();
                 }
+                int cmc = coreMountCount(st);
+                if (cmc > 0) {
+                    p.add("[cyan]❖ " + tr("Pháo lắp trên lõi ", "Turrets on core ") + cmc + "/" + coreMountCap(st) + "[]").left().padTop(6).row();
+                    for (int i = 0; i < st.d.size(); i++) {
+                        if (st.p.get(i) != CORE_MOUNT) continue;
+                        Def def = defs.map.get(st.d.get(i));
+                        if (def == null) continue;
+                        Table row = new Table();
+                        row.add(new Image(def.block.uiIcon)).size(26).padRight(6);
+                        row.add("[cyan]" + def.block.localizedName + "[]  " + roleText(def.id)).left();
+                        p.add(row).left().padTop(2).row();
+                    }
+                }
             }
-            p.add("[lightgray]" + tr("Pháo xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]  " + tr("Nhà máy lính: ", "Barracks: ") + "[white]" + st.b + "[]").left().padTop(6).row();
+            p.add("[lightgray]" + tr("Pháo xây: ", "Built: ") + "[#ffd166]" + builtCount(st) + "/" + maxBuilt() + "[]  [lightgray]" + tr("Nhà máy lính: ", "Barracks: ") + "[#7dff9c]" + st.b + "[]").left().padTop(6).row();
         };
         d.onBuild(() -> fill[0].run());
         d.show();
