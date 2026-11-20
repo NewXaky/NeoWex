@@ -213,6 +213,7 @@ public class NexMod extends Mod {
 
         NexBlackHole.init(); // lỗ đen + lõi đen đè lên glow (shaders/blackhole.frag)
         newex.graphics.NexDarkGraphics.init(); // đồ họa bloom tím & saturation NeoWex
+        newex.graphics.NexDynamicShadows.init(); // shader đổ bóng & ánh sáng động (tối ưu hiệu năng)
 
         // SplashFx phải khởi tạo SAU CÙNG (JS gốc require splash-fx cuối main.js).
         SplashFx.init();
