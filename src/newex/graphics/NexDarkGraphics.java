@@ -54,8 +54,7 @@ public final class NexDarkGraphics {
         "vec3 brightTap(vec2 uv){\n" +
         "    vec3 col = texture2D(u_texture, uv).rgb;\n" +
         "    float peak = max(col.r, max(col.g, col.b));\n" +
-        "    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));\n" +
-        "    float mask = smoothstep(0.68, 0.96, max(peak, luma));\n" +
+        "    float mask = smoothstep(0.68, 0.96, peak);\n" +
         "    return col * mask;\n" +
         "}\n" +
         "void main(){\n" +
@@ -74,6 +73,7 @@ public final class NexDarkGraphics {
         "        acc += brightTap(v_texCoords + vec2(-r1.x,  r1.y) * 0.75) * 0.10;\n" +
         "        acc += brightTap(v_texCoords + vec2( r1.x, -r1.y) * 0.75) * 0.10;\n" +
         "        acc += brightTap(v_texCoords + vec2(-r1.x, -r1.y) * 0.75) * 0.10;\n" +
+        "#ifndef LITE\n" +
         "        acc += brightTap(v_texCoords + vec2( r2.x, 0.0)) * 0.055;\n" +
         "        acc += brightTap(v_texCoords + vec2(-r2.x, 0.0)) * 0.055;\n" +
         "        acc += brightTap(v_texCoords + vec2(0.0,  r2.y)) * 0.055;\n" +
@@ -82,6 +82,9 @@ public final class NexDarkGraphics {
         "        acc += brightTap(v_texCoords + vec2(-r2.x,  r2.y) * 0.72) * 0.035;\n" +
         "        acc += brightTap(v_texCoords + vec2( r2.x, -r2.y) * 0.72) * 0.035;\n" +
         "        acc += brightTap(v_texCoords + vec2(-r2.x, -r2.y) * 0.72) * 0.035;\n" +
+        "#else\n" +
+        "        acc *= 1.375;\n" +
+        "#endif\n" +
         "        float glowAmt = max(acc.r, max(acc.g, acc.b));\n" +
         "        vec3 violetTint = vec3(0.56, 0.28, 0.94) * glowAmt;\n" +
         "        vec3 softBloom = mix(violetTint, acc * vec3(0.78, 0.56, 1.05), 0.28);\n" +
@@ -96,7 +99,7 @@ public final class NexDarkGraphics {
 
     static final class PostShader extends Shader {
         float invW = 1f, invH = 1f, sat = 1f, bloom = 0.65f;
-        PostShader() { super(VERT_SRC, FRAG_SRC); }
+        PostShader() { super(VERT_SRC, (Vars.mobile ? "#define LITE\n" : "") + FRAG_SRC); }
         @Override
         public void apply() {
             setUniformf("u_invsize", invW, invH);
@@ -112,6 +115,9 @@ public final class NexDarkGraphics {
     private static Texture screenTex = null;
     private static TextureRegion screenReg = null;
     private static int texW = 0, texH = 0;
+    private static int checkFrames = 0;      // chỉ kiểm tra lỗi GL ở vài khung hình đầu (glGetError làm CPU chờ GPU trên mobile)
+    private static int failCount = 0;         // số lần lỗi liên tiếp
+    private static boolean useRgba = false;    // dự phòng: đổi sang texture RGBA nếu driver không nhận RGB
 
     private NexDarkGraphics() {}
 
@@ -216,7 +222,7 @@ public final class NexDarkGraphics {
         try {
             Draw.flush();
             // Xóa cờ lỗi GL cũ (nếu có) trước khi sao chép
-            Gl.getError();
+            if (checkFrames < 6) Gl.getError();
 
             boolean needAlloc = (screenTex == null || texW != w || texH != h || screenTex.getTextureObjectHandle() == 0);
             if (needAlloc) {
@@ -227,12 +233,14 @@ public final class NexDarkGraphics {
                 pm.dispose();
                 texW = w;
                 texH = h;
+                checkFrames = 0;
                 screenTex.bind(0);
                 Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_LINEAR);
                 Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_LINEAR);
                 Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
                 Gl.texParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
-                Gl.texImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_RGB, w, h, 0, GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, (java.nio.Buffer) null);
+                int fmt = useRgba ? GL20.GL_RGBA : GL20.GL_RGB;
+                Gl.texImage2D(GL20.GL_TEXTURE_2D, 0, fmt, w, h, 0, fmt, GL20.GL_UNSIGNED_BYTE, (java.nio.Buffer) null);
                 screenReg = new TextureRegion(screenTex);
                 screenReg.flip(false, true);
             } else {
@@ -240,13 +248,20 @@ public final class NexDarkGraphics {
             }
 
             Gl.copyTexSubImage2D(GL20.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
-            int err = Gl.getError();
-            if (err != GL20.GL_NO_ERROR) {
-                // Nếu driver GPU mobile không cho copyTexSubImage2D từ backbuffer, tắt an toàn để không spam log lỗi GL
-                postDisabledOnGpu = true;
-                Log.warn("[NexDarkGraphics] Disabled post pass on this GPU (GL error: " + err + ")");
-                return;
+            if (checkFrames < 6) {
+                checkFrames++;
+                int err = Gl.getError();
+                if (err != GL20.GL_NO_ERROR) {
+                    failCount++;
+                    if (!useRgba) { useRgba = true; texW = 0; }          // thử lại bằng texture RGBA ở khung hình sau
+                    else if (failCount >= 4) {
+                        postDisabledOnGpu = true;
+                        Log.warn("[NexDarkGraphics] Disabled post pass on this GPU (GL error: " + err + ")");
+                    }
+                    return;
+                }
             }
+            failCount = 0;
 
             postShader.sat = sat;
             postShader.bloom = bloom;
