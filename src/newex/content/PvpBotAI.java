@@ -288,7 +288,7 @@ public final class PvpBotAI {
         NewModePvp.changed();
         if (agents.size() == 1 && !NewModePvp.bvbOn()) {
             NewModePvp.toastAll("[#" + team.color + "]■[] " + tr("[cyan]A.I " + sName + " đã vào trận! Nhắn tin ở khung chat để tám chuyện cùng nhau nha.",
-                "[cyan]AI " + sName + " joined the match! Type in chat anytime to hang out."));
+                "[cyan]AI " + sName + " joined the match! Type in chat anytime to hang out."), 4f);
         }
         return a;
     }

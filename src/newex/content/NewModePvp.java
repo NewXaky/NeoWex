@@ -3316,6 +3316,16 @@ public class NewModePvp {
         if (pvbOn() || bvbOn()) return false;
         return isPvpTeam(t) && t.cores().size > 0;
     }
+    static void wipeBuilt(St st) {
+        if (st == null || st.p == null || st.d == null) return;
+        Defs defs = droneDefs();
+        for (int i = 0; i < st.p.size() && i < st.d.size(); i++) {
+            int pos = st.p.get(i);
+            if (pos >= 0) {
+                try { removeTurret(pos, defs != null ? defs.map.get(st.d.get(i)) : null); } catch (Throwable ignored) {}
+            }
+        }
+    }
     /** Ghi nhận việc đổi đội: cập nhật đội đã gán, bỏ pháo đã đặt (đánh dấu chưa đặt), dọn lính cũ và cho hồi sinh ở lõi đội mới. */
     static void adoptTeamChange(Player pl, Team prev, Team cur) {
         seenPl.put(pl.id, cur);

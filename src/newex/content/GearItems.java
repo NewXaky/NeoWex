@@ -1050,7 +1050,7 @@ final class GearItems {
     static final int[] BASE_PRICE = {2, 5, 12, 28, 60};
     static Team teamOfId(int id) {
         Player p = Groups.player.getByID(id);
-        if (p == null) { NewModePvp.BotCtx b = NewModePvp.botOf(id); if (b != null) p = b.botPl; }
+        if (p == null) { PvpBotAI.Agent b = NewModePvp.botOf(id); if (b != null) p = b.botPl; }
         return p != null ? p.team() : null;
     }
     /** Hệ số giá của phe: phe tăng điểm (cấp) nhanh hơn trung bình thì đắt hơn, chậm hơn thì rẻ hơn (0.7 - 1.5). */
