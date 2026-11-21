@@ -97,21 +97,39 @@ public final class NexDynamicShadows {
     private static boolean initialized = false;
 
     private static final java.nio.IntBuffer fboQueryBuf = arc.util.Buffers.newIntBuffer(1);
+    private static final java.nio.IntBuffer vpQueryBuf = arc.util.Buffers.newIntBuffer(4);
+    private static int savedVpX = 0, savedVpY = 0, savedVpW = 1, savedVpH = 1;
 
-    private static int currentFboBinding() {
+    private static int saveFboAndViewport() {
+        int prevFbo = 0;
         try {
             fboQueryBuf.clear();
+            fboQueryBuf.put(0, 0);
             Gl.getIntegerv(GL20.GL_FRAMEBUFFER_BINDING, fboQueryBuf);
-            return fboQueryBuf.get(0);
-        } catch (Throwable ignored) {
-            return 0;
-        }
+            prevFbo = fboQueryBuf.get(0);
+        } catch (Throwable ignored) {}
+        savedVpX = 0;
+        savedVpY = 0;
+        savedVpW = Math.max(1, Core.graphics.getWidth());
+        savedVpH = Math.max(1, Core.graphics.getHeight());
+        try {
+            vpQueryBuf.clear();
+            Gl.getIntegerv(GL20.GL_VIEWPORT, vpQueryBuf);
+            int vw = vpQueryBuf.get(2), vh = vpQueryBuf.get(3);
+            if (vw > 0 && vh > 0) {
+                savedVpX = vpQueryBuf.get(0);
+                savedVpY = vpQueryBuf.get(1);
+                savedVpW = vw;
+                savedVpH = vh;
+            }
+        } catch (Throwable ignored) {}
+        return prevFbo;
     }
 
-    private static void restoreFboBinding(int prevFbo) {
+    private static void restoreFboAndViewport(int prevFbo) {
         try {
             Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, prevFbo);
-            Gl.viewport(0, 0, Core.graphics.getWidth(), Core.graphics.getHeight());
+            Gl.viewport(savedVpX, savedVpY, Math.max(1, savedVpW), Math.max(1, savedVpH));
         } catch (Throwable ignored) {}
     }
 
@@ -689,10 +707,10 @@ public final class NexDynamicShadows {
 
         final float fDarkFade = darkFade;
 
-        // Vẽ & cập nhật 1 lớp bóng hợp nhất duy nhất ở Layer.block - 0.5f (29.5f):
-        // nằm SAU FloorRenderer (10f) và DƯỚI toàn bộ khối xây (30f), đồng thời lưu/khôi phục FBO gốc của Mindustry (Bloom/Lighting) -> tuyệt đối không bao giờ làm đen sàn!
-        Draw.draw(Layer.block - 0.5f, () -> {
-            if (needsRedraw) {
+        // Tách hẳn bước dựng FBO bóng sang Layer.floor - 9.5f (0.5f, TRƯỚC khi NexDarkGraphics mở postBuf ở 1.0f)!
+        // Nhờ đó tuyệt đối KHÔNG có bất kỳ thao tác đổi FBO / đổi viewport nào diễn ra bên trong postBuf -> hết hẳn giật giật và giữ nguyên 100% Saturation + Bloom trên Mobile & PC!
+        if (needsRedraw) {
+            Draw.draw(Layer.floor - 9.5f, () -> {
                 if (globalFade <= 0.005f) {
                     hasShadowContent = false;
                 } else {
@@ -710,7 +728,7 @@ public final class NexDynamicShadows {
                     hasShadowContent = anyCaster;
                     if (anyCaster) {
                         Draw.flush();
-                        int prevFbo = currentFboBinding();
+                        int prevFbo = saveFboAndViewport();
 
                         // Dựng tối đa 2 chunk/frame trên Mobile (4 trên PC) và dùng ma trận overscan (overW x overH)
                         Tmp.m3.set(Draw.proj());
@@ -918,11 +936,14 @@ public final class NexDynamicShadows {
                         }
 
                         Draw.proj(Tmp.m3);
-                        restoreFboBinding(prevFbo);
+                        restoreFboAndViewport(prevFbo);
                     }
                 }
-            }
+            });
+        }
 
+        // Vẽ kết quả bóng đã dựng lên mặt đất ở Layer.block - 0.5f (29.5f) — CHỈ vẽ quad thường, KHÔNG đổi FBO!
+        Draw.draw(Layer.block - 0.5f, () -> {
             if (enabled && hasShadowContent && globalFade > 0.005f && shadowRegOut != null && shadowRegOut.texture != null) {
                 Draw.color(Color.white, alpha * globalFade);
                 // Vẽ theo đúng tọa độ thế giới đã chụp FBO (lastCachedCamX/Y/W/H) để bóng ghim cố định xuống mặt đất 100%, không trượt theo camera!
@@ -1118,6 +1139,7 @@ public final class NexDynamicShadows {
     private static void disposeFBOs() {
         hasShadowContent = false;
         hasMtnBlockShadow = false;
+        shadDirty = true;
         if (scratchA != null) { try { scratchA.dispose(); } catch (Throwable ignored) {} scratchA = null; scratchRegA = null; }
         if (shadowOut != null) { try { shadowOut.dispose(); } catch (Throwable ignored) {} shadowOut = null; shadowRegOut = null; }
         if (mtnBlockShadowOut != null) { try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {} mtnBlockShadowOut = null; mtnBlockRegOut = null; }

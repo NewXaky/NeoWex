@@ -28,15 +28,14 @@ import mindustry.ui.Styles;
 import mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable;
 import mindustry.world.Block;
 import mindustry.world.blocks.defense.turrets.Turret;
-import newex.PerfCore;
 
 import java.nio.IntBuffer;
 
 /**
- * Đồ họa Bloom & Saturation NeoWex (tối ưu cho cả PC Intel OpenGL 2.0 lẫn Mobile Android Mali/Adreno):
+ * Đồ họa Bloom & Saturation NeoWex (tương thích tuyệt đối cả PC OpenGL 2.0 lẫn Mobile Android Mali/Adreno GLES 3.2):
  * - Cấp phát FrameBuffer lười (lazy): khi tắt Bloom & Saturation=100% hoặc ngoài menu -> giải phóng VRAM hoàn toàn (0 MB).
- * - Lưu & khôi phục FBO gốc (prevOuterFbo) và kết thúc ở Layer.light - 1f (trước LightRenderer).
- * - Tự động tối ưu độ phân giải FBO trên Mobile (tối đa 72%, giới hạn 1152px) và tự hạ nhẹ khi FPS tụt mạnh để giữ game luôn mượt.
+ * - Luôn giữ postBuf khớp đúng kích thước màn hình (không đổi viewport lệch với các renderer khác của game, không resize giật khi FPS đổi).
+ * - Lưu & khôi phục chính xác cả FBO lẫn GL_VIEWPORT gốc (4 giá trị), đồng thời hỗ trợ rebindIfCapturing() cho các pass phụ.
  */
 public final class NexDarkGraphics {
     public static final String BORDER_KEY = "newex-dark-border";
@@ -57,7 +56,7 @@ public final class NexDarkGraphics {
         "    gl_Position = u_projTrans * a_position;\n" +
         "}\n";
 
-    /** Shader 4-tap bilinear (tận dụng lọc tuyến tính phần cứng = 16 texel trong 4 lần đọc -> nhanh gấp 3x trên Intel/Mobile!). */
+    /** Shader 4-tap bilinear (tận dụng lọc tuyến tính phần cứng = 16 texel trong 4 lần đọc -> cực nhẹ trên Intel/Mobile!). */
     private static final String FRAG_SRC =
         "uniform sampler2D u_texture;\n" +
         "uniform vec2 u_invsize;\n" +
@@ -112,11 +111,12 @@ public final class NexDarkGraphics {
     private static TextureRegion postReg = null;
     private static boolean capturing = false;
     private static int prevOuterFbo = 0;
+    private static int prevVpX = 0, prevVpY = 0, prevVpW = 1, prevVpH = 1;
     private static int curW = 1, curH = 1;
-    private static int bufW = 1, bufH = 1;
     private static float curSat = 1f, curBloom = 0.65f;
 
     private static final IntBuffer fboQueryBuf = Buffers.newIntBuffer(1);
+    private static final IntBuffer vpQueryBuf = Buffers.newIntBuffer(4);
     private static final Runnable beginPost = NexDarkGraphics::beginCapture;
     private static final Runnable endPost = NexDarkGraphics::endCapture;
 
@@ -125,6 +125,7 @@ public final class NexDarkGraphics {
     private static int currentFboBinding() {
         try {
             fboQueryBuf.clear();
+            fboQueryBuf.put(0, 0);
             Gl.getIntegerv(GL20.GL_FRAMEBUFFER_BINDING, fboQueryBuf);
             return fboQueryBuf.get(0);
         } catch (Throwable ignored) {
@@ -132,11 +133,42 @@ public final class NexDarkGraphics {
         }
     }
 
-    private static void restoreFboBinding(int fbo) {
+    private static void saveOuterState() {
+        prevOuterFbo = currentFboBinding();
+        prevVpX = 0;
+        prevVpY = 0;
+        prevVpW = Math.max(1, Core.graphics.getWidth());
+        prevVpH = Math.max(1, Core.graphics.getHeight());
         try {
-            Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, fbo);
-            Gl.viewport(0, 0, Core.graphics.getWidth(), Core.graphics.getHeight());
+            vpQueryBuf.clear();
+            Gl.getIntegerv(GL20.GL_VIEWPORT, vpQueryBuf);
+            int vw = vpQueryBuf.get(2), vh = vpQueryBuf.get(3);
+            if (vw > 0 && vh > 0) {
+                prevVpX = vpQueryBuf.get(0);
+                prevVpY = vpQueryBuf.get(1);
+                prevVpW = vw;
+                prevVpH = vh;
+            }
         } catch (Throwable ignored) {}
+    }
+
+    private static void restoreOuterState() {
+        try {
+            Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, prevOuterFbo);
+            Gl.viewport(prevVpX, prevVpY, Math.max(1, prevVpW), Math.max(1, prevVpH));
+        } catch (Throwable ignored) {}
+    }
+
+    /** Nếu NexDarkGraphics đang mở postBuf, gắn lại đúng postBuf + viewport của nó (dùng sau các FBO pass phụ như lỗ đen/khiên). */
+    public static boolean rebindIfCapturing() {
+        if (!capturing || postBuf == null) return false;
+        try {
+            postBuf.bind();
+            Gl.viewport(0, 0, postBuf.getWidth(), postBuf.getHeight());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static void disposeBuffer() {
@@ -214,7 +246,6 @@ public final class NexDarkGraphics {
                         }
                     });
                     row.add(pickBtn).height(40f).padRight(8f);
-                    // Các nút màu mẫu nhanh êm mắt (Tím thạch anh, Xanh băng, Hồng sakura, Vàng hoàng kim, Xanh lục bảo)
                     final String[] presets = {"8f47f0", "38bdf8", "f472b6", "fbbf24", "34d399"};
                     for (final String hex : presets) {
                         final Color pc = Color.valueOf(hex);
@@ -280,14 +311,6 @@ public final class NexDarkGraphics {
         return Mathf.clamp(Core.settings.getInt(BLOOM_KEY, defaultBloomPct()), 0, 100) / 100f;
     }
 
-    private static float targetScale() {
-        int lvl = PerfCore.level();
-        if (Vars.mobile) {
-            return lvl >= 2 ? 0.58f : (lvl == 1 ? 0.65f : 0.72f);
-        }
-        return lvl >= 2 ? 0.70f : (lvl == 1 ? 0.85f : 1.0f);
-    }
-
     private static void onDraw() {
         if (Vars.headless || Vars.state == null || !Vars.state.isGame()) {
             if (postBuf != null) disposeBuffer();
@@ -307,8 +330,8 @@ public final class NexDarkGraphics {
             return;
         }
 
-        // Kẹp từ Layer.floor - 9f (1.0f) đến Layer.light - 1f (139.0f, ngay TRƯỚC LightRenderer ở 140.0f)
-        // kết hợp lưu/khôi phục prevOuterFbo -> hoạt động trên cả Mobile lẫn PC mà không bao giờ đen sàn!
+        // Kẹp từ Layer.floor - 9f (1.0f) đến Layer.light - 1f (139.0f, ngay TRƯỚC LightRenderer ở 140.0f).
+        // NexDynamicShadows tự dựng FBO bóng ở Layer.floor - 9.5f (0.5f, TRƯỚC khi postBuf mở) nên tuyệt đối không bao giờ xung đột FBO/viewport!
         Draw.draw(Layer.floor - 9f, beginPost);
         Draw.draw(Layer.light - 1f, endPost);
     }
@@ -321,31 +344,17 @@ public final class NexDarkGraphics {
         curW = w;
         curH = h;
 
-        float scl = targetScale();
-        int tw = Math.max(1, Math.round(w * scl));
-        int th = Math.max(1, Math.round(h * scl));
-        if (Vars.mobile) {
-            int maxSide = 1152;
-            int longest = Math.max(tw, th);
-            if (longest > maxSide) {
-                float k = maxSide / (float) longest;
-                tw = Math.max(1, Math.round(tw * k));
-                th = Math.max(1, Math.round(th * k));
-            }
-        }
-        bufW = tw;
-        bufH = th;
-
         try {
             Draw.flush();
-            prevOuterFbo = currentFboBinding();
-            if (postBuf == null) {
-                postBuf = new FrameBuffer(tw, th);
+            saveOuterState();
+            if (postBuf == null || postBuf.getTexture() == null || postBuf.getTexture().getTextureObjectHandle() == 0) {
+                disposeBuffer();
+                postBuf = new FrameBuffer(w, h);
                 postBuf.getTexture().setFilter(Texture.TextureFilter.linear);
                 postReg = new TextureRegion(postBuf.getTexture());
                 postReg.flip(false, true);
-            } else if (postBuf.getWidth() != tw || postBuf.getHeight() != th) {
-                postBuf.resize(tw, th);
+            } else if (postBuf.getWidth() != w || postBuf.getHeight() != h) {
+                postBuf.resize(w, h);
                 postBuf.getTexture().setFilter(Texture.TextureFilter.linear);
                 postReg = new TextureRegion(postBuf.getTexture());
                 postReg.flip(false, true);
@@ -354,7 +363,7 @@ public final class NexDarkGraphics {
             capturing = true;
         } catch (Throwable err) {
             capturing = false;
-            restoreFboBinding(prevOuterFbo);
+            restoreOuterState();
         }
     }
 
@@ -364,11 +373,11 @@ public final class NexDarkGraphics {
         try {
             Draw.flush();
             postBuf.end();
-            // Khôi phục lại đúng FBO ngoài (ví dụ FBO của Bloom Mindustry hoặc FBO 0 trên Android) trước khi vẽ kết quả
-            restoreFboBinding(prevOuterFbo);
+            // Khôi phục đúng FBO & viewport gốc trước khi vẽ kết quả Saturation + Bloom
+            restoreOuterState();
 
-            postShader.invW = 1f / Math.max(1, bufW);
-            postShader.invH = 1f / Math.max(1, bufH);
+            postShader.invW = 1f / Math.max(1, curW);
+            postShader.invH = 1f / Math.max(1, curH);
             postShader.sat = curSat;
             postShader.bloom = curBloom;
             postShader.br = bloomCol.r;
@@ -388,7 +397,7 @@ public final class NexDarkGraphics {
             Draw.reset();
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] post blit failed", err);
-            restoreFboBinding(prevOuterFbo);
+            restoreOuterState();
         }
     }
 }

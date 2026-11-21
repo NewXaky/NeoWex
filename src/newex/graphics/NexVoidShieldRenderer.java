@@ -36,6 +36,7 @@ public final class NexVoidShieldRenderer {
     }
 
     private static void restoreFboBinding(int fbo) {
+        if (NexDarkGraphics.rebindIfCapturing()) return;
         try {
             Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, fbo);
             Gl.viewport(0, 0, Core.graphics.getWidth(), Core.graphics.getHeight());

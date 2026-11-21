@@ -72,6 +72,7 @@ public class NexRenderer{
     }
 
     private static void restoreFboBinding(int fbo){
+        if(NexDarkGraphics.rebindIfCapturing()) return;
         try{
             Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, fbo);
             Gl.viewport(0, 0, graphics.getWidth(), graphics.getHeight());
