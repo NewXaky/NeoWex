@@ -552,6 +552,10 @@ public final class Bulvasyr {
         private void fireSalvoBurst(Unit unit, SalvoMount mount, Teamc target) {
             if (unit == null || !unit.isValid()) return;
 
+            // Cả chùm bay cùng nhau như bắn thẳng, nhưng mỗi chùm lệch một hướng và độ cong ngẫu nhiên riêng
+            final float burstArc = Mathf.randomSign() * Mathf.random(18f, 55f);
+            final float burstTurn = Mathf.random(2.4f, 4.0f);
+
             for (int i = 0; i < ROCKETS_PER_BURST; i++) {
                 final int idx = i;
                 Time.run(i * ROCKET_STAGGER, () -> {
@@ -567,12 +571,12 @@ public final class Bulvasyr {
                     float sy = my + Angles.trnsy(weaponRot - 90f, ox, oy);
 
                     // Góc phóng vồng lệch sang 2 bên tạo chùm tên lửa cong uốn lượn giống video
-                    float arcSpread = Mathf.randomSign() * Mathf.random(22f, 70f); // văng ngẫu nhiên sang trái/phải rồi uốn cong vào mục tiêu
+                    float arcSpread = burstArc + (idx - 1.5f) * 3f + Mathf.range(1.5f); // cả chùm cùng lệch về một phía, chỉ xòe rất nhẹ
                     float launchAngle = weaponRot + arcSpread;
 
                     float swirlPhase = idx * (Mathf.PI / 2f) + x * 0.37f;
                     SwirlData sdNew = new SwirlData(target, swirlPhase);
-                    sdNew.turn = Mathf.random(2.4f, 4.4f);
+                    sdNew.turn = burstTurn + Mathf.range(0.12f); // cả chùm uốn cong cùng nhịp
                     Bullet b = bullet.create(unit, unit.team, sx, sy, launchAngle, -1f, 0.92f + idx * 0.04f, 1f, sdNew);
                     if (b != null) {
                         float atk = calcAtk(unit);
