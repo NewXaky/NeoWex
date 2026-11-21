@@ -142,6 +142,7 @@ public class NexMod extends Mod {
         // Giai đoạn 1: hệ thống nền tảng (thứ tự như main.js)
         MatchTimer.init();
         PerfCore.init();
+        DecalLimiter.init(); // rút ngắn thời gian tồn tại vết đen dưới đất
         NexNet.init();
         NexFree.init();
         MachineUi.init();

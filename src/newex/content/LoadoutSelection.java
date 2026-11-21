@@ -844,6 +844,11 @@ public final class LoadoutSelection {
         });
     }
 
+    static String decalText(int sec) {
+        if (sec <= 0) return isEn() ? "Black scars: off" : "Vết đen: tắt";
+        return (isEn() ? "Black scars: " : "Vết đen: ") + sec + "s";
+    }
+
     static void injectWaveButtonToHUD() {
         if (waveBtnAdded || !canUseHud()) return;
         if (Vars.ui == null || Vars.ui.hudGroup == null) return;
@@ -890,6 +895,22 @@ public final class LoadoutSelection {
             autoLowFpsSetting = checked;
         });
         expandTable.add(autoFpsBtn).size(150f, 36f).pad(2f).row();
+
+        // Bóng đổ chỉ vẽ trong màn hình (đỡ lag)
+        final TextButton viewShadowBtn = hudBtn(isEn() ? "Shadows: on-screen only" : "Bóng: chỉ trong màn hình", Styles.togglet, 0.65f, null);
+        viewShadowBtn.setChecked(newex.graphics.NexDynamicShadows.viewOnly);
+        viewShadowBtn.clicked(() -> newex.graphics.NexDynamicShadows.setViewOnly(viewShadowBtn.isChecked()));
+        expandTable.add(viewShadowBtn).size(150f, 36f).pad(2f).row();
+
+        // Thời gian tồn tại vết đen khi unit bị hạ (0 = tắt, 60 = như gốc)
+        final int curDecal = newex.DecalLimiter.lifeSeconds();
+        final Label decalLabel = expandTable.add(decalText(curDecal)).fontScale(0.75f).get();
+        expandTable.row();
+        expandTable.slider(0f, newex.DecalLimiter.MAX_SECONDS, 1f, curDecal, value -> {
+            int val = (int) Math.floor(value);
+            decalLabel.setText(decalText(val));
+            newex.DecalLimiter.setLifeSeconds(val);
+        }).width(150f).pad(4f).row();
 
         final TextButton btnWave10 = hudBtn(isEn() ? "x10 Call Wave" : "x10 Gọi Wave", Styles.flatTogglet, 0.75f, Color.lime);
         btnWave10.clicked(() -> triggerMultipleWaves(10, btnWave10));

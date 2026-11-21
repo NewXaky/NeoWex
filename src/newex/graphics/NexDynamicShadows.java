@@ -72,9 +72,12 @@ public final class NexDynamicShadows {
     public static final String KEY_CONTACT = "newex-ds-contact";
     public static final String KEY_LIGHT_ERASE = "newex-ds-light-erase";
     public static final String KEY_LITE = "newex-ds-lite";
+    public static final String KEY_VIEWONLY = "newex-ds-viewonly";
 
     public static boolean enabled = true;
     public static boolean liteMode = true;
+    /** true = chỉ dựng bóng đúng vùng đang nhìn thấy (đệm rất nhỏ), ngoài màn hình không xử lý -> đỡ lag. */
+    public static boolean viewOnly = false;
     public static boolean dayNightCycle = true;
     public static boolean rotateShadows = true;
     public static boolean unitShadowsEnabled = true;
@@ -279,6 +282,7 @@ public final class NexDynamicShadows {
     private static void loadSettings() {
         enabled = Core.settings.getBool(KEY_ENABLED, true);
         liteMode = Core.settings.getBool(KEY_LITE, true);
+        viewOnly = Core.settings.getBool(KEY_VIEWONLY, false);
         dayNightCycle = Core.settings.getBool(KEY_DAYNIGHT, true);
         rotateShadows = Core.settings.getBool(KEY_ROTATE, true);
         unitShadowsEnabled = Core.settings.getBool(KEY_UNITS, true);
@@ -290,6 +294,13 @@ public final class NexDynamicShadows {
         shadowTint = Core.settings.getInt(KEY_TINT, 60) / 100f;
         contactShadow = Core.settings.getInt(KEY_CONTACT, 45) / 100f;
         lightEraseEnabled = Core.settings.getBool(KEY_LIGHT_ERASE, true);
+    }
+
+    /** Bật/tắt chế độ chỉ vẽ bóng trong màn hình (dùng cho nút HUD). */
+    public static void setViewOnly(boolean v) {
+        viewOnly = v;
+        Core.settings.put(KEY_VIEWONLY, v);
+        shadDirty = true;
     }
 
     private static boolean isEn() {
@@ -323,6 +334,10 @@ public final class NexDynamicShadows {
                         addCheck(subBox, en ? "Lite Mode (Ultra Smooth 60 FPS - 1 Pass)" : "Chế độ Lite (Siêu mượt 60 FPS - không lag)", KEY_LITE, liteMode, v -> {
                             liteMode = v;
                             if (v) hasMtnBlockShadow = false;
+                            shadDirty = true;
+                        });
+                        addCheck(subBox, en ? "Shadows only on screen (less lag)" : "Bóng chỉ trong màn hình (đỡ lag)", KEY_VIEWONLY, viewOnly, v -> {
+                            viewOnly = v;
                             shadDirty = true;
                         });
                         addCheck(subBox, en ? "Day / Night Lighting Cycle" : "Chu kỳ ánh sáng Ngày / Đêm", KEY_DAYNIGHT, dayNightCycle, v -> {
@@ -529,8 +544,10 @@ public final class NexDynamicShadows {
         final float camX = Core.camera.position.x, camY = Core.camera.position.y;
         final float camW = Core.camera.width, camH = Core.camera.height;
         // Dựng FBO rộng hơn khung hình 28% (overscan): khi di chuyển trong vùng đệm 11% KHÔNG cần vẽ lại FBO (0ms GPU!) mà bóng vẫn ghim chặt xuống đất 100% không giật!
-        final float overW = camW * 1.28f, overH = camH * 1.28f;
-        float margin = shadowScale + Vars.tilesize * 4f;
+        // viewOnly: đệm chỉ 8% (mỗi bên 4%) và không cộng thêm 4 ô; ngoài màn hình gần như không xử lý gì
+        final float overscan = viewOnly ? 1.08f : 1.28f;
+        final float overW = camW * overscan, overH = camH * overscan;
+        float margin = viewOnly ? shadowScale * 0.6f : shadowScale + Vars.tilesize * 4f;
         int wMax = Vars.world.width() - 1, hMax = Vars.world.height() - 1;
         final int tx1 = Mathf.clamp((int) ((camX - overW * 0.5f - margin) / Vars.tilesize), 0, wMax);
         final int ty1 = Mathf.clamp((int) ((camY - overH * 0.5f - margin) / Vars.tilesize), 0, hMax);
@@ -613,12 +630,13 @@ public final class NexDynamicShadows {
         }
 
         // Nhờ overscan 28%, chỉ vẽ lại FBO khi camera đi quá 11% màn hình, zoom lệch >6%, hoặc góc mặt trời xoay >0.18 độ -> cắt giảm 90% tải GPU mà vẫn mượt 60FPS không giật!
+        final float redrawMove = viewOnly ? 0.03f : 0.11f, redrawZoom = viewOnly ? 0.03f : 0.08f;
         final boolean needsRedraw = shadDirty
             || Math.abs(angle - lastCachedAngle) > 0.18f
-            || Math.abs(camX - lastCachedCamX) > camW * 0.11f
-            || Math.abs(camY - lastCachedCamY) > camH * 0.11f
-            || Math.abs(overW - lastCachedCamW) > camW * 0.08f
-            || Math.abs(overH - lastCachedCamH) > camH * 0.08f;
+            || Math.abs(camX - lastCachedCamX) > camW * redrawMove
+            || Math.abs(camY - lastCachedCamY) > camH * redrawMove
+            || Math.abs(overW - lastCachedCamW) > camW * redrawZoom
+            || Math.abs(overH - lastCachedCamH) > camH * redrawZoom;
 
         if (needsRedraw) {
             shadDirty = false;
