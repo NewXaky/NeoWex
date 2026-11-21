@@ -253,9 +253,9 @@ public final class ZorynexPlanet {
             float z = Mathf.lerp(cutsceneStartZoom, 0.10f, ease);
             setZoom(dialog, z);
             try {
-                if (dialog.planets != null && dialog.planets.camPos != null && cutsceneSector.tile != null) {
+                if (params.camPos != null && cutsceneSector.tile != null) {
                     tmpCamDir.set(cutsceneSector.tile.v).nor().scl(cutsceneSector.planet.radius * (1.1f + z * 1.4f));
-                    dialog.planets.camPos.lerp(tmpCamDir, Mathf.clamp(Time.delta * 0.16f));
+                    params.camPos.lerp(tmpCamDir, Mathf.clamp(Time.delta * 0.16f));
                 }
             } catch (Throwable ignored) {}
 
