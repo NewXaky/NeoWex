@@ -126,6 +126,23 @@ public final class NexDynamicShadows {
         return prevFbo;
     }
 
+    /**
+     * Arc theo dõi FBO đang mở bằng biến static (currentBoundFramebuffer). Nếu có exception xảy ra giữa begin() và end(),
+     * FBO bị "kẹt" -> mọi khung hình sau đều lỗi "Do not begin() twice" và toàn bộ màn hình bị vẽ vào FBO sai (đen / giật).
+     * Hàm này đóng mọi FBO bóng còn đang mở để trả stack FBO của Arc về trạng thái sạch.
+     */
+    private static void unstickFbos() {
+        final FrameBuffer[] all = { mtnBlockShadowOut, shadowOut, scratchA };
+        for (FrameBuffer fb : all) {
+            if (fb == null) continue;
+            try {
+                if (fb.isBound()) fb.end();
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private static int bakeErrors = 0;
+
     private static void restoreFboAndViewport(int prevFbo) {
         try {
             Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, prevFbo);
@@ -753,6 +770,7 @@ public final class NexDynamicShadows {
                 if (!anyCaster) hasMtnBlockShadow = false;
                 if (anyCaster) {
                     Draw.flush();
+                    unstickFbos();
                     int prevFbo = saveFboAndViewport();
                     Tmp.m3.set(Draw.proj());
                     Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
@@ -963,11 +981,12 @@ public final class NexDynamicShadows {
                             }
                         }
                     } catch (Throwable err) {
-                        Log.err("[NexDynamicShadows] shadow bake failed", err);
+                        if (bakeErrors++ < 3) Log.err("[NexDynamicShadows] shadow bake failed", err);
                         hasShadowContent = false;
                         hasMtnBlockShadow = false;
                     } finally {
-                        Draw.flush();
+                        try { Draw.flush(); } catch (Throwable ignored) {}
+                        unstickFbos();
                         Draw.shader();
                         Draw.blend(Blending.normal);
                         Draw.reset();
