@@ -498,7 +498,7 @@ public class NewModePvp {
         /** Hỗn loạn: vòng thẻ đã chọn, số thẻ đã chọn, thẻ trong tay, thẻ đã gắn {pilot, thẻ}; chs = cache chỉ số +thẻ (không lưu). */
         int chRound = 0, chPicks = 0; ArrayList<Integer> chHand = new ArrayList<>(); ArrayList<int[]> chEq = new ArrayList<>(); int[] chs;
         /** Chiến tranh: túi vật phẩm (id mẫu), 6 ô trang bị (-1 = trống) và cache cấp cộng thêm (không lưu). */
-        ArrayList<Integer> gInv = new ArrayList<>(); ArrayList<Byte> gInvSrc = new ArrayList<>(); int[] gEq = GearItems.newEq(); int gEqSrc = 0;
+        ArrayList<Integer> gInv = new ArrayList<>(); ArrayList<Byte> gInvSrc = new ArrayList<>(); int[] gEq = GearItems.newEq(); int gEqSrc = 0; int[] gEqBonus = new int[GearItems.MAXSLOTS];
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
         int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false, gSlowBonus = false;
         void padStats() {

@@ -1,0 +1,8 @@
+localizedName: Forkneo
+description: "Khu vực chiến dịch Forkneo trên hành tinh Zorynex."
+planet: zorynex
+sector: 0
+difficulty: 5
+alwaysUnlocked: true
+addStartingItems: true
+overrideLaunchDefaults: true

@@ -42,8 +42,13 @@ public final class NexDarkGraphics {
     public static final String SATURATION_KEY = "newex-saturation";
     public static final String BLOOM_KEY = "newex-dark-border-str";
     public static final String BLOOM_COLOR_KEY = "newex-bloom-color";
+    private static final String BLOOM_PICKER_SENTINEL = "newex-bloom-color-picker";
+    private static final String GFX_DEFAULTS_MIGRATED = "newex-gfx-defaults-v2";
+    public static final int DEFAULT_SATURATION = 145;
+    public static final int DEFAULT_BLOOM = 65;
+    public static final String DEFAULT_BLOOM_COLOR = "000000";
     public static final Color VIOLET_OUTLINE = Color.valueOf("241738");
-    private static final Color bloomCol = Color.valueOf("8f47f0");
+    private static final Color bloomCol = Color.valueOf(DEFAULT_BLOOM_COLOR);
 
     private static final String VERT_SRC =
         "attribute vec4 a_position;\n" +
@@ -92,8 +97,8 @@ public final class NexDarkGraphics {
         "}\n";
 
     static final class PostShader extends Shader {
-        float invW = 1f, invH = 1f, sat = 1f, bloom = 0.65f;
-        float br = 0.56f, bg = 0.28f, bb = 0.94f;
+        float invW = 1f, invH = 1f, sat = 1.45f, bloom = 0.65f;
+        float br = 0f, bg = 0f, bb = 0f;
         PostShader() { super(VERT_SRC, FRAG_SRC); }
         @Override
         public void apply() {
@@ -197,18 +202,31 @@ public final class NexDarkGraphics {
     }
 
     private static int defaultBloomPct() {
-        return Vars.mobile ? 45 : 65;
+        return DEFAULT_BLOOM;
+    }
+
+    public static void applyDefaults() {
+        Core.settings.put(SATURATION_KEY, DEFAULT_SATURATION);
+        Core.settings.put(BLOOM_KEY, DEFAULT_BLOOM);
+        Core.settings.put(BLOOM_COLOR_KEY, DEFAULT_BLOOM_COLOR);
+        Core.settings.put(BLOOM_PICKER_SENTINEL, true);
+        loadBloomColor();
     }
 
     /** Thêm thanh kéo Saturation & Bloom vào Cài đặt -> Đồ họa của game. */
     private static void registerGraphicsSettings() {
         if (Vars.ui == null || Vars.ui.settings == null || Vars.ui.settings.graphics == null) return;
         try {
-            int defBloom = defaultBloomPct();
-            if (!Core.settings.has(SATURATION_KEY)) Core.settings.put(SATURATION_KEY, 100);
-            if (!Core.settings.has(BLOOM_KEY)) Core.settings.put(BLOOM_KEY, defBloom);
-            if (!Core.settings.has(BLOOM_COLOR_KEY)) Core.settings.put(BLOOM_COLOR_KEY, "8f47f0");
-            loadBloomColor();
+            if (!Core.settings.getBool(GFX_DEFAULTS_MIGRATED, false)) {
+                applyDefaults();
+                Core.settings.put(GFX_DEFAULTS_MIGRATED, true);
+            } else {
+                if (!Core.settings.has(SATURATION_KEY)) Core.settings.put(SATURATION_KEY, DEFAULT_SATURATION);
+                if (!Core.settings.has(BLOOM_KEY)) Core.settings.put(BLOOM_KEY, DEFAULT_BLOOM);
+                if (!Core.settings.has(BLOOM_COLOR_KEY)) Core.settings.put(BLOOM_COLOR_KEY, DEFAULT_BLOOM_COLOR);
+                if (!Core.settings.has(BLOOM_PICKER_SENTINEL)) Core.settings.put(BLOOM_PICKER_SENTINEL, true);
+                loadBloomColor();
+            }
 
             boolean en = false;
             try {
@@ -228,11 +246,16 @@ public final class NexDarkGraphics {
                 }
             } catch (Throwable ignored) {}
 
-            Vars.ui.settings.graphics.sliderPref(SATURATION_KEY, 100, 0, 200, 5, i -> i + "%");
-            Vars.ui.settings.graphics.sliderPref(BLOOM_KEY, defBloom, 0, 100, 5, i -> i <= 0 ? offTxt : i + "%");
-            Vars.ui.settings.graphics.pref(new SettingsTable.Setting("newex-bloom-color-picker") {
+            Vars.ui.settings.graphics.sliderPref(SATURATION_KEY, DEFAULT_SATURATION, 0, 200, 5, i -> i + "%");
+            Vars.ui.settings.graphics.sliderPref(BLOOM_KEY, DEFAULT_BLOOM, 0, 100, 5, i -> i <= 0 ? offTxt : i + "%");
+            Vars.ui.settings.graphics.pref(new SettingsTable.Setting(BLOOM_PICKER_SENTINEL) {
                 @Override
                 public void add(SettingsTable table) {
+                    if (!Core.settings.has(name)) {
+                        Core.settings.put(BLOOM_COLOR_KEY, DEFAULT_BLOOM_COLOR);
+                        Core.settings.put(name, true);
+                        loadBloomColor();
+                    }
                     Table row = new Table();
                     row.left();
                     final TextButton pickBtn = new TextButton(isEn ? "Pick Bloom Color" : "Chọn màu Bloom (Bảng màu)", Styles.defaultt);
@@ -267,9 +290,9 @@ public final class NexDarkGraphics {
 
     private static void loadBloomColor() {
         try {
-            Color.valueOf(bloomCol, Core.settings.getString(BLOOM_COLOR_KEY, "8f47f0"));
+            Color.valueOf(bloomCol, Core.settings.getString(BLOOM_COLOR_KEY, DEFAULT_BLOOM_COLOR));
         } catch (Throwable ignored) {
-            bloomCol.set(Color.valueOf("8f47f0"));
+            bloomCol.set(Color.valueOf(DEFAULT_BLOOM_COLOR));
         }
     }
 
@@ -303,7 +326,7 @@ public final class NexDarkGraphics {
     }
 
     private static float readSaturation() {
-        return Mathf.clamp(Core.settings.getInt(SATURATION_KEY, 100), 0, 200) / 100f;
+        return Mathf.clamp(Core.settings.getInt(SATURATION_KEY, DEFAULT_SATURATION), 0, 200) / 100f;
     }
 
     private static float readBloomStrength() {

@@ -74,23 +74,40 @@ public final class NexDynamicShadows {
     public static final String KEY_LIGHT_ERASE = "newex-ds-light-erase";
     public static final String KEY_LITE = "newex-ds-lite";
     public static final String KEY_VIEWONLY = "newex-ds-viewonly";
+    private static final String PANEL_SENTINEL = "newex-dynamic-shadows-panel";
+    private static final String DS_DEFAULTS_MIGRATED = "newex-ds-defaults-v2";
 
-    public static boolean enabled = true;
-    public static boolean liteMode = true;
+    public static final boolean DEF_ENABLED = true;
+    public static final boolean DEF_LITE = true;
+    public static final boolean DEF_VIEWONLY = false;
+    public static final boolean DEF_DAYNIGHT = true;
+    public static final boolean DEF_UNITS = true;
+    public static final boolean DEF_ROTATE = true;
+    public static final boolean DEF_ZOOMFADE = false;
+    public static final boolean DEF_LIGHT_ERASE = true;
+    public static final int DEF_QUALITY = 2;
+    public static final int DEF_LENGTH = 12;
+    public static final int DEF_ALPHA = 75;
+    public static final int DEF_BLUR = 35;
+    public static final int DEF_TINT = 85;
+    public static final int DEF_CONTACT = 35;
+
+    public static boolean enabled = DEF_ENABLED;
+    public static boolean liteMode = DEF_LITE;
     /** true = chỉ dựng bóng đúng vùng đang nhìn thấy (đệm rất nhỏ), ngoài màn hình không xử lý -> đỡ lag. */
-    public static boolean viewOnly = false;
-    public static boolean dayNightCycle = true;
-    public static boolean rotateShadows = true;
-    public static boolean unitShadowsEnabled = true;
-    public static boolean zoomFadeEnabled = true;
-    public static boolean lightEraseEnabled = true;
-    /** 0 = Thấp (45%), 1 = Trung bình (65%, mặc định mượt 60fps), 2 = Cao (90%) */
-    public static int graphicsQuality = 1;
-    public static float shadowLength = 10f;
-    public static float shadowAlpha = 0.42f;
-    public static float blurRadius = 3.0f;
-    public static float shadowTint = 0.60f;
-    public static float contactShadow = 0.45f;
+    public static boolean viewOnly = DEF_VIEWONLY;
+    public static boolean dayNightCycle = DEF_DAYNIGHT;
+    public static boolean rotateShadows = DEF_ROTATE;
+    public static boolean unitShadowsEnabled = DEF_UNITS;
+    public static boolean zoomFadeEnabled = DEF_ZOOMFADE;
+    public static boolean lightEraseEnabled = DEF_LIGHT_ERASE;
+    /** 0 = Thấp (45%), 1 = Trung bình (65%), 2 = Cao (90%, mặc định theo preset chuẩn) */
+    public static int graphicsQuality = DEF_QUALITY;
+    public static float shadowLength = DEF_LENGTH;
+    public static float shadowAlpha = DEF_ALPHA / 100f;
+    public static float blurRadius = DEF_BLUR / 10f;
+    public static float shadowTint = DEF_TINT / 100f;
+    public static float contactShadow = DEF_CONTACT / 100f;
     public static float darkFadeThreshold = 0.35f, darkFadeStrength = 0.80f;
 
     public static volatile boolean shadDirty = true;
@@ -125,23 +142,6 @@ public final class NexDynamicShadows {
         } catch (Throwable ignored) {}
         return prevFbo;
     }
-
-    /**
-     * Arc theo dõi FBO đang mở bằng biến static (currentBoundFramebuffer). Nếu có exception xảy ra giữa begin() và end(),
-     * FBO bị "kẹt" -> mọi khung hình sau đều lỗi "Do not begin() twice" và toàn bộ màn hình bị vẽ vào FBO sai (đen / giật).
-     * Hàm này đóng mọi FBO bóng còn đang mở để trả stack FBO của Arc về trạng thái sạch.
-     */
-    private static void unstickFbos() {
-        final FrameBuffer[] all = { mtnBlockShadowOut, shadowOut, scratchA };
-        for (FrameBuffer fb : all) {
-            if (fb == null) continue;
-            try {
-                if (fb.isBound()) fb.end();
-            } catch (Throwable ignored) {}
-        }
-    }
-
-    private static int bakeErrors = 0;
 
     private static void restoreFboAndViewport(int prevFbo) {
         try {
@@ -279,7 +279,13 @@ public final class NexDynamicShadows {
         initialized = true;
 
         Events.on(EventType.ClientLoadEvent.class, e -> {
-            loadSettings();
+            if (!Core.settings.getBool(DS_DEFAULTS_MIGRATED, false)) {
+                resetToDefaults();
+                Core.settings.put(DS_DEFAULTS_MIGRATED, true);
+            } else {
+                loadSettings();
+                if (!Core.settings.has(PANEL_SENTINEL)) Core.settings.put(PANEL_SENTINEL, true);
+            }
             Log.info("[NexDynamicShadows] preDraw v2 initialized (enabled=" + enabled + ", lite=" + liteMode + ")");
             if (!Vars.headless) {
                 Core.app.post(() -> {
@@ -320,21 +326,42 @@ public final class NexDynamicShadows {
         }
     }
 
+    public static void resetToDefaults() {
+        Core.settings.put(KEY_ENABLED, DEF_ENABLED);
+        Core.settings.put(KEY_LITE, DEF_LITE);
+        Core.settings.put(KEY_VIEWONLY, DEF_VIEWONLY);
+        Core.settings.put(KEY_DAYNIGHT, DEF_DAYNIGHT);
+        Core.settings.put(KEY_ROTATE, DEF_ROTATE);
+        Core.settings.put(KEY_UNITS, DEF_UNITS);
+        Core.settings.put(KEY_ZOOMFADE, DEF_ZOOMFADE);
+        Core.settings.put(KEY_LIGHT_ERASE, DEF_LIGHT_ERASE);
+        Core.settings.put(KEY_QUALITY, DEF_QUALITY);
+        Core.settings.put(KEY_LENGTH, DEF_LENGTH);
+        Core.settings.put(KEY_ALPHA, DEF_ALPHA);
+        Core.settings.put(KEY_BLUR, DEF_BLUR);
+        Core.settings.put(KEY_TINT, DEF_TINT);
+        Core.settings.put(KEY_CONTACT, DEF_CONTACT);
+        Core.settings.put(PANEL_SENTINEL, true);
+        loadSettings();
+        updateUnitShadows();
+        shadDirty = true;
+    }
+
     private static void loadSettings() {
-        enabled = Core.settings.getBool(KEY_ENABLED, true);
-        liteMode = Core.settings.getBool(KEY_LITE, true);
-        viewOnly = Core.settings.getBool(KEY_VIEWONLY, false);
-        dayNightCycle = Core.settings.getBool(KEY_DAYNIGHT, true);
-        rotateShadows = Core.settings.getBool(KEY_ROTATE, true);
-        unitShadowsEnabled = Core.settings.getBool(KEY_UNITS, true);
-        zoomFadeEnabled = Core.settings.getBool(KEY_ZOOMFADE, true);
-        graphicsQuality = Core.settings.getInt(KEY_QUALITY, Vars.mobile ? 0 : 1);
-        shadowLength = Core.settings.getInt(KEY_LENGTH, 10);
-        shadowAlpha = Core.settings.getInt(KEY_ALPHA, 42) / 100f;
-        blurRadius = Core.settings.getInt(KEY_BLUR, 30) / 10f;
-        shadowTint = Core.settings.getInt(KEY_TINT, 60) / 100f;
-        contactShadow = Core.settings.getInt(KEY_CONTACT, 45) / 100f;
-        lightEraseEnabled = Core.settings.getBool(KEY_LIGHT_ERASE, true);
+        enabled = Core.settings.getBool(KEY_ENABLED, DEF_ENABLED);
+        liteMode = Core.settings.getBool(KEY_LITE, DEF_LITE);
+        viewOnly = Core.settings.getBool(KEY_VIEWONLY, DEF_VIEWONLY);
+        dayNightCycle = Core.settings.getBool(KEY_DAYNIGHT, DEF_DAYNIGHT);
+        rotateShadows = Core.settings.getBool(KEY_ROTATE, DEF_ROTATE);
+        unitShadowsEnabled = Core.settings.getBool(KEY_UNITS, DEF_UNITS);
+        zoomFadeEnabled = Core.settings.getBool(KEY_ZOOMFADE, DEF_ZOOMFADE);
+        graphicsQuality = Core.settings.getInt(KEY_QUALITY, DEF_QUALITY);
+        shadowLength = Core.settings.getInt(KEY_LENGTH, DEF_LENGTH);
+        shadowAlpha = Core.settings.getInt(KEY_ALPHA, DEF_ALPHA) / 100f;
+        blurRadius = Core.settings.getInt(KEY_BLUR, DEF_BLUR) / 10f;
+        shadowTint = Core.settings.getInt(KEY_TINT, DEF_TINT) / 100f;
+        contactShadow = Core.settings.getInt(KEY_CONTACT, DEF_CONTACT) / 100f;
+        lightEraseEnabled = Core.settings.getBool(KEY_LIGHT_ERASE, DEF_LIGHT_ERASE);
     }
 
     /** Bật/tắt chế độ chỉ vẽ bóng trong màn hình (dùng cho nút HUD). */
@@ -355,9 +382,12 @@ public final class NexDynamicShadows {
     private static void registerGraphicsSettings() {
         if (Vars.ui == null || Vars.ui.settings == null || Vars.ui.settings.graphics == null) return;
         try {
-            Vars.ui.settings.graphics.pref(new SettingsTable.Setting("newex-dynamic-shadows-panel") {
+            Vars.ui.settings.graphics.pref(new SettingsTable.Setting(PANEL_SENTINEL) {
                 @Override
                 public void add(SettingsTable table) {
+                    if (!Core.settings.has(name)) {
+                        resetToDefaults();
+                    }
                     final boolean en = isEn();
                     Table wrap = new Table();
                     wrap.left().defaults().left();
@@ -770,7 +800,6 @@ public final class NexDynamicShadows {
                 if (!anyCaster) hasMtnBlockShadow = false;
                 if (anyCaster) {
                     Draw.flush();
-                    unstickFbos();
                     int prevFbo = saveFboAndViewport();
                     Tmp.m3.set(Draw.proj());
                     Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
@@ -981,17 +1010,13 @@ public final class NexDynamicShadows {
                             }
                         }
                     } catch (Throwable err) {
-                        if (bakeErrors++ < 3) Log.err("[NexDynamicShadows] shadow bake failed", err);
+                        Log.err("[NexDynamicShadows] shadow bake failed", err);
                         hasShadowContent = false;
                         hasMtnBlockShadow = false;
                     } finally {
-                        try { Draw.flush(); } catch (Throwable ignored) {}
-                        unstickFbos();
+                        Draw.flush();
                         Draw.shader();
                         Draw.blend(Blending.normal);
-                        // QUAN TRỌNG: ép GL về blend thường NGAY. Batch chỉ áp blend khi flush có dữ liệu, nên hàm blend xóa-bóng
-                        // (ZERO, ONE_MINUS_SRC_ALPHA) bị rò sang khung hình -> FloorRenderer (chỉ Gl.enable(blend), không đặt hàm blend) vẽ nền ra đen thui.
-                        Blending.normal.apply();
                         Draw.reset();
                         Draw.proj(Tmp.m3);
                         restoreFboAndViewport(prevFbo);
