@@ -27,6 +27,7 @@ import mindustry.entities.bullet.MissileBulletType;
 import mindustry.entities.units.WeaponMount;
 import mindustry.game.EventType.UnitDamageEvent;
 import mindustry.gen.Building;
+import mindustry.gen.EntityMapping;
 import mindustry.gen.Bullet;
 import mindustry.gen.Groups;
 import mindustry.gen.Hitboxc;
@@ -100,6 +101,7 @@ public final class Bulvasyr {
     private static final Color MISS_STEEL = Color.valueOf("c9d0e0");
     private static final Color MISS_RED = Color.valueOf("e0303c");
     private static final Color MISS_YELLOW = Color.valueOf("ffd84a");
+    private static final Color MISS_CYAN = Color.valueOf("5fe3ff");
 
     private static final Color SHIELD_BLUE = Color.valueOf("4654c8");
     private static final Color SHIELD_STEEL = Color.valueOf("9ca6ba");
@@ -115,6 +117,13 @@ public final class Bulvasyr {
     private static Effect rocketHitFx;
     private static Effect rocketSmokeFx;
     private static Effect footstepFx;
+    private static Effect starDustFx;
+    private static Effect starPulseFx;
+
+    /** Màu đạn trôi qua lại giữa tím và xanh lam theo thời gian/pha: nhìn liên tục chuyển sắc. */
+    static Color starHue(float t) {
+        return Tmp.c3.set(MISS_VIOLET).lerp(MISS_CYAN, 0.5f + 0.5f * Mathf.sin(t));
+    }
 
     /** Ngôi sao 4 điểm: 2 cánh dài dọc theo rot, 2 cánh ngắn ngang. */
     static void drawStar(float x, float y, float rot, float len, float wid, float shortLen) {
@@ -130,6 +139,7 @@ public final class Bulvasyr {
     public static void init() {
         if (initialized) return;
         initialized = true;
+        int ensureEntityRegistered = BulvasyrUnit.CLASS_ID; // ép đăng ký sớm, trước khi map/save được nạp
 
         // Lớp 2: Bắt sát thương tia/laser/đạn tức thời (như Aureon, Meltdown, Zeralion...) đánh từ mạn có khiên
         Events.on(UnitDamageEvent.class, e -> {
@@ -161,6 +171,27 @@ public final class Bulvasyr {
             });
             Draw.color(Color.white, e.fout());
             Fill.circle(e.x, e.y, 8f * e.fout());
+        });
+
+        // Bụi sao: các ngôi sao 2 cánh nhỏ lấp lánh rơi lại dọc đường bay
+        starDustFx = new Effect(36f, e -> {
+            float tw = 0.55f + 0.45f * Mathf.absin(e.id * 0.7f + e.time, 3.2f, 1f);
+            Draw.blend(Blending.additive);
+            Draw.color(e.color, Color.white, 0.4f * e.fout());
+            Draw.alpha(e.fout() * tw);
+            drawStar(e.x, e.y - 3f * e.fin(), 0f, 5.2f * e.fout() + 0.8f, 1.0f * e.fout() + 0.2f, 2.2f * e.fout());
+            Draw.blend();
+            Draw.reset();
+        });
+
+        // Nhịp ngân: vòng sáng mỏng nở ra khi ngôi sao đạt cỡ lớn nhất giữa đường bay
+        starPulseFx = new Effect(28f, e -> {
+            Draw.blend(Blending.additive);
+            Draw.color(e.color, 0.75f * e.fout());
+            Lines.stroke(1.6f * e.fout() + 0.3f);
+            Lines.circle(e.x, e.y, 4f + e.fin(Interp.pow2Out) * 22f);
+            Draw.blend();
+            Draw.reset();
         });
 
         // Bước chân nặng: vòng chấn + bụi bung + tia lửa tím
@@ -311,6 +342,14 @@ public final class Bulvasyr {
     // ================================================================== Custom LegsUnit với Khiên Vật Lý mạn trái
 
     public static class BulvasyrUnit extends MechUnit {
+        /** Đăng ký classId riêng: nếu không, vào lại map/tải save unit bị dựng thành MechUnit thường => mất khiên. */
+        public static final int CLASS_ID = EntityMapping.register("newex-bulvasyr-unit", BulvasyrUnit::new);
+
+        @Override
+        public int classId() {
+            return CLASS_ID;
+        }
+
         public float physShieldMax = -1f;
         public float physShieldHp = 0f;
         public boolean physShieldDamaged = false;
@@ -577,6 +616,7 @@ public final class Bulvasyr {
                     float swirlPhase = idx * (Mathf.PI / 2f) + x * 0.37f;
                     SwirlData sdNew = new SwirlData(target, swirlPhase);
                     sdNew.turn = burstTurn + Mathf.range(0.12f); // cả chùm uốn cong cùng nhịp
+                    sdNew.idx = idx;
                     Bullet b = bullet.create(unit, unit.team, sx, sy, launchAngle, -1f, 0.92f + idx * 0.04f, 1f, sdNew);
                     if (b != null) {
                         float atk = calcAtk(unit);
@@ -601,7 +641,8 @@ public final class Bulvasyr {
         public Teamc target;
         public float phase, prev;
         public float minDst = 1e9f;
-        public boolean passed, expiring;
+        public boolean passed, expiring, pulsed;
+        public int idx;
         public float turn = 3f;          // tốc độ uốn cong (độ/tick), mỗi quả ngẫu nhiên
         public float startDst = -1f;     // khoảng cách tới mục tiêu lúc mới bay
         public float expireT, scExp = 1f; // mốc bắt đầu 0,5s cuối khi trượt mục tiêu
@@ -692,6 +733,11 @@ public final class Bulvasyr {
             b.vel.setLength(Mathf.lerp(2.3f, 8.4f, Interp.pow2Out.apply(Mathf.clamp((b.time - 4f) / 28f))));
             if (!(b.data instanceof SwirlData)) return;
             SwirlData sd = (SwirlData) b.data;
+            if (!Vars.headless) {
+                Color hue = starHue(sd.phase + b.time * 0.12f);
+                if (b.timer(2, 2.2f)) starDustFx.at(b.x + Mathf.range(2.5f), b.y + Mathf.range(2.5f), 0f, hue.cpy());
+                if (!sd.pulsed && starScale(b, sd) > 1.62f) { sd.pulsed = true; starPulseFx.at(b.x, b.y, 0f, hue.cpy()); }
+            }
             // Trượt mục tiêu (lướt qua hoặc mất mục tiêu): bay thêm đúng 0,5s (30 tick) rồi va chạm
             if (sd.startDst < 0f && isTargetAlive(sd.target)) sd.startDst = b.dst(sd.target);
             if (!sd.expiring) {
@@ -728,18 +774,23 @@ public final class Bulvasyr {
             float heading = r0 + tilt;
             float flick = 0.85f + Mathf.absin(Time.time + b.id, 2.3f, 0.3f);
             drawTrail(b);
+            Color hue = starHue(sd.phase + t * 0.12f);
+            float breathe = 1f + 0.1f * Mathf.sin(t * 0.55f + sd.phase);
+            sc *= breathe;
             Draw.blend(Blending.additive);
-            Draw.color(MISS_VIOLET, 0.4f);
-            drawStar(b.x, b.y, heading, 17f * sc, 4.2f * sc, 6f * sc);
+            Draw.color(hue, 0.28f);
+            Fill.circle(b.x, b.y, 7f * sc);
+            Draw.color(hue, 0.5f);
+            drawStar(b.x, b.y, 0f, 19f * sc, 4.4f * sc, 6.5f * sc);
             Draw.blend();
             Draw.color(MISS_INDIGO);
-            drawStar(b.x, b.y, heading, 12f * sc, 3.0f * sc, 4.2f * sc);
+            drawStar(b.x, b.y, 0f, 12f * sc, 3.0f * sc, 4.2f * sc);
             Draw.color(MISS_STEEL);
-            drawStar(b.x, b.y, heading, 9f * sc, 1.8f * sc, 2.8f * sc);
+            drawStar(b.x, b.y, 0f, 9f * sc, 1.8f * sc, 2.8f * sc);
             Draw.color(Color.white);
-            Fill.circle(b.x, b.y, 1.5f * sc);
+            Fill.circle(b.x, b.y, 1.6f * sc);
             Draw.reset();
-            Drawf.light(b.x, b.y, 28f * sc, MISS_VIOLET, 0.5f);
+            Drawf.light(b.x, b.y, 28f * sc, hue, 0.5f);
         }
 
         @Override
@@ -751,7 +802,12 @@ public final class Bulvasyr {
             }
             hitEffect.at(x, y, b.rotation(), hitColor);
             Effect.shake(1.8f, 8f, x, y);
-            hitSound.at(x, y, hitSoundPitch, hitSoundVolume * 0.65f);
+            int note = (b.data instanceof SwirlData) ? ((SwirlData) b.data).idx : 0;
+            hitSound.at(x, y, 0.95f + note * 0.17f, hitSoundVolume * 0.6f); // 4 quả nổ nối nhau như 4 nốt nhạc đi lên
+            if (!Vars.headless) {
+                for (int k = 0; k < 9; k++) starDustFx.at(x + Mathf.range(10f), y + Mathf.range(10f), 0f, starHue(k * 0.7f).cpy());
+                starPulseFx.at(x, y, 0f, MISS_CYAN.cpy());
+            }
 
             // Gây sát thương nổ xuyên giáp diện rộng (pierceArmor = true)
             Damage.damage(b.team, x, y, splashDamageRadius, dynSplash, true, collidesAir, collidesGround, scaledSplashDamage, b);
