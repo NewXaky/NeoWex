@@ -166,7 +166,7 @@ public final class UnitSkillInfo {
             DamageKind.BASIC_ATTACK,
             Color.valueOf("7A68FF"),
             "Lướt: [cyan]7.0s[] hồi chiêu, kéo dài [cyan]0.43s[]",
-            "[gold]Chùm sao[]: mỗi đợt 4 tên lửa hình sao 2 cánh, bay xoắn rồi uốn cong vào mục tiêu\n[gold]Va chạm[]: nổ diện rộng, ngôi sao phóng to rồi tan dần\n[sky]Khiên bên hông[]: chặn đạn từ mạn trái",
+            "[gold]Chùm sao[]: mỗi đợt 4 tên lửa hình sao 2 cánh, bay xoắn rồi uốn cong vào mục tiêu\n[gold]Va chạm[]: nổ diện rộng, ngôi sao phóng to rồi tan dần\n[sky]Khiên vật lý mạn trái[]: chặn mọi đạn, mảnh đạn, laser & tia laser nhắm thẳng (không bắn xuyên được); chỉ vụ nổ mới gây sát thương cho cả khiên lẫn unit. Khiên nhận [scarlet]+50%[] sát thương từ đạn vật lý và [green]-50%[] từ đạn năng lượng/laser",
             "[gold]Lướt[]: không dịch chuyển tức thời. Unit tăng tốc dần, [cyan]lướt nhanh[] rồi giảm tốc, để lại vệt sáng và bóng ảnh xanh tím. PC lướt về phía chuột, mobile lướt theo hướng đang chạy.",
             "[gold]Tự khóa[]: tự khóa mục tiêu gần nhất rồi bắn chùm tên lửa, không cần giữ nút bắn.",
             null,

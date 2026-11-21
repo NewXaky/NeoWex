@@ -199,6 +199,7 @@ public class NexMod extends Mod {
         Repulsyron.init();
         ArchuengPvp.init();
         HoniveryPvp.init(); // nut skill Honivery (unit bậc 8 trong NewMode PvP)
+        Bulvasyr.init(); // đăng ký classId & khiên vật lý Bulvasyr (chặn đạn/laser/mảnh đạn)
         BulvasyrDash.init(); // nut skill Luot cua Bulvasyr (unit bậc 11 trong NewMode PvP)
         Erysidus.init();
         Ravendes.init();

@@ -12,8 +12,11 @@ import arc.graphics.g2d.TextureRegion;
 import arc.math.Angles;
 import arc.math.Interp;
 import arc.math.Mathf;
+import arc.math.geom.Intersector;
 import arc.math.geom.Position;
 import arc.scene.ui.layout.Table;
+import arc.struct.ObjectMap;
+import arc.struct.Seq;
 import arc.util.Strings;
 import arc.util.Time;
 import arc.util.Tmp;
@@ -23,9 +26,19 @@ import mindustry.entities.Damage;
 import mindustry.entities.Effect;
 import mindustry.entities.Units;
 import mindustry.entities.abilities.Ability;
+import mindustry.entities.bullet.BasicBulletType;
+import mindustry.entities.bullet.BulletType;
+import mindustry.entities.bullet.ContinuousBulletType;
+import mindustry.entities.bullet.LaserBulletType;
+import mindustry.entities.bullet.LightningBulletType;
 import mindustry.entities.bullet.MissileBulletType;
+import mindustry.entities.bullet.PointLaserBulletType;
+import mindustry.entities.bullet.RailBulletType;
+import mindustry.entities.bullet.SapBulletType;
 import mindustry.entities.units.WeaponMount;
+import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.UnitDamageEvent;
+import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.gen.Building;
 import mindustry.gen.EntityMapping;
 import mindustry.gen.Bullet;
@@ -80,9 +93,11 @@ public final class Bulvasyr {
     public static final float ROCKET_SPLASH_RATIO = 0.34f;
 
     /** Thông số Khiên Vật Lý bên hông trái. */
-    public static final float SHIELD_HP_MULT = 5.0f;         // 500% HP của unit
-    public static final float SHIELD_ANGLE_OFFSET = 90f;     // +90 độ = mạn TRÁI so với hướng quay của unit
-    public static final float SHIELD_HALF_ARC = 65f;         // che phủ cung 130 độ dọc toàn bộ hông trái
+    public static final float SHIELD_HP_MULT = 5.0f;            // 500% HP của unit
+    public static final float SHIELD_ANGLE_OFFSET = 90f;        // +90 độ = mạn TRÁI so với hướng quay của unit
+    public static final float SHIELD_HALF_ARC = 68f;            // che phủ cung rộng dọc toàn bộ hông trái
+    public static final float SHIELD_PHYSICAL_DMG_MULT = 1.5f;  // +50% sát thương vào khiên từ đạn vật lý
+    public static final float SHIELD_ENERGY_DMG_MULT = 0.5f;    // -50% sát thương vào khiên từ đạn năng lượng / laser / tia nhắm thẳng
 
     // Bảng màu
     private static final Color OUTLINE_COL = Color.valueOf("232933");
@@ -110,6 +125,9 @@ public final class Bulvasyr {
 
     private static boolean initialized = false;
     private static TextureRegion shieldRegion;
+    private static final Seq<BulvasyrUnit> activeBulvasyrs = new Seq<>(false, 8);
+    private static final ObjectMap<Class<?>, Boolean> energyClassCache = new ObjectMap<>(64);
+    private static final ObjectMap<Class<?>, Boolean> beamClassCache = new ObjectMap<>(64);
 
     private static Effect shieldHitFx;
     private static Effect shieldBreakFx;
@@ -119,6 +137,73 @@ public final class Bulvasyr {
     private static Effect footstepFx;
     private static Effect starDustFx;
     private static Effect starPulseFx;
+
+    /** Đạn gây vụ nổ diện rộng: chỉ loại này mới gây sát thương lên CẢ khiên lẫn unit. */
+    public static boolean isExplosiveBullet(BulletType type) {
+        return type != null && type.splashDamage > 0f && type.splashDamageRadius > 0f;
+    }
+
+    /** Phân loại đạn năng lượng / laser / tia laser nhắm thẳng (-50% sát thương lên khiên) vs đạn vật lý (+50% sát thương lên khiên). */
+    public static boolean isEnergyBullet(BulletType type) {
+        if (type == null) return false;
+        if (type instanceof LaserBulletType
+                || type instanceof ContinuousBulletType
+                || type instanceof PointLaserBulletType
+                || type instanceof SapBulletType
+                || type instanceof LightningBulletType) {
+            return true;
+        }
+        Class<?> cls = type.getClass();
+        Boolean cached = energyClassCache.get(cls);
+        if (cached != null) {
+            if (cached) return true;
+        } else {
+            String sn = cls.getSimpleName().toLowerCase();
+            boolean byClass = sn.contains("laser") || sn.contains("beam") || sn.contains("plasma")
+                    || sn.contains("lightning") || sn.contains("electric") || sn.contains("arc")
+                    || sn.contains("energy") || sn.contains("photon") || sn.contains("ion")
+                    || sn.contains("emp") || sn.contains("pointbullet") || sn.contains("void")
+                    || sn.contains("psi") || sn.contains("psychic");
+            energyClassCache.put(cls, byClass);
+            if (byClass) return true;
+        }
+        if (type instanceof BasicBulletType) {
+            String sp = ((BasicBulletType) type).sprite;
+            if (sp != null) {
+                String ls = sp.toLowerCase();
+                if (ls.contains("laser") || ls.contains("plasma") || ls.contains("energy")
+                        || ls.contains("pulse") || ls.contains("beam") || ls.contains("orb")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Hệ số sát thương lên khiên vật lý: đạn năng lượng/laser = 0.5x (-50%), đạn vật lý = 1.5x (+50%). */
+    public static float shieldDamageMultiplier(BulletType type) {
+        return isEnergyBullet(type) ? SHIELD_ENERGY_DMG_MULT : SHIELD_PHYSICAL_DMG_MULT;
+    }
+
+    /** Các loại tia/đạn xuyên tức thời hoặc liên tục (laser, tia nhắm thẳng, mảnh shrapnel, railgun, sét). */
+    public static boolean isBeamOrInstantType(BulletType type) {
+        if (type == null) return false;
+        if (type instanceof LaserBulletType
+                || type instanceof ContinuousBulletType
+                || type instanceof PointLaserBulletType
+                || type instanceof RailBulletType
+                || type instanceof SapBulletType
+                || type instanceof LightningBulletType) {
+            return true;
+        }
+        Class<?> cls = type.getClass();
+        Boolean cached = beamClassCache.get(cls);
+        if (cached != null) return cached;
+        String sn = cls.getSimpleName().toLowerCase();
+        boolean res = sn.contains("shrapnel") || sn.contains("pointbullet") || sn.contains("laser") || sn.contains("beam");
+        beamClassCache.put(cls, res);
+        return res;
+    }
 
     /** Màu đạn trôi qua lại giữa tím và xanh lam theo thời gian/pha: nhìn liên tục chuyển sắc. */
     static Color starHue(float t) {
@@ -135,21 +220,81 @@ public final class Bulvasyr {
 
     private Bulvasyr() {}
 
-    /** Gọi từ NexMod() constructor. */
+    /** Gọi từ NexMod() constructor (và tự động gọi trong create() phòng trường hợp bị thiếu). */
     public static void init() {
         if (initialized) return;
         initialized = true;
         int ensureEntityRegistered = BulvasyrUnit.CLASS_ID; // ép đăng ký sớm, trước khi map/save được nạp
 
-        // Lớp 2: Bắt sát thương tia/laser/đạn tức thời (như Aureon, Meltdown, Zeralion...) đánh từ mạn có khiên
+        Events.on(WorldLoadEvent.class, e -> activeBulvasyrs.clear());
+
+        // Bắt sát thương laser / tia nhắm thẳng / shrapnel / railgun / vụ nổ cho cả Bulvasyr lẫn đồng đội đứng sau khiên
         Events.on(UnitDamageEvent.class, e -> {
-            if (!(e.unit instanceof BulvasyrUnit) || e.bullet == null) return;
-            ((BulvasyrUnit) e.unit).handleBulletDamageEvent(e.bullet);
+            if (e.unit == null || e.bullet == null) return;
+            if (e.unit instanceof BulvasyrUnit) {
+                ((BulvasyrUnit) e.unit).handleBulletDamageEvent(e.bullet);
+            } else if (!activeBulvasyrs.isEmpty() && isBeamOrInstantType(e.bullet.type) && !isExplosiveBullet(e.bullet.type)) {
+                tryBlockLaserBehindShield(e.unit, e.bullet);
+            }
         });
+
+        // Đảm bảo sát thương chí mạng không đi qua UnitDamageEvent (ví dụ thiêu đốt / chết đuối) vẫn kết liễu đúng tick
+        Events.run(Trigger.afterGameUpdate, () -> {
+            for (int i = activeBulvasyrs.size - 1; i >= 0; i--) {
+                BulvasyrUnit bu = activeBulvasyrs.get(i);
+                if (bu == null || !bu.isAdded() || bu.dead) {
+                    activeBulvasyrs.remove(i);
+                    continue;
+                }
+                bu.flushDeferredLethal();
+            }
+        });
+    }
+
+    /** Chặn tia laser / shrapnel / railgun không cho bắn xuyên qua khiên Bulvasyr trúng đồng minh phía sau. */
+    private static void tryBlockLaserBehindShield(Unit victim, Bullet b) {
+        if (victim == null || victim.dead || b == null || b.team == victim.team) return;
+        float srcX = b.x, srcY = b.y;
+        if (b.owner instanceof Position) {
+            Position p = (Position) b.owner;
+            srcX = p.getX();
+            srcY = p.getY();
+        }
+        for (int i = activeBulvasyrs.size - 1; i >= 0; i--) {
+            BulvasyrUnit bu = activeBulvasyrs.get(i);
+            if (bu == null || !bu.isAdded() || bu.dead) {
+                activeBulvasyrs.remove(i);
+                continue;
+            }
+            if (bu.team != victim.team || !bu.isShieldActive()) continue;
+            if (!bu.doesSegmentHitShieldPlate(srcX, srcY, victim.x, victim.y)) continue;
+            float angToSrc = Angles.angle(bu.x, bu.y, srcX, srcY);
+            if (!bu.isAngleCoveredByShield(angToSrc)) continue;
+
+            // Tia laser đã bị tấm khiên của Bulvasyr chắn lại trước khi chạm tới đồng minh phía sau!
+            float mult = shieldDamageMultiplier(b.type);
+            float rawDmg = Math.max(0f, b.damage);
+            if (rawDmg <= 0f) return;
+
+            // Chỉ trừ độ bền khiên 1 lần mỗi tick cho mỗi viên đạn xuyên (tránh trừ chồng nhiều lần khi nhiều đồng minh đứng sau)
+            float blockedRaw = rawDmg;
+            if (!bu.wasBeamChargedThisTick(b.id)) {
+                bu.markBeamChargedThisTick(b.id);
+                float shieldCost = rawDmg * mult;
+                float absorbed = bu.absorbPhysicalShield(shieldCost, Tmp.v1.x, Tmp.v1.y, angToSrc);
+                blockedRaw = absorbed / mult;
+            }
+            if (blockedRaw > 0.01f && !victim.dead) {
+                float healBack = Math.min(blockedRaw, Math.max(0f, victim.maxHealth - victim.health));
+                victim.health += healBack;
+            }
+            return;
+        }
     }
 
     /** Gọi từ NexMod.loadContent(). */
     public static void create() {
+        init();
         launchSound = Vars.headless ? Sounds.none : Sounds.shootSmite;
 
         shieldHitFx = new Effect(16f, e -> {
@@ -263,7 +408,8 @@ public final class Bulvasyr {
             localizedName = "Bulvasyr";
             description = "Cơ giáp 2 chân hạng nặng trang bị khiên vật lý mạn trái (500% HP) và 3 cụm pháo tên lửa tổ ong tự dẫn hướng.";
             details = "Khóa mục tiêu trong 1.5 giây giống Aureon rồi phóng 2 đợt liên tiếp gồm 24 tên lửa cong tự dẫn hướng, nổ diện rộng và bỏ qua giáp (nạp lại 5 giây). "
-                + "Tấm khiên vật lý bên hông trái có độ bền bằng 500% HP của unit, ưu tiên nhận sát thương từ hướng hông trái trước và chỉ hồi phục khi unit bị tiêu diệt hoặc đổi unit.";
+                + "Tấm khiên vật lý bên hông trái có độ bền 500% HP, chặn mọi loại đạn, mảnh đạn, laser và tia laser nhắm thẳng (không thể bắn xuyên qua); chỉ có đạn gây vụ nổ mới gây sát thương lên cả khiên lẫn unit. "
+                + "Khiên nhận +50% sát thương từ đạn vật lý và giảm 50% sát thương từ đạn năng lượng/laser.";
 
             health = 46000f;
             armor = 20f;
@@ -356,11 +502,74 @@ public final class Bulvasyr {
         public float shieldFlash = 0f;
         private int ageTicks = 0;
 
-        /** Theo dõi viên đạn vừa va chạm gần nhất để ngăn double-deduct với UnitDamageEvent. */
-        private int lastHandledBulletId = -1;
+        /** Bộ đệm vòng theo dõi nhiều viên đạn xử lý cùng lúc (tránh sót & tránh trừ 2 lần). */
+        private final int[] handledBulletIds = new int[16];
+        private int handledBulletIdx = 0;
+        private final int[] handledExplosiveIds = new int[16];
+        private int handledExplosiveIdx = 0;
+        private final int[] beamTickBulletIds = new int[12];
+        private int beamTickStamp = -1;
+        private int beamTickCount = 0;
+
+        {
+            java.util.Arrays.fill(handledBulletIds, -1);
+            java.util.Arrays.fill(handledExplosiveIds, -1);
+        }
+
         private float hpBeforeRaw = -1f;
         private float shieldBeforeRaw = -1f;
+        private float lastRawAmount = 0f;
         private int lastRawTick = -1;
+        private boolean deferredLethal = false;
+        private boolean applyingDeferredLethal = false;
+
+        private boolean wasBulletHandled(int id) {
+            for (int i = 0; i < handledBulletIds.length; i++) {
+                if (handledBulletIds[i] == id) return true;
+            }
+            return false;
+        }
+
+        private void markBulletHandled(int id) {
+            handledBulletIds[handledBulletIdx] = id;
+            handledBulletIdx = (handledBulletIdx + 1) & 15;
+        }
+
+        private boolean wasExplosiveCharged(int id) {
+            for (int i = 0; i < handledExplosiveIds.length; i++) {
+                if (handledExplosiveIds[i] == id) return true;
+            }
+            return false;
+        }
+
+        private void markExplosiveCharged(int id) {
+            handledExplosiveIds[handledExplosiveIdx] = id;
+            handledExplosiveIdx = (handledExplosiveIdx + 1) & 15;
+        }
+
+        boolean wasBeamChargedThisTick(int id) {
+            int tick = (int) Time.time;
+            if (beamTickStamp != tick) {
+                beamTickStamp = tick;
+                beamTickCount = 0;
+                return false;
+            }
+            for (int i = 0; i < beamTickCount; i++) {
+                if (beamTickBulletIds[i] == id) return true;
+            }
+            return false;
+        }
+
+        void markBeamChargedThisTick(int id) {
+            int tick = (int) Time.time;
+            if (beamTickStamp != tick) {
+                beamTickStamp = tick;
+                beamTickCount = 0;
+            }
+            if (beamTickCount < beamTickBulletIds.length) {
+                beamTickBulletIds[beamTickCount++] = id;
+            }
+        }
 
         public void ensureShieldInit() {
             if (maxHealth <= 0f) return;
@@ -386,31 +595,128 @@ public final class Bulvasyr {
             return Angles.within(shieldFacing, angleFromUnitToSource, SHIELD_HALF_ARC);
         }
 
+        /** Kiểm tra đoạn thẳng (ax, ay) -> (bx, by) có cắt ngang tấm khiên mạn trái của Bulvasyr không (ghi điểm cắt vào Tmp.v1). */
+        public boolean doesSegmentHitShieldPlate(float ax, float ay, float bx, float by) {
+            float fwdX = Angles.trnsx(rotation, 1f), fwdY = Angles.trnsy(rotation, 1f);
+            float leftX = Angles.trnsx(rotation + SHIELD_ANGLE_OFFSET, 1f), leftY = Angles.trnsy(rotation + SHIELD_ANGLE_OFFSET, 1f);
+            float plateDist = hitSize * 0.56f;
+            float halfLen = hitSize * 0.72f;
+            float sx1 = x + leftX * plateDist + fwdX * halfLen;
+            float sy1 = y + leftY * plateDist + fwdY * halfLen;
+            float sx2 = x + leftX * plateDist - fwdX * halfLen;
+            float sy2 = y + leftY * plateDist - fwdY * halfLen;
+            return Intersector.intersectSegments(ax, ay, bx, by, sx1, sy1, sx2, sy2, Tmp.v1);
+        }
+
         /**
-         * Hấp thụ sát thương vào khiên vật lý trước.
-         * Trả về lượng sát thương thực sự đã được khiên chặn.
+         * Hấp thụ sát thương (đã nhân hệ số vật lý 1.5x / năng lượng 0.5x) vào khiên vật lý.
+         * Trả về lượng sát thương khiên đã thực sự hấp thụ.
          */
-        public float absorbPhysicalShield(float dmg, float hitX, float hitY, float hitAngle) {
+        public float absorbPhysicalShield(float shieldDmg, float hitX, float hitY, float hitAngle) {
             ensureShieldInit();
-            if (dmg <= 0f || physShieldHp <= 0f) return 0f;
+            if (shieldDmg <= 0f || physShieldHp <= 0f) return 0f;
 
             physShieldDamaged = true;
             shieldFlash = 1f;
 
-            float absorbed = Math.min(physShieldHp, dmg);
+            float absorbed = Math.min(physShieldHp, shieldDmg);
             physShieldHp -= absorbed;
 
             if (physShieldHp <= 0.01f) {
-    physShieldHp = 0f;
-    shieldBreakFx.at(hitX, hitY, rotation + SHIELD_ANGLE_OFFSET);
-    if (!Vars.headless) Sounds.explosion.at(hitX, hitY, 0.85f, 0.9f);
-} else {
+                physShieldHp = 0f;
+                shieldBreakFx.at(hitX, hitY, rotation + SHIELD_ANGLE_OFFSET);
+                if (!Vars.headless) Sounds.explosion.at(hitX, hitY, 0.85f, 0.9f);
+            } else {
                 shieldHitFx.at(hitX, hitY, hitAngle);
             }
             return absorbed;
         }
 
+        /** Kiểm tra một viên đạn di chuyển có đang tiếp cận từ phía mạn có khiên hay cắt qua tấm khiên không. */
+        private boolean isMovingBulletFromShieldSide(Bullet b, float hitX, float hitY) {
+            float angToHit = Angles.angle(x, y, hitX, hitY);
+            if (isAngleCoveredByShield(angToHit)) return true;
+            float incomingSide = b.rotation() + 180f;
+            if (isAngleCoveredByShield(incomingSide)) return true;
+            float step = Math.max(1f, Time.delta);
+            float prevX = b.x - b.vel.x * step, prevY = b.y - b.vel.y * step;
+            float nextX = b.x + b.vel.x * step, nextY = b.y + b.vel.y * step;
+            return doesSegmentHitShieldPlate(prevX, prevY, nextX, nextY);
+        }
+
+        /**
+         * Xử lý đạn bay (vật lý, năng lượng, xuyên thấu, mảnh đạn, đạn nổ) khi va vào tấm khiên mạn trái.
+         * Trả về true nếu viên đạn đã bị chặn hoàn toàn (không để chạy collision gốc / không cho xuyên qua).
+         */
+        private boolean processShieldProjectile(Bullet b, float hx, float hy) {
+            if (b == null || !b.isAdded() || b.team == team || !isShieldActive()) return false;
+            if (wasBulletHandled(b.id) || wasExplosiveCharged(b.id)) return true;
+
+            float angToHit = Angles.angle(x, y, hx, hy);
+            float mult = shieldDamageMultiplier(b.type);
+
+            if (isExplosiveBullet(b.type)) {
+                // Đạn gây vụ nổ: gây sát thương cho CẢ khiên lẫn unit, nhưng vẫn chặn đạn không xuyên qua và không cho mảnh đạn bay qua!
+                markExplosiveCharged(b.id);
+                float directDmg = Math.max(0f, b.damage);
+                float splashDmg = Math.max(0f, b.type.splashDamage);
+                float shieldCost = (directDmg + splashDmg) * mult;
+                if (shieldCost > 0f) {
+                    absorbPhysicalShield(shieldCost, hx, hy, angToHit);
+                }
+
+                // Kích nổ sát thương diện rộng ngay tại điểm va chạm trên khiên (gây sát thương vụ nổ lên unit trong bán kính)
+                if (!Vars.headless) {
+                    if (b.type.hitEffect != null) b.type.hitEffect.at(hx, hy, b.rotation(), b.type.hitColor);
+                    if (b.type.hitSound != null && b.type.hitSound != Sounds.none) {
+                        b.type.hitSound.at(hx, hy, Mathf.random(0.9f, 1.1f), b.type.hitSoundVolume);
+                    }
+                }
+                if (splashDmg > 0f && b.type.splashDamageRadius > 0f) {
+                    Damage.damage(b.team, hx, hy, b.type.splashDamageRadius, splashDmg,
+                        b.type.pierceArmor, b.type.collidesAir, b.type.collidesGround, b.type.scaledSplashDamage, b);
+                }
+                // Hấp thụ vỏ đạn để không xuyên qua khiên và không sinh mảnh đạn (fragBullets) xuyên qua sau lưng
+                b.absorb();
+                return true;
+            }
+
+            // Đạn không gây vụ nổ (kể cả đạn xuyên thấu, mảnh đạn, laser bolt, năng lượng): chặn hoàn toàn, unit 0 sát thương!
+            float rawDmg = Math.max(0f, b.damage);
+            if (rawDmg <= 0f) {
+                markBulletHandled(b.id);
+                b.absorb();
+                return true;
+            }
+            float shieldCost = rawDmg * mult;
+            float absorbedShield = absorbPhysicalShield(shieldCost, hx, hy, angToHit);
+            float overflowShield = shieldCost - absorbedShield;
+
+            if (overflowShield <= 0.01f) {
+                markBulletHandled(b.id);
+                b.absorb();
+                return true;
+            } else {
+                // Khiên vừa vỡ: quy đổi phần sát thương dư về sát thương gốc cho unit
+                markBulletHandled(b.id);
+                b.damage = overflowShield / mult;
+                return false;
+            }
+        }
+
         private int lastStep = -1;
+
+        @Override
+        public void add() {
+            super.add();
+            if (!activeBulvasyrs.contains(this, true)) activeBulvasyrs.add(this);
+        }
+
+        @Override
+        public void remove() {
+            activeBulvasyrs.remove(this, true);
+            super.remove();
+        }
 
         @Override
         public void draw() {
@@ -434,12 +740,14 @@ public final class Bulvasyr {
 
         @Override
         public void update() {
+            if (!dead && isAdded() && !activeBulvasyrs.contains(this, true)) activeBulvasyrs.add(this);
+            flushDeferredLethal();
             ageTicks++;
             footstepCinematic();
             ensureShieldInit();
             if (shieldFlash > 0f) shieldFlash = Math.max(0f, shieldFlash - Time.delta / 10f);
 
-            // Lớp 1: Chủ động chặn đạn bay tiến vào từ mạn trái trước khi chạm thân
+            // Lớp 1: Chủ động chặn đạn, mảnh đạn, và ghim tia laser nhắm thẳng ngay tại mặt khiên mạn trái
             if (isShieldActive() && !dead) {
                 interceptLeftFlankBullets();
             }
@@ -448,59 +756,154 @@ public final class Bulvasyr {
         }
 
         private void interceptLeftFlankBullets() {
-            float r = hitSize * 0.95f + 10f;
+            float r = hitSize * 1.25f + 20f;
             float shieldFacing = rotation + SHIELD_ANGLE_OFFSET;
-            float plateX = x + Angles.trnsx(shieldFacing, hitSize * 0.45f);
-            float plateY = y + Angles.trnsy(shieldFacing, hitSize * 0.45f);
+            final float plateX = x + Angles.trnsx(shieldFacing, hitSize * 0.52f);
+            final float plateY = y + Angles.trnsy(shieldFacing, hitSize * 0.52f);
 
             Groups.bullet.intersect(x - r, y - r, r * 2f, r * 2f, b -> {
                 if (b == null || !b.isAdded() || b.team == team || !isShieldActive()) return;
-                if (b.id == lastHandledBulletId) return;
-                // Bỏ qua đạn tia liên tục ở đây (sẽ xử lý ở Lớp 2 qua UnitDamageEvent)
-                if (b.type instanceof mindustry.entities.bullet.ContinuousBulletType) return;
 
-                // Kiểm tra đạn nằm ở phía mạn trái và đang bay hướng về phía unit
-                float angToBullet = Angles.angle(x, y, b.x, b.y);
-                float incomingSide = b.rotation() + 180f;
-                boolean bulletOnLeft = isAngleCoveredByShield(angToBullet) || isAngleCoveredByShield(incomingSide);
-                if (!bulletOnLeft) return;
-
-                float dstPlate = Mathf.dst(plateX, plateY, b.x, b.y);
-                float dstCenter = Mathf.dst(x, y, b.x, b.y);
-                if (dstPlate > hitSize * 0.82f && dstCenter > hitSize * 0.72f) return;
-
-                float totalDmg = Math.max(0f, b.damage) + (b.type.splashDamage > 0f ? b.type.splashDamage * 0.5f : 0f);
-                if (totalDmg <= 0f) return;
-
-                lastHandledBulletId = b.id;
-                float absorbed = absorbPhysicalShield(totalDmg, b.x, b.y, angToBullet);
-                float overflow = totalDmg - absorbed;
-
-                if (overflow <= 0.01f) {
-                    b.absorb();
-                } else {
-                    // Khiên vừa vỡ: chỉ để phần sát thương dư đi tiếp
-                    b.damage = overflow;
+                // Tia laser nhắm thẳng vào unit (PointLaserBulletType): giữ điểm chiếu trên mặt khiên (sát thương xử lý tại Lớp 3)
+                if (b.type instanceof PointLaserBulletType) {
+                    float srcX = b.x, srcY = b.y;
+                    if (b.owner instanceof Position) {
+                        srcX = ((Position) b.owner).getX();
+                        srcY = ((Position) b.owner).getY();
+                    }
+                    if (isAngleCoveredByShield(Angles.angle(x, y, srcX, srcY)) && Mathf.within(x, y, b.aimX, b.aimY, hitSize * 0.9f)) {
+                        b.aimX = plateX;
+                        b.aimY = plateY;
+                    }
+                    return;
                 }
+
+                // Các tia laser/chùm tức thời & liên tục xử lý sát thương ở Lớp 3 (handleBulletDamageEvent + tryBlockLaserBehindShield)
+                if (isBeamOrInstantType(b.type)) return;
+
+                if (wasBulletHandled(b.id) || wasExplosiveCharged(b.id)) return;
+
+                float step = Math.max(1f, Time.delta);
+                float prevX = b.x - b.vel.x * step, prevY = b.y - b.vel.y * step;
+                float nextX = b.x + b.vel.x * step, nextY = b.y + b.vel.y * step;
+                boolean hitSeg = doesSegmentHitShieldPlate(prevX, prevY, nextX, nextY);
+
+                if (!hitSeg) {
+                    if (!isMovingBulletFromShieldSide(b, b.x, b.y)) return;
+                    float dstPlate = Mathf.dst(plateX, plateY, b.x, b.y);
+                    float dstCenter = Mathf.dst(x, y, b.x, b.y);
+                    if (dstPlate > hitSize * 0.88f && dstCenter > hitSize * 0.78f) return;
+                }
+
+                float hx = hitSeg ? Tmp.v1.x : b.x;
+                float hy = hitSeg ? Tmp.v1.y : b.y;
+                processShieldProjectile(b, hx, hy);
             });
+        }
+
+        /** Lớp 2: Chặn trực tiếp ngay trong collision() — mọi đạn nhanh, đạn xuyên, mảnh đạn sinh sát thân đều không thể lọt qua! */
+        @Override
+        public void collision(Hitboxc other, float cx, float cy) {
+            if (other instanceof Bullet) {
+                Bullet b = (Bullet) other;
+                if (!dead && isShieldActive() && b.team != team && !isBeamOrInstantType(b.type)) {
+                    if (isMovingBulletFromShieldSide(b, cx, cy)) {
+                        if (processShieldProjectile(b, cx, cy)) {
+                            return;
+                        }
+                    }
+                }
+            }
+            super.collision(other, cx, cy);
+        }
+
+        void flushDeferredLethal() {
+            if (!deferredLethal || dead) return;
+            deferredLethal = false;
+            applyingDeferredLethal = true;
+            try {
+                health = 0f;
+                kill();
+            } finally {
+                applyingDeferredLethal = false;
+            }
+        }
+
+        private void applyOverflowDamage(float amt) {
+            if (amt <= 0f || dead) return;
+            applyingDeferredLethal = true;
+            try {
+                super.rawDamage(amt);
+            } finally {
+                applyingDeferredLethal = false;
+            }
         }
 
         @Override
         public void rawDamage(float amount) {
-            // Lưu trạng thái trước khi trừ máu để Lớp 2 có thể hoàn lại nếu UnitDamageEvent xác nhận trúng mạn trái
+            if (applyingDeferredLethal) {
+                super.rawDamage(amount);
+                return;
+            }
+            // Lưu trạng thái trước khi trừ máu để Lớp 3 có thể hoàn lại 100% nếu trúng khiên
             hpBeforeRaw = health;
             shieldBeforeRaw = shield;
+            lastRawAmount = amount;
             lastRawTick = (int) Time.time;
+            deferredLethal = false;
+
+            // Bảo vệ chống bị kết liễu (kill/remove) bởi 1 phát laser siêu lớn TRƯỚC KHI UnitDamageEvent kịp kiểm tra khiên
+            if (isShieldActive() && amount > 0f && (health + shield - amount) <= 0f) {
+                deferredLethal = true;
+                float safeAmt = Math.max(0f, health + shield - 0.01f);
+                super.rawDamage(safeAmt);
+                if (health <= 0f) health = 0.01f;
+                return;
+            }
+
             super.rawDamage(amount);
         }
 
-        /** Lớp 2: Xử lý tia/laser/đạn tức thời đánh từ hướng mạn trái thông qua UnitDamageEvent. */
+        /** Lớp 3: Xử lý laser, tia liên tục, tia laser nhắm thẳng, mảnh shrapnel, railgun, sét và sát thương vụ nổ qua UnitDamageEvent. */
         public void handleBulletDamageEvent(Bullet b) {
-            if (dead || !isShieldActive() || b == null || b.team == team) return;
-            if (b.id == lastHandledBulletId) return;
-            if (lastRawTick != (int) Time.time || hpBeforeRaw < 0f) return;
+            if (b == null || b.team == team) return;
+            if (dead && !deferredLethal) return;
+            if (!isShieldActive()) {
+                flushDeferredLethal();
+                return;
+            }
 
-            // Xác định hướng nguồn tấn công (ưu tiên vị trí chủ sở hữu cho laser/tia sét)
+            float lostHp = lastRawTick == (int) Time.time && hpBeforeRaw >= 0f ? Math.max(0f, hpBeforeRaw - health) : 0f;
+            float lostEnergyShield = lastRawTick == (int) Time.time && shieldBeforeRaw >= 0f ? Math.max(0f, shieldBeforeRaw - shield) : 0f;
+            float totalLost = deferredLethal ? Math.max(lostHp + lostEnergyShield, lastRawAmount) : (lostHp + lostEnergyShield);
+
+            // Nếu là viên đạn đã được chặn hoàn toàn ở Lớp 1/2 mà vẫn có sự kiện dư -> hoàn trả sạch sát thương
+            if (wasBulletHandled(b.id)) {
+                if (lastRawTick == (int) Time.time && hpBeforeRaw >= 0f) {
+                    deferredLethal = false;
+                    health = Math.min(maxHealth, hpBeforeRaw);
+                    shield = Math.max(shield, shieldBeforeRaw);
+                }
+                return;
+            }
+
+            float plateX = x + Angles.trnsx(rotation + SHIELD_ANGLE_OFFSET, hitSize * 0.52f);
+            float plateY = y + Angles.trnsy(rotation + SHIELD_ANGLE_OFFSET, hitSize * 0.52f);
+
+            // Đạn gây vụ nổ: CHỈ loại này gây sát thương cho CẢ khiên lẫn unit!
+            if (isExplosiveBullet(b.type)) {
+                if (!wasExplosiveCharged(b.id) && totalLost > 0f) {
+                    markExplosiveCharged(b.id);
+                    float ang = Angles.angle(x, y, b.x, b.y);
+                    float mult = shieldDamageMultiplier(b.type);
+                    absorbPhysicalShield(totalLost * mult, plateX, plateY, ang);
+                }
+                // Không hoàn trả máu cho unit (vụ nổ gây sát thương cả khiên lẫn unit)
+                flushDeferredLethal();
+                return;
+            }
+
+            // Xác định hướng nguồn tấn công (ưu tiên vị trí chủ sở hữu cho laser, tia nhắm thẳng, tia sét)
             float srcX = b.x, srcY = b.y;
             if (b.owner instanceof Position) {
                 Position p = (Position) b.owner;
@@ -508,25 +911,49 @@ public final class Bulvasyr {
                 srcY = p.getY();
             }
             float angToSource = Angles.angle(x, y, srcX, srcY);
-            if (!isAngleCoveredByShield(angToSource)) return;
+            boolean covered = isAngleCoveredByShield(angToSource)
+                    || (!isBeamOrInstantType(b.type) && isMovingBulletFromShieldSide(b, b.x, b.y));
+            if (!covered) {
+                // Trúng mạn không có khiên -> thực thi sát thương/kết liễu bình thường
+                flushDeferredLethal();
+                return;
+            }
 
-            float lostHp = Math.max(0f, hpBeforeRaw - health);
-            float lostEnergyShield = Math.max(0f, shieldBeforeRaw - shield);
-            float totalLost = lostHp + lostEnergyShield;
             if (totalLost <= 0f) return;
 
-            float plateX = x + Angles.trnsx(rotation + SHIELD_ANGLE_OFFSET, hitSize * 0.52f);
-            float plateY = y + Angles.trnsy(rotation + SHIELD_ANGLE_OFFSET, hitSize * 0.52f);
-            float absorbed = absorbPhysicalShield(totalLost, plateX, plateY, angToSource);
+            // Đánh dấu đã trừ khiên cho tia này ở tick hiện tại để tryBlockLaserBehindShield không trừ trùng
+            markBeamChargedThisTick(b.id);
 
-            // Hoàn trả đúng phần sát thương đã bị trừ oan vào HP / khiên năng lượng
-            float refundHp = Math.min(lostHp, absorbed);
-            health = Math.min(maxHealth, health + refundHp);
-            float rem = absorbed - refundHp;
-            if (rem > 0f) {
-                shield += Math.min(lostEnergyShield, rem);
+            // Ghim điểm cuối của tia laser nhắm thẳng lên mặt khiên
+            if (b.type instanceof PointLaserBulletType) {
+                b.aimX = plateX;
+                b.aimY = plateY;
             }
-            if (health > 0f) dead = false;
+
+            // Áp dụng hệ số: đạn năng lượng/laser = -50% (0.5x), đạn vật lý = +50% (1.5x)
+            float mult = shieldDamageMultiplier(b.type);
+            float shieldCost = totalLost * mult;
+            float absorbedShield = absorbPhysicalShield(shieldCost, plateX, plateY, angToSource);
+            float rawBlocked = absorbedShield / mult;
+
+            if (deferredLethal) {
+                deferredLethal = false;
+                float overflowRaw = Math.max(0f, totalLost - rawBlocked);
+                health = Math.min(maxHealth, hpBeforeRaw);
+                shield = shieldBeforeRaw;
+                if (overflowRaw > 0.01f) {
+                    applyOverflowDamage(overflowRaw);
+                }
+            } else {
+                // Hoàn trả đúng phần sát thương khiên đã chặn (nếu khiên chưa vỡ -> hoàn 100% HP/khiên năng lượng)
+                float refundHp = Math.min(lostHp, rawBlocked);
+                health = Math.min(maxHealth, health + refundHp);
+                float rem = rawBlocked - refundHp;
+                if (rem > 0f) {
+                    shield += Math.min(lostEnergyShield, rem);
+                }
+                if (health > 0f) dead = false;
+            }
         }
     }
 
@@ -1095,7 +1522,8 @@ Lines.line(x4, y4, x1, y1);
         public void addStats(Table t) {
             t.add("[lightgray]Độ bền khiên: [sky]500% HP[] của unit").row();
             t.add("[lightgray]Vùng che chắn: [white]Mạn trái (±" + (int) SHIELD_HALF_ARC + "°)").row();
-            t.add("[lightgray]Cơ chế: [white]Ưu tiên trừ độ bền khiên trước khi trúng mạn trái; không tự hồi, chỉ reset khi bị tiêu diệt hoặc đổi unit");
+            t.add("[lightgray]Chặn đòn: [white]Chặn mọi đạn, mảnh đạn, laser & tia laser nhắm thẳng (không bắn xuyên); chỉ vụ nổ mới gây sát thương cho cả khiên lẫn unit").row();
+            t.add("[lightgray]Kháng/Yếu: [scarlet]+50%[] sát thương từ đạn vật lý | [green]-50%[] sát thương từ đạn năng lượng & laser");
         }
     }
 }
