@@ -177,7 +177,7 @@ public final class Bulvasyr {
             Angles.randLenVectors(e.id + 5, 4, 4f + 12f * e.finpow(), (x, y) ->
                 Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 0.8f + 3f * e.fout())
             );
-        });
+        }).layer(Layer.groundUnit - 1f); // nằm dưới unit
 
         // Khói vệt đuôi: tím xám nở dần, tan chậm
         rocketSmokeFx = new Effect(38f, e -> {
@@ -203,15 +203,15 @@ public final class Bulvasyr {
 
         // Va chạm: ngôi sao 2 cánh dài phóng to dần và tan chậm
         rocketHitFx = new Effect(58f, 320f, e -> {
-            float grow = 1f + 7.5f * e.fin(Interp.pow2Out);
+            float grow = 0.45f + 8f * e.fin(Interp.pow2Out);
             float a = e.fout(Interp.pow2);
             Draw.blend(Blending.additive);
             Draw.color(MISS_VIOLET, 0.55f * a);
-            drawStar(e.x, e.y, e.rotation, 17f * grow, 4.2f * grow, 6f * grow);
+            drawStar(e.x, e.y, 0f, 17f * grow, 4.2f * grow, 6f * grow);
             Draw.color(MISS_STEEL, 0.9f * a);
-            drawStar(e.x, e.y, e.rotation, 12f * grow, 2.4f * grow, 4f * grow);
+            drawStar(e.x, e.y, 0f, 12f * grow, 2.4f * grow, 4f * grow);
             Draw.color(Color.white, a);
-            drawStar(e.x, e.y, e.rotation, 7f * grow, 1.2f * grow, 2.2f * grow);
+            drawStar(e.x, e.y, 0f, 7f * grow, 1.2f * grow, 2.2f * grow);
             Draw.blend();
             Draw.color(MISS_STEEL, 0.6f * a);
             Lines.stroke(1.6f * a);
@@ -567,11 +567,13 @@ public final class Bulvasyr {
                     float sy = my + Angles.trnsy(weaponRot - 90f, ox, oy);
 
                     // Góc phóng vồng lệch sang 2 bên tạo chùm tên lửa cong uốn lượn giống video
-                    float arcSpread = (idx - 1.5f) * 5f + Mathf.range(3f);
+                    float arcSpread = Mathf.randomSign() * Mathf.random(22f, 70f); // văng ngẫu nhiên sang trái/phải rồi uốn cong vào mục tiêu
                     float launchAngle = weaponRot + arcSpread;
 
                     float swirlPhase = idx * (Mathf.PI / 2f) + x * 0.37f;
-                    Bullet b = bullet.create(unit, unit.team, sx, sy, launchAngle, -1f, 0.92f + idx * 0.04f, 1f, new SwirlData(target, swirlPhase));
+                    SwirlData sdNew = new SwirlData(target, swirlPhase);
+                    sdNew.turn = Mathf.random(2.4f, 4.4f);
+                    Bullet b = bullet.create(unit, unit.team, sx, sy, launchAngle, -1f, 0.92f + idx * 0.04f, 1f, sdNew);
                     if (b != null) {
                         float atk = calcAtk(unit);
                         b.damage = atk * ROCKET_DIRECT_RATIO;
@@ -596,6 +598,9 @@ public final class Bulvasyr {
         public float phase, prev;
         public float minDst = 1e9f;
         public boolean passed, expiring;
+        public float turn = 3f;          // tốc độ uốn cong (độ/tick), mỗi quả ngẫu nhiên
+        public float startDst = -1f;     // khoảng cách tới mục tiêu lúc mới bay
+        public float expireT, scExp = 1f; // mốc bắt đầu 0,5s cuối khi trượt mục tiêu
         public SwirlData(Teamc target, float phase) { this.target = target; this.phase = phase; }
     }
 
@@ -615,7 +620,7 @@ public final class Bulvasyr {
 
             homingPower = 0.16f;
             homingRange = RANGE * 1.4f;
-            homingDelay = 9f; // bay lệch tạo vòng cung trong 0.15s đầu rồi bẻ lái lao thẳng vào mục tiêu
+            homingDelay = 12f; // bay lệch tạo vòng cung trong 0.15s đầu rồi bẻ lái lao thẳng vào mục tiêu
 
             keepVelocity = false;
             collidesAir = true;
@@ -656,11 +661,19 @@ public final class Bulvasyr {
             if (target != null) {
                 // Tăng dần lực bẻ lái để tên lửa uốn cong mượt rồi lao gắt vào mục tiêu như video
                 float ramp = Mathf.clamp((b.time - homingDelay) / 18f, 0.35f, 1.6f);
-                b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(target), homingPower * 58f * ramp * Time.delta));
+                b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(target), (sd != null ? sd.turn : 3f) * Mathf.clamp(0.5f + (b.time - homingDelay) / 20f, 0.5f, 1.5f) * Time.delta));
             }
         }
 
         /** Dịch vị trí đạn ngang quỹ đạo theo sin: nhìn từ trên xuống, xoắn ốc 3D chính là sóng lượn quanh trục bay. */
+        /** Cỡ sao theo hành trình: nhỏ lúc rời nòng, to dần tới giữa đoạn, nhỏ lại khi sắp va chạm. */
+        private static float starScale(Bullet b, SwirlData sd) {
+            float prog;
+            if (isTargetAlive(sd.target) && sd.startDst > 1f) prog = Mathf.clamp(1f - (b.dst(sd.target) - 8f) / sd.startDst);
+            else prog = Mathf.clamp(b.time / Math.max(1f, b.lifetime));
+            return Mathf.lerp(0.3f, 1.7f, Mathf.sin(prog * Mathf.PI));
+        }
+
         private static float swirlOffset(Bullet b, SwirlData sd) {
             float t = b.time;
             float env = Mathf.clamp(t / SWIRL_RAMP);
@@ -676,6 +689,7 @@ public final class Bulvasyr {
             if (!(b.data instanceof SwirlData)) return;
             SwirlData sd = (SwirlData) b.data;
             // Trượt mục tiêu (lướt qua hoặc mất mục tiêu): bay thêm đúng 0,5s (30 tick) rồi va chạm
+            if (sd.startDst < 0f && isTargetAlive(sd.target)) sd.startDst = b.dst(sd.target);
             if (!sd.expiring) {
                 if (isTargetAlive(sd.target)) {
                     float dd = b.dst(sd.target);
@@ -684,7 +698,7 @@ public final class Bulvasyr {
                 } else if (b.time > homingDelay + 12f) {
                     sd.expiring = true;
                 }
-                if (sd.expiring) b.lifetime = Math.min(b.lifetime, b.time + 30f);
+                if (sd.expiring) { b.lifetime = Math.min(b.lifetime, b.time + 30f); sd.expireT = b.time; sd.scExp = starScale(b, sd); }
             }
             float off = swirlOffset(b, sd);
             float d = off - sd.prev;
@@ -706,7 +720,7 @@ public final class Bulvasyr {
             float lat = SWIRL_AMP * env * SWIRL_SPEED * Mathf.cos(ph);
             float r0 = b.rotation();
             float tilt = Mathf.atan2(lat, Math.max(0.5f, b.vel.len())) * Mathf.radDeg;
-            float sc = (1f + SWIRL_DEPTH * env * Mathf.cos(ph)) * Mathf.lerp(0.55f, 1f, Interp.pow2Out.apply(Mathf.clamp(t / 10f)));
+            float sc = sd.expiring ? Mathf.lerp(sd.scExp, 0.3f, Mathf.clamp((t - sd.expireT) / 30f)) : starScale(b, sd);
             float heading = r0 + tilt;
             float flick = 0.85f + Mathf.absin(Time.time + b.id, 2.3f, 0.3f);
             drawTrail(b);
