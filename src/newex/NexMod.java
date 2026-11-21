@@ -77,6 +77,7 @@ import newex.content.Plasanod;
 import newex.content.Suv27;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
+import newex.content.BulvasyrDash;
 import newex.content.Zeralion;
 import newex.content.Tank15;
 import newex.content.aureon;
@@ -197,6 +198,7 @@ public class NexMod extends Mod {
         Repulsyron.init();
         ArchuengPvp.init();
         HoniveryPvp.init(); // nut skill Honivery (unit bậc 8 trong NewMode PvP)
+        BulvasyrDash.init(); // nut skill Luot cua Bulvasyr (unit bậc 11 trong NewMode PvP)
         Erysidus.init();
         Ravendes.init();
         Persefer.init();

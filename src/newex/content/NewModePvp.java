@@ -217,10 +217,10 @@ public class NewModePvp {
     static final String KEY_MAXLV = "newex-pvp-max-level";
     static final int LIMIT_MAXLV = 999;
     static final int FREE_SWITCH_LEVEL = 5;
-    static final int TIER_MAX = 10; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion (unit moi chien tranh)
-    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64;
+    static final int TIER_MAX = 11; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion, 11 bulvasyr (unit moi chien tranh)
+    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64, BULVASYR_MIN_LEVEL = 40;
     /** Cấp tối thiểu để chọn unit bậc t (0 = không yêu cầu). */
-    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : 0; }
+    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : t == 11 ? BULVASYR_MIN_LEVEL : 0; }
     static boolean isWarTier(int t) { return t >= 9; }
 
     // ===== Chế độ lắp nhiều pháo (St.tm: 0 = chế độ 1, 1 = chế độ 2, 2 = chế độ 3) =====
@@ -678,6 +678,7 @@ public class NewModePvp {
         if (lv == 8) { UnitType h = Honivery.honivery; return h != null ? h : UnitTypes.collaris; }
         if (lv == 9) { UnitType a = newex.content.aureon.aureon; return a != null ? a : UnitTypes.collaris; }
         if (lv == 10) { UnitType z = Zeralion.zeralion; return z != null ? z : UnitTypes.collaris; }
+        if (lv == 11) { UnitType b = Bulvasyr.bulvasyr; return b != null ? b : UnitTypes.collaris; }
         if (tierList == null) tierList = new UnitType[]{UnitTypes.merui, UnitTypes.cleroi, UnitTypes.anthicus, UnitTypes.tecta, UnitTypes.collaris};
         return tierList[Math.min(5, Math.max(1, lv)) - 1];
     }
@@ -5262,7 +5263,7 @@ public class NewModePvp {
         col.add("[white]" + ut.localizedName + "[]").left().row();
         col.add("[lightgray]" + (isWarTier(t) ? tr("Unit mới chiến tranh · yêu cầu cấp " + tierMinLevel(t), "New war unit · requires Lv " + tierMinLevel(t)) : isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t)) + "[]").left().wrap().growX();
         row.add(col).growX().left().minWidth(0);
-        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 10 ? "Zeralion" : null;
+        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 10 ? "Zeralion" : t == 11 ? "Bulvasyr" : null;
         if (t == cur) row.add("[accent]" + tr("Đang dùng", "In use") + "[]").width(selW).center();
         else if (st.lv < tierMinLevel(t)) row.add("[scarlet]" + tr("Cần cấp ", "Need Lv ") + tierMinLevel(t) + "[]").width(selW).center();
         else row.button(tr("Chọn", "Select"), () -> send(REQ_UNIT, String.valueOf(t))).size(selW, btnH());

@@ -32,7 +32,7 @@ import mindustry.ui.dialogs.BaseDialog;
 import mindustry.world.Block;
 import newex.NexNet;
 
-/** Kén triệu hồi: Tank-15, Archueng, Honivery, Aureon, Zeralion (khối newex-spawner đặt sẵn trong content hjson). */
+/** Kén triệu hồi: Tank-15, Archueng, Honivery, Aureon, Bulvasyr, Zeralion (khối newex-spawner đặt sẵn trong content hjson). */
 public final class LeolyrSummoner {
     private LeolyrSummoner() {}
 
@@ -77,6 +77,10 @@ public final class LeolyrSummoner {
                 "Unit chân vàng kim, khóa mục tiêu và giáng sét.",
                 "Gold legged unit that locks onto targets and calls lightning.",
                 new ItemStack(Items.silicon, 4000), new ItemStack(Items.titanium, 3000), new ItemStack(Items.thorium, 2500), new ItemStack(Items.plastanium, 1500), new ItemStack(Items.surgeAlloy, 1000)),
+            new Entry("newex-bulvasyr", "7a68ff", "BULVASYR", "BULVASYR",
+                "Robot 2 chân xanh tím: khiên bên hông, chùm tên lửa ngôi sao bay xoắn tự khóa mục tiêu.",
+                "Violet 2-legged mech: side shield and a salvo of star rockets that spiral onto locked targets.",
+                new ItemStack(Items.silicon, 4500), new ItemStack(Items.titanium, 3500), new ItemStack(Items.thorium, 3000), new ItemStack(Items.plastanium, 2000), new ItemStack(Items.surgeAlloy, 1500)),
             new Entry("newex-zeralion", "ffb300", "ZERALION", "ZERALION",
                 "Unit chiến tranh tối thượng: bắn từng viên thẳng hàng, laser vàng khóa mục tiêu.",
                 "Ultimate war unit: single-file shots and a gold laser that locks onto targets.",

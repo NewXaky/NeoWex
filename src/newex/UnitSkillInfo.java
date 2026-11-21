@@ -13,6 +13,8 @@ import mindustry.type.UnitType;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
 import newex.content.ArchuengPvp;
+import newex.content.Bulvasyr;
+import newex.content.BulvasyrDash;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
 import newex.content.Zeralion;
@@ -156,8 +158,25 @@ public final class UnitSkillInfo {
         ));
     }
 
+    public static void registerBulvasyr() {
+        register(new SkillProfile(
+            "Bulvasyr",
+            () -> Bulvasyr.bulvasyr,
+            "LƯỚT VÔ ẢNH · CHÙM SAO TÊN LỬA",
+            DamageKind.BASIC_ATTACK,
+            Color.valueOf("7A68FF"),
+            "Lướt: [cyan]7.0s[] hồi chiêu, kéo dài [cyan]0.43s[]",
+            "[gold]Chùm sao[]: mỗi đợt 4 tên lửa hình sao 2 cánh, bay xoắn rồi uốn cong vào mục tiêu\n[gold]Va chạm[]: nổ diện rộng, ngôi sao phóng to rồi tan dần\n[sky]Khiên bên hông[]: chặn đạn từ mạn trái",
+            "[gold]Lướt[]: không dịch chuyển tức thời. Unit tăng tốc dần, [cyan]lướt nhanh[] rồi giảm tốc, để lại vệt sáng và bóng ảnh xanh tím. PC lướt về phía chuột, mobile lướt theo hướng đang chạy.",
+            "[gold]Tự khóa[]: tự khóa mục tiêu gần nhất rồi bắn chùm tên lửa, không cần giữ nút bắn.",
+            null,
+            () -> "PC: Lướt - phím [accent][" + BulvasyrDash.getSkillKey().value + "][] (đổi trong Cài đặt)\nMobile: nút LƯỚT trên màn hình"
+        ));
+    }
+
     public static void init() {
         registerHonivery();
+        registerBulvasyr();
         registerArchueng();
         registerZeralion();
     }
