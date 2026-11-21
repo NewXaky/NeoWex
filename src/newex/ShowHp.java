@@ -3,6 +3,7 @@ package newex;
 import arc.Core;
 import arc.Events;
 import arc.func.Cons;
+import arc.graphics.Blending;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
@@ -10,6 +11,8 @@ import arc.graphics.g2d.Font;
 import arc.graphics.g2d.Lines;
 import arc.math.Mathf;
 import arc.math.geom.Rect;
+import arc.struct.IntFloatMap;
+import arc.struct.IntMap;
 import arc.util.Align;
 import arc.util.Time;
 import mindustry.Vars;
@@ -20,11 +23,7 @@ import mindustry.game.EventType.UnitDestroyEvent;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.gen.Groups;
 import mindustry.gen.Unit;
-import arc.graphics.Blending;
 import mindustry.ui.Fonts;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /** Hiện thanh máu cho đơn vị trong 5 giây sau khi bị thương (thay show-hp.js). Cài đặt: "newex-hp-style" = show-hp | hp | off. */
 public final class ShowHp {
@@ -32,26 +31,35 @@ public final class ShowHp {
     static final String MAXHP_KIND = "newex-maxhp-sync";
     static final float SHOW_TIME = 300f;            // 5s sau lần mất/hồi máu cuối
     static final float SHATTER_LIFE = 18f, CRACK_FRAC = 0.22f;
+    static final float MISSING = -1e30f;
 
     static final Color BG_BAR = Color.valueOf("0d0d11");
     static final Color BG_BAR_SMALL = Color.valueOf("1f1f1f");
     static final Color SHIELD = Color.valueOf("4ba3e3");
     static final Color RED = Color.valueOf("ff0000"), YELLOW = Color.valueOf("ffff00"), GREEN = Color.valueOf("00ff00");
 
-    static final Map<Integer, Float> smoothHp = new HashMap<>();
-    static final Map<Integer, Float> smoothShield = new HashMap<>();
-    static final Map<Integer, Float> lastHp = new HashMap<>();
-    static final Map<Integer, Float> lastDamageTime = new HashMap<>();
-    static final Map<Integer, String> textCache = new HashMap<>();
-    static final Map<Integer, Float> textCacheHp = new HashMap<>();
-    static final Map<Integer, Float> textCacheMax = new HashMap<>();
-    static final Map<Integer, Float> peakMaxHp = new HashMap<>();
-    static final Map<Integer, Float> syncedMaxHp = new HashMap<>();
+    // Dùng IntFloatMap / IntMap của Arc -> KHÔNG cấp phát Integer/Float mỗi khung hình (cắt toàn bộ rác GC!)
+    static final IntFloatMap smoothHp = new IntFloatMap();
+    static final IntFloatMap smoothShield = new IntFloatMap();
+    static final IntFloatMap lastHp = new IntFloatMap();
+    static final IntFloatMap lastDamageTime = new IntFloatMap();
+    static final IntMap<String> textCache = new IntMap<>();
+    static final IntFloatMap textCacheHp = new IntFloatMap();
+    static final IntFloatMap textCacheMax = new IntFloatMap();
+    static final IntFloatMap peakMaxHp = new IntFloatMap();
+    static final IntFloatMap syncedMaxHp = new IntFloatMap();
     static boolean netRegistered = false;
     static float maxHpSyncAcc = 0f;
     static int maxHpFullTick = 0;
 
     static final Rect rect = new Rect();
+    // Mảng dùng lại cho shatterFx (tránh new float[]/int[][] hàng nghìn lần khi nhiều quái chết)
+    static final int MAX_SHATTER_COLS = 14;
+    static final float[] SHATTER_GX = new float[3 * (MAX_SHATTER_COLS + 1)];
+    static final float[] SHATTER_GY = new float[3 * (MAX_SHATTER_COLS + 1)];
+    static final float[] SHATTER_VX = new float[3];
+    static final float[] SHATTER_VY = new float[3];
+    static final int[] SHATTER_TRI = new int[3];
 
     /** Dữ liệu truyền cho hiệu ứng vỡ thanh máu. */
     static class ShatterData {
@@ -76,8 +84,9 @@ public final class ShowHp {
             Draw.color(BG_BAR); Draw.alpha(0.8f); Fill.rect(e.x, e.y, W, H);
             Draw.color(hpCol); Draw.alpha(0.9f); Fill.rect(e.x + (fillL + fillR) / 2f, e.y, d.fillW, H - 1.6f);
             Draw.color(Color.white); Lines.stroke(0.5f);
-            for (int i = 0; i < 8; i++) {
-                float a = i * 45f + Mathf.randomSeed(e.id * 7L + i) * 30f;
+            int cracks = Vars.mobile ? 5 : 8;
+            for (int i = 0; i < cracks; i++) {
+                float a = i * (360f / cracks) + Mathf.randomSeed(e.id * 7L + i) * 30f;
                 float len = (3f + Mathf.randomSeed(e.id * 11L + i) * 9f) * q;
                 Draw.alpha(0.9f);
                 Lines.lineAngle(e.x + hx, e.y, a, len);
@@ -90,52 +99,56 @@ public final class ShowHp {
         float t = (k - CRACK_FRAC) / (1f - CRACK_FRAC);   // 0..1 sau khi vỡ
         float tau = (k - CRACK_FRAC) * SHATTER_LIFE;      // tick kể từ lúc vỡ
         float alpha = 1f - (float) Math.pow(t, 1.6f);
-        int cols = Math.max(5, Math.round(W / 3.6f)), rows = 2;
+        int maxCols = Vars.mobile ? 6 : MAX_SHATTER_COLS;
+        int cols = Mathf.clamp(Math.round(W / 3.6f), 4, maxCols);
+        int rows = 2;
         float cw = W / cols, rh = H / rows;
 
-        // Lưới đỉnh lệch ngẫu nhiên (cố định theo id) để mảnh kính không đều
-        float[] gx = new float[(rows + 1) * (cols + 1)], gy = new float[(rows + 1) * (cols + 1)];
+        // Lưới đỉnh lệch ngẫu nhiên (cố định theo id) dùng mảng tĩnh không cấp phát
         for (int r = 0; r <= rows; r++) {
             for (int c = 0; c <= cols; c++) {
                 boolean inner = c > 0 && c < cols, innerY = r > 0 && r < rows;
                 int n = r * (cols + 1) + c;
-                gx[n] = -W / 2f + c * cw + (inner ? (Mathf.randomSeed(e.id * 131L + c * 17L + r * 31L) - 0.5f) * cw * 0.7f : 0f);
-                gy[n] = -H / 2f + r * rh + (innerY ? (Mathf.randomSeed(e.id * 137L + c * 19L + r * 29L) - 0.5f) * rh * 0.7f : 0f);
+                SHATTER_GX[n] = -W / 2f + c * cw + (inner ? (Mathf.randomSeed(e.id * 131L + c * 17L + r * 31L) - 0.5f) * cw * 0.7f : 0f);
+                SHATTER_GY[n] = -H / 2f + r * rh + (innerY ? (Mathf.randomSeed(e.id * 137L + c * 19L + r * 29L) - 0.5f) * rh * 0.7f : 0f);
             }
         }
 
-        float[] vx = new float[3], vy = new float[3];
+        boolean drawEdges = !Vars.mobile && PerfCore.level() == 0;
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
-                int[][] tris = {
-                    {r * (cols + 1) + c, r * (cols + 1) + c + 1, (r + 1) * (cols + 1) + c},
-                    {r * (cols + 1) + c + 1, (r + 1) * (cols + 1) + c + 1, (r + 1) * (cols + 1) + c}
-                };
+                int i00 = r * (cols + 1) + c;
+                int i01 = i00 + 1;
+                int i10 = (r + 1) * (cols + 1) + c;
+                int i11 = i10 + 1;
                 for (int ti = 0; ti < 2; ti++) {
-                    int[] tr = tris[ti];
+                    if (ti == 0) { SHATTER_TRI[0] = i00; SHATTER_TRI[1] = i01; SHATTER_TRI[2] = i10; }
+                    else { SHATTER_TRI[0] = i01; SHATTER_TRI[1] = i11; SHATTER_TRI[2] = i10; }
                     long seed = e.id * 193L + (r * cols + c) * 2L + ti;
-                    float cxl = (gx[tr[0]] + gx[tr[1]] + gx[tr[2]]) / 3f, cyl = (gy[tr[0]] + gy[tr[1]] + gy[tr[2]]) / 3f;
-                    // Hướng bay: từ điểm va ra ngoài + trọng lực kéo xuống
+                    float cxl = (SHATTER_GX[SHATTER_TRI[0]] + SHATTER_GX[SHATTER_TRI[1]] + SHATTER_GX[SHATTER_TRI[2]]) / 3f;
+                    float cyl = (SHATTER_GY[SHATTER_TRI[0]] + SHATTER_GY[SHATTER_TRI[1]] + SHATTER_GY[SHATTER_TRI[2]]) / 3f;
                     float dx = cxl - hx, dy = cyl + 0.6f;
                     float dl = Math.max(0.5f, (float) Math.sqrt(dx * dx + dy * dy));
                     float sp = 0.35f + Mathf.randomSeed(seed) * 0.9f;
                     float px = cxl + (dx / dl) * sp * tau * 1.1f;
                     float py = cyl + (dy / dl) * sp * tau * 0.8f - 0.045f * tau * tau;
                     float rot = (Mathf.randomSeed(seed + 5) - 0.5f) * 0.35f * tau;
-                    float cr = (float) Math.cos(rot), sr = (float) Math.sin(rot);
+                    float cr = Mathf.cos(rot), sr = Mathf.sin(rot);
                     float sc = 1f - 0.3f * t;
                     for (int v = 0; v < 3; v++) {
-                        float ox = (gx[tr[v]] - cxl) * sc, oy = (gy[tr[v]] - cyl) * sc;
-                        vx[v] = e.x + px + ox * cr - oy * sr;
-                        vy[v] = e.y + py + ox * sr + oy * cr;
+                        float ox = (SHATTER_GX[SHATTER_TRI[v]] - cxl) * sc, oy = (SHATTER_GY[SHATTER_TRI[v]] - cyl) * sc;
+                        SHATTER_VX[v] = e.x + px + ox * cr - oy * sr;
+                        SHATTER_VY[v] = e.y + py + ox * sr + oy * cr;
                     }
                     boolean inFill = cxl >= fillL && cxl <= fillR && Math.abs(cyl) < H / 2f - 0.8f;
                     Draw.color(inFill ? hpCol : BG_BAR); Draw.alpha((inFill ? 0.95f : 0.8f) * alpha);
-                    Fill.tri(vx[0], vy[0], vx[1], vy[1], vx[2], vy[2]);
-                    Draw.color(Color.white); Draw.alpha(0.55f * alpha); Lines.stroke(0.35f);
-                    Lines.line(vx[0], vy[0], vx[1], vy[1]);
-                    Lines.line(vx[1], vy[1], vx[2], vy[2]);
-                    Lines.line(vx[2], vy[2], vx[0], vy[0]);
+                    Fill.tri(SHATTER_VX[0], SHATTER_VY[0], SHATTER_VX[1], SHATTER_VY[1], SHATTER_VX[2], SHATTER_VY[2]);
+                    if (drawEdges) {
+                        Draw.color(Color.white); Draw.alpha(0.55f * alpha); Lines.stroke(0.35f);
+                        Lines.line(SHATTER_VX[0], SHATTER_VY[0], SHATTER_VX[1], SHATTER_VY[1]);
+                        Lines.line(SHATTER_VX[1], SHATTER_VY[1], SHATTER_VX[2], SHATTER_VY[2]);
+                        Lines.line(SHATTER_VX[2], SHATTER_VY[2], SHATTER_VX[0], SHATTER_VY[0]);
+                    }
                 }
             }
         }
@@ -168,22 +181,25 @@ public final class ShowHp {
             if (e.unit == null) return;
             Unit u = e.unit;
             int id = u.id;
-            String style = style();
-            float lastDmg = lastDamageTime.getOrDefault(id, -9999f);
-            if (!style.equals("off") && Time.time - lastDmg <= SHOW_TIME && smoothHp.containsKey(id) && !Vars.headless) {
-                float pct = Math.max(0f, smoothHp.get(id) / effectiveMaxHp(u) * 100f);
-                float W, H, by;
-                Color col;
-                if (style.equals("show-hp")) {
-                    W = Math.max(22f, u.hitSize * 1.2f) + 1.6f; H = 5.6f; by = u.y + u.hitSize / 2f + 6f;
-                    col = pct < 25f ? RED : pct < 55f ? YELLOW : GREEN;
-                } else {
-                    W = Math.max(18f, u.hitSize) + 1.2f; H = 4.2f; by = u.y + u.hitSize / 2f + 4f;
-                    col = pct < 20f ? RED : pct < 50f ? YELLOW : GREEN;
+            boolean skipShatter = PerfCore.level() >= 2 || (Vars.mobile && PerfCore.level() >= 1);
+            if (!skipShatter && !Vars.headless) {
+                String style = style();
+                float lastDmg = lastDamageTime.get(id, -9999f);
+                if (!style.equals("off") && Time.time - lastDmg <= SHOW_TIME && smoothHp.containsKey(id) && PerfCore.onScreen(u.x, u.y, 40f)) {
+                    float pct = Math.max(0f, smoothHp.get(id, 0f) / effectiveMaxHp(u) * 100f);
+                    float W, H, by;
+                    Color col;
+                    if (style.equals("show-hp")) {
+                        W = Math.max(22f, u.hitSize * 1.2f) + 1.6f; H = 5.6f; by = u.y + u.hitSize / 2f + 6f;
+                        col = pct < 25f ? RED : pct < 55f ? YELLOW : GREEN;
+                    } else {
+                        W = Math.max(18f, u.hitSize) + 1.2f; H = 4.2f; by = u.y + u.hitSize / 2f + 4f;
+                        col = pct < 20f ? RED : pct < 50f ? YELLOW : GREEN;
+                    }
+                    float fillW = Math.max(0.5f, (W - 1.6f) * Math.min(1f, pct / 100f));
+                    float hx = Math.max(-W / 2f + 2f, Math.min(W / 2f - 2f, -W / 2f + 0.8f + fillW * 0.85f));
+                    shatterFx.at(u.x, by, 0f, new ShatterData(W, H, fillW, hx, col));
                 }
-                float fillW = Math.max(0.5f, (W - 1.6f) * Math.min(1f, pct / 100f));
-                float hx = Math.max(-W / 2f + 2f, Math.min(W / 2f - 2f, -W / 2f + 0.8f + fillW * 0.85f));
-                shatterFx.at(u.x, by, 0f, new ShatterData(W, H, fillW, hx, col));
             }
             forget(id);
         });
@@ -219,7 +235,7 @@ public final class ShowHp {
     /** Host gửi maxHealth của các unit có máu tối đa khác mặc định sang client (Mindustry mặc định chỉ sync u.health, không sync u.maxHealth). */
     static void syncMaxHealthTick() {
         ensureNetRegistered();
-        if (!Vars.net.server() || Vars.state == null || !Vars.state.isGame()) return;
+        if (!Vars.net.server() || Vars.state == null || !Vars.state.isGame() || Groups.unit.isEmpty()) return;
         maxHpSyncAcc += Time.delta;
         if (maxHpSyncAcc < 20f) return;
         maxHpSyncAcc = 0f;
@@ -228,9 +244,10 @@ public final class ShowHp {
         final StringBuilder sb = new StringBuilder();
         Groups.unit.each(u -> {
             if (u == null || u.dead || !u.isValid() || u.type == null) return;
-            if (Math.abs(u.maxHealth - u.type.health) <= 1f && !syncedMaxHp.containsKey(u.id)) return;
-            Float prev = syncedMaxHp.get(u.id);
-            if (!full && prev != null && Math.abs(prev - u.maxHealth) <= 1f) return;
+            boolean hasSynced = syncedMaxHp.containsKey(u.id);
+            if (Math.abs(u.maxHealth - u.type.health) <= 1f && !hasSynced) return;
+            float prev = syncedMaxHp.get(u.id, MISSING);
+            if (!full && prev > MISSING * 0.5f && Math.abs(prev - u.maxHealth) <= 1f) return;
             syncedMaxHp.put(u.id, u.maxHealth);
             if (sb.length() > 0) sb.append(',');
             sb.append(u.id).append(':').append(Math.round(u.maxHealth));
@@ -250,7 +267,7 @@ public final class ShowHp {
         float maxHp = u.maxHealth;
         if (!(maxHp > 0f)) maxHp = Math.max(1f, curHp);
         if (Vars.net.client()) {
-            float peak = peakMaxHp.getOrDefault(u.id, 0f);
+            float peak = peakMaxHp.get(u.id, 0f);
             if (maxHp > peak) peak = maxHp;
             if (curHp > peak) peak = curHp;
             if (peak > 0f) {
@@ -274,8 +291,8 @@ public final class ShowHp {
     }
 
     static void forget(int id) {
-        smoothHp.remove(id); smoothShield.remove(id); lastHp.remove(id); lastDamageTime.remove(id);
-        textCache.remove(id); textCacheHp.remove(id); textCacheMax.remove(id); peakMaxHp.remove(id); syncedMaxHp.remove(id);
+        smoothHp.remove(id, 0f); smoothShield.remove(id, 0f); lastHp.remove(id, 0f); lastDamageTime.remove(id, 0f);
+        textCache.remove(id); textCacheHp.remove(id, 0f); textCacheMax.remove(id, 0f); peakMaxHp.remove(id, 0f); syncedMaxHp.remove(id, 0f);
     }
 
     /** Độ cao (từ tâm đơn vị) tới đỉnh phần hiển thị máu, để số sát thương xếp ngay trên mà không đè.
@@ -303,12 +320,18 @@ public final class ShowHp {
         return String.valueOf(val);
     }
 
+    private static String activeStyle = "show-hp";
+    private static final Cons<Unit> drawUnitCons = u -> drawUnit(u, activeStyle);
+
     static void drawBars() {
+        if (Vars.headless || Vars.state == null || !Vars.state.isGame() || Groups.unit.isEmpty()) return;
+        if (Core.camera != null && Core.camera.width > 1600f) return;
         String style = style();
-        if (style.equals("off") || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
+        if (style.equals("off")) return;
+        activeStyle = style;
 
         Rect bounds = Core.camera.bounds(rect);
-        Groups.unit.intersect(bounds.x, bounds.y, bounds.width, bounds.height, (Cons<Unit>) u -> drawUnit(u, style));
+        Groups.unit.intersect(bounds.x, bounds.y, bounds.width, bounds.height, drawUnitCons);
     }
 
     static void drawUnit(Unit u, String style) {
@@ -317,19 +340,25 @@ public final class ShowHp {
         int id = u.id;
         float curHp = u.health, maxHp = effectiveMaxHp(u), curShield = u.shield;
 
-        if (!lastHp.containsKey(id)) lastHp.put(id, curHp);
-        if (Math.abs(curHp - lastHp.get(id)) > 0.1f) {
+        float prevHp = lastHp.get(id, MISSING);
+        if (prevHp <= MISSING * 0.5f) {
+            lastHp.put(id, curHp);
+            prevHp = curHp;
+        }
+        if (Math.abs(curHp - prevHp) > 0.1f) {
             lastDamageTime.put(id, Time.time);
             lastHp.put(id, curHp);
         }
 
-        float timeDiff = Time.time - lastDamageTime.getOrDefault(id, -9999f);
+        float timeDiff = Time.time - lastDamageTime.get(id, -9999f);
         if (timeDiff > SHOW_TIME) {
-            smoothHp.remove(id); smoothShield.remove(id); textCache.remove(id); textCacheHp.remove(id);
+            if (smoothHp.containsKey(id)) {
+                smoothHp.remove(id, 0f); smoothShield.remove(id, 0f); textCache.remove(id); textCacheHp.remove(id, 0f);
+            }
             return;
         }
 
-        float smoothHpVal = smoothHp.getOrDefault(id, curHp);
+        float smoothHpVal = smoothHp.get(id, curHp);
         if (!Vars.state.isPaused()) {
             // Máu tăng lên đột ngột do sync -> cập nhật nhanh; mất máu -> trượt vệt trắng mượt
             smoothHpVal = curHp > smoothHpVal ? curHp : Mathf.lerpDelta(smoothHpVal, curHp, 0.14f);
@@ -339,7 +368,7 @@ public final class ShowHp {
         float pct = Math.max(realPct, Math.min(100f, smoothHpVal / maxHp * 100f));
 
         if (style.equals("show-hp")) {
-            float sh = smoothShield.getOrDefault(id, curShield);
+            float sh = smoothShield.get(id, curShield);
             if (!Vars.state.isPaused()) {
                 sh = Mathf.lerpDelta(sh, curShield, 0.15f);
                 smoothShield.put(id, sh);
@@ -382,9 +411,9 @@ public final class ShowHp {
             font.setColor(hpColor);
 
             String text = textCache.get(id);
-            Float cachedHp = textCacheHp.get(id);
-            Float cachedMax = textCacheMax.get(id);
-            if (text == null || cachedHp == null || cachedMax == null
+            float cachedHp = textCacheHp.get(id, MISSING);
+            float cachedMax = textCacheMax.get(id, MISSING);
+            if (text == null || cachedHp <= MISSING * 0.5f || cachedMax <= MISSING * 0.5f
                     || Math.abs(cachedHp - curHp) > Math.max(4f, maxHp * 0.005f)
                     || Math.abs(cachedMax - maxHp) > 1f) {
                 text = formatHP(curHp) + " / " + formatHP(maxHp);

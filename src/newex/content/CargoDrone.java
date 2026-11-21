@@ -1692,6 +1692,7 @@ public final class CargoDrone {
         }
         final UnitType cargoDroneType = normalType, cargoDroneMK2Type = mk2Type, swordDroneType = swordType, masterSwordDroneType = masterType;
         if (cargoDroneType == null && cargoDroneMK2Type == null && swordDroneType == null && masterSwordDroneType == null) return;
+        if (!newex.PerfCore.hasAnyUnitType(cargoDroneType, cargoDroneMK2Type, swordDroneType, masterSwordDroneType)) return;
 
         Groups.unit.each(unit -> {
             boolean isMasterSwordDrone = masterSwordDroneType != null && unit.type == masterSwordDroneType;

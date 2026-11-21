@@ -9,9 +9,12 @@ import arc.struct.Seq;
 import arc.util.Time;
 import mindustry.Vars;
 import mindustry.game.EventType.Trigger;
+import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
+import mindustry.game.Teams;
 import mindustry.gen.Building;
 import mindustry.gen.Groups;
+import mindustry.type.UnitType;
 import mindustry.world.Block;
 
 import java.util.HashMap;
@@ -25,6 +28,7 @@ public final class PerfCore {
     private static final Rect viewRect = new Rect();
 
     private static int lvl = 0, lowCount = 0, midCount = 0;
+    private static float tickAcc = 0f;
 
     private static final class ScanEntry {
         final float t;
@@ -43,23 +47,57 @@ public final class PerfCore {
     /** Gọi 1 lần từ NexMod. */
     public static void init() {
         Events.run(Trigger.update, PerfCore::tick);
+        Events.on(WorldLoadEvent.class, e -> {
+            frameCountCache.clear();
+            slotLast.clear();
+            lvl = 0;
+            lowCount = 0;
+            midCount = 0;
+            tickAcc = 0f;
+        });
     }
 
     private static void tick() {
-        if (!Vars.state.isGame() || Time.time % 30 > Time.delta) return;
+        if (Vars.state == null || !Vars.state.isGame()) {
+            lvl = 0;
+            lowCount = 0;
+            midCount = 0;
+            return;
+        }
+        tickAcc += Time.delta;
+        if (tickAcc < 30f) return;
+        tickAcc = 0f;
         if (Core.graphics == null) return;
         int fps = Core.graphics.getFramesPerSecond();
         if (fps < 25) {
             lowCount++;
             midCount++;
-        } else if (fps < 40) {
+        } else if (fps < 42) {
             lowCount = 0;
             midCount++;
         } else {
             lowCount = 0;
             midCount = 0;
         }
-        lvl = lowCount >= 4 ? 2 : (midCount >= 4 ? 1 : 0);
+        lvl = lowCount >= 3 ? 2 : (midCount >= 3 ? 1 : 0);
+    }
+
+    /** Kiểm tra nhanh O(1) theo TeamData xem bản đồ có ít nhất 1 unit thuộc các loại truyền vào hay không. */
+    public static boolean hasAnyUnitType(UnitType... types) {
+        if (types == null || types.length == 0 || Groups.unit.isEmpty()) return false;
+        try {
+            Seq<Teams.TeamData> active = Vars.state.teams.active;
+            for (int i = 0; i < active.size; i++) {
+                Teams.TeamData td = active.get(i);
+                for (int j = 0; j < types.length; j++) {
+                    UnitType t = types[j];
+                    if (t != null && td.countType(t) > 0) return true;
+                }
+            }
+            return false;
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 
     public static TextureRegion region(String name) {
@@ -115,7 +153,7 @@ public final class PerfCore {
         }
         try {
             int total = 0;
-            Seq<mindustry.game.Teams.TeamData> act = Vars.state.teams.active;
+            Seq<Teams.TeamData> act = Vars.state.teams.active;
             for (int i = 0; i < act.size; i++) total += act.get(i).getBuildings(block).size;
             return total;
         } catch (Throwable e) {

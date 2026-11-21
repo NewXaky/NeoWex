@@ -9,7 +9,9 @@ import arc.graphics.g2d.Lines;
 import arc.math.Interp;
 import arc.math.Mathf;
 import arc.math.Rand;
+import arc.struct.IntMap;
 import arc.struct.ObjectMap;
+import arc.struct.Seq;
 import arc.util.Log;
 import arc.util.Time;
 import mindustry.Vars;
@@ -20,42 +22,52 @@ import mindustry.entities.bullet.BulletType;
 import mindustry.entities.effect.MultiEffect;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.ServerLoadEvent;
+import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.graphics.Layer;
 import mindustry.world.blocks.defense.turrets.Turret;
+import newex.PerfCore;
 
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * Chuyển từ splash-fx.js. Hiệu ứng nổ dùng chung:
  * - {@link #ring}: vòng nổ đúng bán kính sát thương, sống 0.25 giây, viền các vòng gần nhau liền mạch.
  * - Tự gắn vòng nổ (đạn nổ lan) hoặc tia lửa (đạn vật lý) vào mọi đạn của pháo và đơn vị, màu theo màu đạn.
+ * Tối ưu hiệu năng: không cấp phát bộ nhớ trong render, dùng khoảng cách bình phương, và rút gọn vẽ khi trên Mobile/FPS thấp.
  */
 public final class SplashFx {
     private static final float LIFE = 15f;
-    private static final int MAXN = 40;
+    private static final int MAXN = 32;
 
     private static final Map<String, Effect> cache = new HashMap<>();
-    /** Các vòng đang sống, theo id tăng dần (JS duyệt khóa số theo thứ tự tăng). */
-    private static final TreeMap<Integer, Live> live = new TreeMap<>();
+    /** Các vòng đang sống: IntMap + Seq không boxing, không tạo Live mới mỗi frame. */
+    private static final IntMap<Live> liveMap = new IntMap<>();
+    private static final Seq<Live> liveList = new Seq<>(false, 48);
+    private static final Seq<Live> livePool = new Seq<>(false, 48);
+    private static final Live[] nbBuf = new Live[6];
 
     private static final class Live {
-        final float x, y, r, end;
-        final int id;
-
-        Live(float x, float y, float r, float end, int id) {
-            this.x = x;
-            this.y = y;
-            this.r = r;
-            this.end = end;
-            this.id = id;
-        }
+        float x, y, r, end;
+        int id;
     }
 
     private SplashFx() {}
+
+    private static Live obtainLive(int id, float x, float y, float r, float end) {
+        Live l = livePool.size > 0 ? livePool.pop() : new Live();
+        l.id = id; l.x = x; l.y = y; l.r = r; l.end = end;
+        return l;
+    }
+
+    private static void clearLive() {
+        for (int i = 0; i < liveList.size; i++) {
+            if (livePool.size < 64) livePool.add(liveList.get(i));
+        }
+        liveList.clear();
+        liveMap.clear();
+    }
 
     private static Effect ringFx(float radius, final Color col) {
         final float r = Math.max(8f, Math.round(radius / 2f) * 2f);
@@ -66,28 +78,47 @@ public final class SplashFx {
         Effect fx = new Effect(LIFE, r * 2f + 100f, e -> {
             float f = e.fout();
             Color c = col != null ? col : e.color;
-            float now = Time.time;
-            Live[] nb = new Live[6];
+            int perf = PerfCore.level();
+            boolean fastMode = Vars.mobile || perf >= 1;
+
             int nbCount = 0;
-            live.put(e.id, new Live(e.x, e.y, r, now - e.time + LIFE, e.id));
-            int cnt = 0;
             boolean inside = false;
 
-            Iterator<Map.Entry<Integer, Live>> it = live.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry<Integer, Live> entry = it.next();
-                Live o = entry.getValue();
-                if (o.end < now) {
-                    it.remove();
-                    continue;
+            if (!fastMode) {
+                float now = Time.time;
+                Live self = liveMap.get(e.id);
+                if (self == null) {
+                    self = obtainLive(e.id, e.x, e.y, r, now - e.time + LIFE);
+                    liveMap.put(e.id, self);
+                    liveList.add(self);
+                } else {
+                    self.x = e.x; self.y = e.y; self.r = r; self.end = now - e.time + LIFE;
                 }
-                cnt++;
-                if (entry.getKey() == e.id) continue;
-                float d = Mathf.dst(e.x, e.y, o.x, o.y);
-                if (d < r + o.r && nbCount < 6) nb[nbCount++] = o;
-                if (o.id < e.id && d + r <= o.r) inside = true;
+
+                int cnt = 0;
+                for (int i = liveList.size - 1; i >= 0; i--) {
+                    Live o = liveList.get(i);
+                    if (o.end < now) {
+                        liveList.remove(i);
+                        liveMap.remove(o.id);
+                        if (livePool.size < 64) livePool.add(o);
+                        continue;
+                    }
+                    cnt++;
+                    if (o.id == e.id) continue;
+                    float dx = e.x - o.x, dy = e.y - o.y;
+                    float d2 = dx * dx + dy * dy;
+                    float sum = r + o.r;
+                    if (d2 < sum * sum) {
+                        if (nbCount < 6) nbBuf[nbCount++] = o;
+                        if (o.id < e.id && r <= o.r) {
+                            float diff = o.r - r;
+                            if (d2 <= diff * diff) inside = true;
+                        }
+                    }
+                }
+                if (cnt > MAXN) nbCount = 0;
             }
-            if (cnt > MAXN) nbCount = 0;
 
             Draw.z(Layer.effect + 0.1f);
             if (!inside) {
@@ -105,14 +136,17 @@ public final class SplashFx {
             if (nbCount == 0) {
                 Lines.circle(e.x, e.y, r);
             } else {
-                int n = Math.max(12, Math.min(48, Math.round(r / 4f)));
+                int n = Math.max(12, Math.min(36, Math.round(r / 4.5f)));
                 float st = 360f / n;
                 for (int i = 0; i < n; i++) {
-                    float a0 = i * st, a1 = a0 + st, am = a0 + st / 2f;
+                    float a0 = i * st, a1 = a0 + st, am = a0 + st * 0.5f;
                     float mx = e.x + Mathf.cosDeg(am) * r, my = e.y + Mathf.sinDeg(am) * r;
                     boolean hide = false;
                     for (int j = 0; j < nbCount; j++) {
-                        if (Mathf.dst(mx, my, nb[j].x, nb[j].y) < nb[j].r - 0.5f) {
+                        Live nbj = nbBuf[j];
+                        float rx = mx - nbj.x, ry = my - nbj.y;
+                        float lim = nbj.r - 0.5f;
+                        if (rx * rx + ry * ry < lim * lim) {
                             hide = true;
                             break;
                         }
@@ -161,11 +195,17 @@ public final class SplashFx {
         if (existing != null) return existing;
 
         Effect fx = new Effect(SPARK_LIFE, sz * 2f, e -> {
+            int perf = PerfCore.level();
+            if (perf >= 2) return;
             float fin = e.fin(), fo = e.fout(), g = Interp.pow2Out.apply(fin);
             Draw.z(Layer.effect + 0.2f);
             Draw.blend(Blending.additive);
             rnd.setSeed(e.id);
             int cnt = n + 2 + Math.min(2, (int) Math.floor(rnd.random(0f, 3f)));
+            if (Vars.mobile || perf >= 1) cnt = Math.max(3, cnt / 2);
+            Draw.color(Color.white, col, fin);
+            Draw.alpha(fo);
+            Lines.stroke(1.8f * fo + 0.4f);
             for (int i = 0; i < cnt; i++) {
                 float ang = e.rotation + rnd.range(SPREAD);
                 float far = sz * rnd.random(0.55f, 1f);
@@ -173,9 +213,6 @@ public final class SplashFx {
                 float head = far * g;
                 float tail = Math.max(0f, head - ln);
                 float c = Mathf.cosDeg(ang), s = Mathf.sinDeg(ang);
-                Draw.color(Color.white, col, fin);
-                Draw.alpha(fo);
-                Lines.stroke(1.8f * fo + 0.4f);
                 Lines.line(e.x + c * tail, e.y + s * tail, e.x + c * head, e.y + s * head);
             }
             Draw.color(Color.white);
@@ -252,5 +289,6 @@ public final class SplashFx {
     public static void init() {
         Events.on(ClientLoadEvent.class, e -> applyAll());
         Events.on(ServerLoadEvent.class, e -> applyAll());
+        Events.on(WorldLoadEvent.class, e -> clearLive());
     }
 }

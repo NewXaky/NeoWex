@@ -47,6 +47,7 @@ import mindustry.world.blocks.environment.TreeBlock;
 import mindustry.world.blocks.power.LightBlock;
 import mindustry.world.blocks.power.PowerNode;
 import mindustry.world.blocks.storage.CoreBlock;
+import newex.PerfCore;
 
 /**
  * Hệ thống Shader Đổ Bóng & Ánh Sáng Động (gộp 1 FBO hợp nhất, cực mượt, không đè bóng, nguồn sáng xóa bóng):
@@ -224,7 +225,8 @@ public final class NexDynamicShadows {
     }
 
     private static void addDynLight(float x, float y, float r, float strength) {
-        if (r <= 2f || strength <= 0.02f || dynLights.size >= 96) return;
+        int cap = (Vars.mobile || PerfCore.level() >= 1) ? 32 : 72;
+        if (r <= 2f || strength <= 0.02f || dynLights.size >= cap) return;
         LightSpot ls = dynLightPool.size > 0 ? dynLightPool.pop() : new LightSpot();
         ls.x = x; ls.y = y; ls.r = r; ls.strength = strength;
         dynLights.add(ls);
@@ -287,7 +289,7 @@ public final class NexDynamicShadows {
         rotateShadows = Core.settings.getBool(KEY_ROTATE, true);
         unitShadowsEnabled = Core.settings.getBool(KEY_UNITS, true);
         zoomFadeEnabled = Core.settings.getBool(KEY_ZOOMFADE, true);
-        graphicsQuality = Core.settings.getInt(KEY_QUALITY, 1);
+        graphicsQuality = Core.settings.getInt(KEY_QUALITY, Vars.mobile ? 0 : 1);
         shadowLength = Core.settings.getInt(KEY_LENGTH, 10);
         shadowAlpha = Core.settings.getInt(KEY_ALPHA, 42) / 100f;
         blurRadius = Core.settings.getInt(KEY_BLUR, 30) / 10f;
@@ -333,7 +335,14 @@ public final class NexDynamicShadows {
 
                         addCheck(subBox, en ? "Lite Mode (Ultra Smooth 60 FPS - 1 Pass)" : "Chế độ Lite (Siêu mượt 60 FPS - không lag)", KEY_LITE, liteMode, v -> {
                             liteMode = v;
-                            if (v) hasMtnBlockShadow = false;
+                            if (v) {
+                                hasMtnBlockShadow = false;
+                                if (mtnBlockShadowOut != null) {
+                                    try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {}
+                                    mtnBlockShadowOut = null;
+                                    mtnBlockRegOut = null;
+                                }
+                            }
                             shadDirty = true;
                         });
                         addCheck(subBox, en ? "Shadows only on screen (less lag)" : "Bóng chỉ trong màn hình (đỡ lag)", KEY_VIEWONLY, viewOnly, v -> {
@@ -506,7 +515,10 @@ public final class NexDynamicShadows {
     }
 
     public static void queue() {
-        if (!enabled || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
+        if (!enabled || Vars.headless || Vars.state == null || !Vars.state.isGame()) {
+            if (scratchA != null || shadowOut != null || mtnBlockShadowOut != null) disposeFBOs();
+            return;
+        }
         if (emptyRegion == null) emptyRegion = Core.atlas.find("clear");
 
         // Dùng Time.globalTime (thời gian khung hình thực mượt 60/120Hz) thay vì Time.time để bóng xoay mượt tuyệt đối, không bị khựng theo tick
@@ -541,13 +553,24 @@ public final class NexDynamicShadows {
         final float shadowScale = shadowLength * Vars.tilesize * (1f + darkness * 1.15f);
         final float alpha = shadowAlpha * (1f - darkness * 0.5f) * darkFade;
 
+        final float rawTilePixels = (Vars.tilesize / Core.camera.width) * Core.graphics.getWidth();
+        float minTilePixels = (Vars.renderer != null && Vars.renderer.minScale() > 0.001f) ? Vars.tilesize * Vars.renderer.minScale() : 6.0f;
+        final float tilePixels = minTilePixels > 0.001f ? (rawTilePixels / minTilePixels) * 6.0f : rawTilePixels;
+        final float globalFade = zoomFadeEnabled ? Mathf.clamp((tilePixels - 6.0f) / 6.0f, 0f, 1f) : 1f;
+        final float unitFade = zoomFadeEnabled ? Mathf.clamp((tilePixels - 5f) / 7f, 0f, 1f) : 1f;
+        if (globalFade <= 0.005f && (!unitShadowsEnabled || unitFade <= 0.005f)) {
+            freeUnitShadows();
+            freeDynLights();
+            return;
+        }
+
         final float camX = Core.camera.position.x, camY = Core.camera.position.y;
         final float camW = Core.camera.width, camH = Core.camera.height;
-        // Dựng FBO rộng hơn khung hình 28% (overscan): khi di chuyển trong vùng đệm 11% KHÔNG cần vẽ lại FBO (0ms GPU!) mà bóng vẫn ghim chặt xuống đất 100% không giật!
-        // viewOnly: đệm chỉ 8% (mỗi bên 4%) và không cộng thêm 4 ô; ngoài màn hình gần như không xử lý gì
-        final float overscan = viewOnly ? 1.08f : 1.28f;
+        // Dựng FBO rộng hơn khung hình (overscan): khi di chuyển trong vùng đệm KHÔNG cần vẽ lại FBO (0ms GPU!) mà bóng vẫn ghim chặt xuống đất 100% không giật!
+        // viewOnly: đệm gọn 16% (di chuyển 7% mới vẽ lại) giúp giảm mạnh số ô quét mà KHÔNG bị dựng lại FBO liên tục khi pan camera.
+        final float overscan = viewOnly ? 1.16f : 1.28f;
         final float overW = camW * overscan, overH = camH * overscan;
-        float margin = viewOnly ? shadowScale * 0.6f : shadowScale + Vars.tilesize * 4f;
+        float margin = viewOnly ? shadowScale * 0.5f : shadowScale + Vars.tilesize * 4f;
         int wMax = Vars.world.width() - 1, hMax = Vars.world.height() - 1;
         final int tx1 = Mathf.clamp((int) ((camX - overW * 0.5f - margin) / Vars.tilesize), 0, wMax);
         final int ty1 = Mathf.clamp((int) ((camY - overH * 0.5f - margin) / Vars.tilesize), 0, hMax);
@@ -561,7 +584,7 @@ public final class NexDynamicShadows {
 
         final float fboScale = qualityScale();
         int gw = Core.graphics.getWidth(), gh = Core.graphics.getHeight();
-        int maxDim = Vars.mobile ? 640 : 1024;
+        int maxDim = Vars.mobile ? 512 : 896;
         final int fw = Mathf.clamp((int) (gw * fboScale), 1, maxDim);
         final int fh = Mathf.clamp((int) (gh * fboScale), 1, maxDim);
 
@@ -573,14 +596,28 @@ public final class NexDynamicShadows {
             try {
                 scratchA = new FrameBuffer(fw, fh); scratchRegA = flipped(scratchA);
                 shadowOut = new FrameBuffer(fw, fh); shadowRegOut = flipped(shadowOut);
-                mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
                 scratchA.getTexture().setFilter(Texture.TextureFilter.linear);
                 shadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
-                mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
+                if (!liteMode) {
+                    mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
+                    mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
+                }
             } catch (Throwable err) {
                 disposeFBOs();
                 return;
             }
+        } else if (!liteMode && mtnBlockShadowOut == null) {
+            try {
+                mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
+                mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
+            } catch (Throwable err) {
+                mtnBlockShadowOut = null;
+                mtnBlockRegOut = null;
+            }
+        } else if (liteMode && mtnBlockShadowOut != null) {
+            try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {}
+            mtnBlockShadowOut = null;
+            mtnBlockRegOut = null;
         }
 
         if (!ChunkCache.initialized) ChunkCache.init();
@@ -590,7 +627,8 @@ public final class NexDynamicShadows {
         // Thu thập bóng unit + ánh sáng động từ unit & đạn (vẽ quầng sáng trực tiếp lên lớp bóng mà không cần blur lại FBO!)
         freeUnitShadows();
         freeDynLights();
-        if (unitShadowsEnabled || lightEraseEnabled) {
+        final boolean lowPerf = PerfCore.level() >= 1;
+        if ((unitShadowsEnabled && unitFade > 0.005f) || lightEraseEnabled) {
             Groups.unit.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Unit>) u -> {
                 if (u == null || u.dead) return;
                 if (lightEraseEnabled) {
@@ -598,7 +636,7 @@ public final class NexDynamicShadows {
                     if (lr > 4f) addDynLight(u.x, u.y, lr, 0.45f);
                     if (u.mining() && u.mineTile != null) addDynLight(u.mineTile.worldx(), u.mineTile.worldy(), 34f, 0.65f);
                 }
-                if (!unitShadowsEnabled || u.drownTime >= 0.99f) return;
+                if (!unitShadowsEnabled || unitFade <= 0.005f || u.drownTime >= 0.99f) return;
                 TextureRegion usReg = NexShadowConfig.getOriginalShadow(u.type);
                 if (usReg == null || !usReg.found() || usReg == emptyRegion) return;
 
@@ -621,7 +659,8 @@ public final class NexDynamicShadows {
                 unitShadows.add(d);
             });
         }
-        if (lightEraseEnabled) {
+        // Bỏ ánh sáng đạn động trên Mobile hoặc khi FPS bắt đầu tụt để giữ mượt trong giao tranh lớn
+        if (lightEraseEnabled && !Vars.mobile && !lowPerf && !Groups.bullet.isEmpty()) {
             Groups.bullet.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Bullet>) b -> {
                 if (b == null || !b.isAdded() || b.type == null) return;
                 float lr = b.type.lightRadius > 2f ? b.type.lightRadius : (b.hitSize * 2.5f + 12f);
@@ -629,10 +668,11 @@ public final class NexDynamicShadows {
             });
         }
 
-        // Nhờ overscan 28%, chỉ vẽ lại FBO khi camera đi quá 11% màn hình, zoom lệch >6%, hoặc góc mặt trời xoay >0.18 độ -> cắt giảm 90% tải GPU mà vẫn mượt 60FPS không giật!
-        final float redrawMove = viewOnly ? 0.03f : 0.11f, redrawZoom = viewOnly ? 0.03f : 0.08f;
+        // Nhờ overscan, chỉ vẽ lại FBO khi camera đi quá ngưỡng đệm, zoom lệch, hoặc góc mặt trời xoay đáng kể -> cắt giảm 90% tải GPU!
+        final float redrawMove = viewOnly ? 0.07f : 0.11f, redrawZoom = viewOnly ? 0.06f : 0.08f;
+        final float angleStep = (Vars.mobile || lowPerf) ? 0.35f : 0.22f;
         final boolean needsRedraw = shadDirty
-            || Math.abs(angle - lastCachedAngle) > 0.18f
+            || Math.abs(angle - lastCachedAngle) > angleStep
             || Math.abs(camX - lastCachedCamX) > camW * redrawMove
             || Math.abs(camY - lastCachedCamY) > camH * redrawMove
             || Math.abs(overW - lastCachedCamW) > camW * redrawZoom
@@ -647,10 +687,6 @@ public final class NexDynamicShadows {
             lastCachedCamH = overH;
         }
 
-        final float rawTilePixels = (Vars.tilesize / Core.camera.width) * Core.graphics.getWidth();
-        float minTilePixels = (Vars.renderer != null && Vars.renderer.minScale() > 0.001f) ? Vars.tilesize * Vars.renderer.minScale() : 6.0f;
-        final float tilePixels = minTilePixels > 0.001f ? (rawTilePixels / minTilePixels) * 6.0f : rawTilePixels;
-        final float globalFade = zoomFadeEnabled ? Mathf.clamp((tilePixels - 6.0f) / 6.0f, 0f, 1f) : 1f;
         final float fDarkFade = darkFade;
 
         // Vẽ & cập nhật 1 lớp bóng hợp nhất duy nhất ở Layer.block - 0.5f (29.5f):
@@ -681,7 +717,7 @@ public final class NexDynamicShadows {
                         Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
 
                         int rebuiltChunks = 0;
-                        int maxRebuildPerFrame = Vars.mobile ? 2 : 4;
+                        int maxRebuildPerFrame = Vars.mobile ? 1 : (lowPerf ? 2 : 4);
                         boolean anyMtn = false, anyNonMtn = false;
                         for (int cx = chX1; cx <= chX2; cx++) {
                             for (int cy = chY1; cy <= chY2; cy++) {
@@ -765,7 +801,7 @@ public final class NexDynamicShadows {
                             }
                         } else {
                             // === CHẾ ĐỘ ĐẦY ĐỦ: Tách riêng bóng tường địa hình (phủ tối lên các khối bên dưới) & bóng khối xây ===
-                            hasMtnBlockShadow = anyMtn;
+                            hasMtnBlockShadow = anyMtn && mtnBlockShadowOut != null;
                             if (hasMtnBlockShadow) {
                                 scratchA.begin();
                                 Gl.clearColor(0f, 0f, 0f, 0f);
@@ -906,27 +942,22 @@ public final class NexDynamicShadows {
                 Draw.blend(Blending.normal);
                 Draw.color();
             }
-            if (!unitShadows.isEmpty()) {
-                float unitFade = zoomFadeEnabled ? Mathf.clamp((tilePixels - 5f) / 7f, 0f, 1f) : 1f;
-                if (unitFade > 0.005f) {
-                    boolean started = false;
-                    for (int i = 0; i < unitShadows.size; i++) {
-                        UnitShadowData ud = unitShadows.get(i);
-                        if (ud.flying) continue;
-                        if (!started) { started = true; Draw.mixcol(Tmp.c1.set(0.04f, 0.03f, 0.08f, 1f), 1f); }
-                        Draw.color(1f, 1f, 1f, ud.alpha * alpha * unitFade);
-                        Draw.rect(ud.region, ud.x, ud.y, ud.w, ud.h, ud.rotation - 90f);
-                    }
-                    if (started) { Draw.mixcol(); Draw.color(); }
+            if (!unitShadows.isEmpty() && unitFade > 0.005f) {
+                boolean started = false;
+                for (int i = 0; i < unitShadows.size; i++) {
+                    UnitShadowData ud = unitShadows.get(i);
+                    if (ud.flying) continue;
+                    if (!started) { started = true; Draw.mixcol(Tmp.c1.set(0.04f, 0.03f, 0.08f, 1f), 1f); }
+                    Draw.color(1f, 1f, 1f, ud.alpha * alpha * unitFade);
+                    Draw.rect(ud.region, ud.x, ud.y, ud.w, ud.h, ud.rotation - 90f);
                 }
+                if (started) { Draw.mixcol(); Draw.color(); }
             }
         });
 
         // Bóng unit bay
-        if (!unitShadows.isEmpty()) {
+        if (!unitShadows.isEmpty() && unitFade > 0.005f) {
             Draw.draw(Math.min(80f, Layer.flyingUnit - 1f), () -> {
-                float unitFade = zoomFadeEnabled ? Mathf.clamp((tilePixels - 5f) / 7f, 0f, 1f) : 1f;
-                if (unitFade <= 0.005f) return;
                 boolean started = false;
                 for (int i = 0; i < unitShadows.size; i++) {
                     UnitShadowData ud = unitShadows.get(i);
@@ -950,22 +981,35 @@ public final class NexDynamicShadows {
             });
         }
 
-        // Cây tĩnh vẽ trên bóng
-        Draw.draw(NexShadowConfig.Z_TREE, () -> {
-            for (int cx = chX1; cx <= chX2; cx++) {
-                for (int cy = chY1; cy <= chY2; cy++) {
-                    if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
-                    ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                    if (chunk == null || !chunk.valid || chunk.treeTiles.isEmpty()) continue;
-                    IntSeq list = chunk.treeTiles;
-                    for (int i = 0; i < list.size; i++) {
-                        int pos = list.get(i);
-                        Tile t = Vars.world.tile(Point2.x(pos), Point2.y(pos));
-                        if (t != null && t.block() instanceof StaticTree) t.block().drawBase(t);
-                    }
+        // Cây tĩnh vẽ trên bóng (chỉ đăng ký draw pass nếu trong khung hình thực sự có cây tĩnh)
+        boolean anyVisibleTrees = false;
+        for (int cx = chX1; cx <= chX2 && !anyVisibleTrees; cx++) {
+            for (int cy = chY1; cy <= chY2; cy++) {
+                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                if (chunk != null && chunk.valid && !chunk.treeTiles.isEmpty()) {
+                    anyVisibleTrees = true;
+                    break;
                 }
             }
-        });
+        }
+        if (anyVisibleTrees) {
+            Draw.draw(NexShadowConfig.Z_TREE, () -> {
+                for (int cx = chX1; cx <= chX2; cx++) {
+                    for (int cy = chY1; cy <= chY2; cy++) {
+                        if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                        ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                        if (chunk == null || !chunk.valid || chunk.treeTiles.isEmpty()) continue;
+                        IntSeq list = chunk.treeTiles;
+                        for (int i = 0; i < list.size; i++) {
+                            int pos = list.get(i);
+                            Tile t = Vars.world.tile(Point2.x(pos), Point2.y(pos));
+                            if (t != null && t.block() instanceof StaticTree) t.block().drawBase(t);
+                        }
+                    }
+                }
+            });
+        }
     }
 
     private static void punchChunkLights(int chX1, int chY1, int chX2, int chY2, float sX1, float sY1, float sX2, float sY2) {
@@ -1180,8 +1224,20 @@ public final class NexDynamicShadows {
         }
 
         static void rebuildChunkSync(int cx, int cy) {
-            if (!initialized || Vars.world == null) return;
-            CasterChunk nc = new CasterChunk();
+            if (!initialized || Vars.world == null || cx < 0 || cx >= mapW || cy < 0 || cy >= mapH) return;
+            CasterChunk nc = chunks[cx][cy];
+            if (nc == null) {
+                nc = new CasterChunk();
+                chunks[cx][cy] = nc;
+            } else {
+                nc.casters.clear();
+                nc.lights.clear();
+                nc.eraseFloorTiles.clear();
+                nc.mountainTiles.clear();
+                nc.treeTiles.clear();
+                nc.hasNonMtnCasters = false;
+                nc.valid = false;
+            }
             int sx = cx * CHUNK_SIZE, sy = cy * CHUNK_SIZE;
             int ex = Math.min(sx + CHUNK_SIZE - 1, Vars.world.width() - 1);
             int ey = Math.min(sy + CHUNK_SIZE - 1, Vars.world.height() - 1);

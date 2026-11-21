@@ -2996,7 +2996,7 @@ public class NewModePvp {
     }
     static void neoScan() {
         try {
-            if (Vars.net.client() || !isActive() || Vars.state.isPaused()) return;
+            if (Vars.net.client() || !isActive() || Vars.state.isPaused() || neoMarks.isEmpty()) return;
             neoScanT += Time.delta;
             if (neoScanT < 3) return;
             neoScanT = 0;

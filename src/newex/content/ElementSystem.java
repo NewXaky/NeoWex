@@ -3,6 +3,10 @@ package newex.content;
 import arc.Core;
 import arc.Events;
 import arc.math.Mathf;
+import arc.struct.IntFloatMap;
+import arc.struct.IntIntMap;
+import arc.struct.IntMap;
+import arc.struct.Seq;
 import arc.util.Time;
 import mindustry.Vars;
 import mindustry.ctype.ContentType;
@@ -11,6 +15,7 @@ import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.UnitDamageEvent;
 import mindustry.game.EventType.WorldLoadEvent;
+import mindustry.game.Teams;
 import mindustry.gen.Building;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
@@ -33,6 +38,7 @@ import java.util.TreeMap;
  * 20% khi trúng đích sẽ gắn ấn. Băng giá chồng tối đa 3 tầng; Lửa đốt gây sát thương mỗi giây;
  * có cả hai ấn thì phản ứng "Hoàng Hỏa". Chỉ chạy ở server/host.
  * Pháo gọi {@link #hit}; sát thương gián tiếp (không qua hit) được quy về pháo gần nhất đang nhắm đúng đơn vị đó.
+ * Tối ưu hiệu năng: chỉ truy vấn đúng danh sách pháo theo loại từ TeamData (O(1) thay vì quét toàn bộ Groups.build) và dùng IntFloatMap/IntIntMap không boxing.
  */
 public final class ElementSystem {
     private static final float PROC_CHANCE = 0.20f;
@@ -45,7 +51,7 @@ public final class ElementSystem {
     private static final boolean REACTION_BOTH_ORDERS = true;
     private static final long ELEMENT_SEED = 20260425L;
     private static final float POLL_INTERVAL = 30f;
-    private static final float CACHE_INTERVAL = 6f;
+    private static final float CACHE_INTERVAL = 12f;
     private static final float ROLL_COOLDOWN = 12f;
     private static final float UNIT_COOLDOWN = 6f;
     private static final float ASSOC_RADIUS = 200f;
@@ -80,12 +86,14 @@ public final class ElementSystem {
     }
 
     private static final TreeMap<Integer, Mark> marks = new TreeMap<>();
-    private static final Map<Integer, Float> track = new HashMap<>();
-    private static final Map<Integer, Integer> exactStamp = new HashMap<>();
+    private static final IntFloatMap track = new IntFloatMap();
+    private static final IntIntMap exactStamp = new IntIntMap();
     private static final Map<String, Float> rollCd = new HashMap<>();
-    private static final Map<Integer, Float> unitCd = new HashMap<>();
-    private static final Map<Integer, List<Building>> targetMap = new HashMap<>();
+    private static final IntFloatMap unitCd = new IntFloatMap();
+    private static final IntMap<Seq<Building>> targetMap = new IntMap<>();
+    private static final Seq<Seq<Building>> targetPool = new Seq<>();
     private static final List<Building> turretCache = new ArrayList<>();
+    private static Block[] turretBlocksCache = null;
     private static Statuses statusCache = null;
     private static float lastPoll = 0f;
     private static float lastCache = -999f;
@@ -138,11 +146,24 @@ public final class ElementSystem {
         return Vars.content.getByName(ContentType.status, "newex-" + n);
     }
 
+    private static Block[] getTurretBlocks() {
+        if (turretBlocksCache != null) return turretBlocksCache;
+        if (Vars.content == null) return null;
+        Seq<Block> list = new Seq<>(TURRET_NAMES.length);
+        for (int i = 0; i < TURRET_NAMES.length; i++) {
+            Block blk = Vars.content.getByName(ContentType.block, "newex-" + TURRET_NAMES[i]);
+            if (blk != null) list.add(blk);
+        }
+        if (list.isEmpty()) return null;
+        turretBlocksCache = list.toArray(Block.class);
+        return turretBlocksCache;
+    }
+
     private static String elementOfSource(Object source) {
         if (!(source instanceof Building)) return null;
         Block blk = ((Building) source).block;
         if (blk == null) return null;
-        return elementOf.get(String.valueOf(blk.name));
+        return elementOf.get(blk.name);
     }
 
     private static Mark getMark(Unit unit) {
@@ -252,13 +273,21 @@ public final class ElementSystem {
         track.put(unit.id, unit.health + unit.shield);
     }
 
+    private static void recycleTargetMap() {
+        for (Seq<Building> arr : targetMap.values()) {
+            arr.clear();
+            if (targetPool.size < 64) targetPool.add(arr);
+        }
+        targetMap.clear();
+    }
+
     private static void clearAll() {
         marks.clear();
         track.clear();
         exactStamp.clear();
         rollCd.clear();
         unitCd.clear();
-        targetMap.clear();
+        recycleTargetMap();
         turretCache.clear();
         statusCache = null;
         lastPoll = 0f;
@@ -281,23 +310,46 @@ public final class ElementSystem {
         return br > 0 ? br : 200f;
     }
 
+    private static void addTurretToCache(Building b) {
+        if (b == null || !b.isValid()) return;
+        turretCache.add(b);
+        Object t = targetOf(b);
+        if (t instanceof Unit && ((Unit) t).isValid()) {
+            int tid = ((Unit) t).id;
+            Seq<Building> arr = targetMap.get(tid);
+            if (arr == null) {
+                arr = targetPool.size > 0 ? targetPool.pop() : new Seq<>(4);
+                targetMap.put(tid, arr);
+            }
+            arr.add(b);
+        }
+    }
+
     private static void refreshTurrets() {
         turretCache.clear();
-        targetMap.clear();
-        Groups.build.each(b -> {
-            if (b == null || !b.isValid()) return;
-            if (!elementOf.containsKey(String.valueOf(b.block.name))) return;
-            turretCache.add(b);
-            Object t = targetOf(b);
-            if (t instanceof Unit && ((Unit) t).isValid()) {
-                int tid = ((Unit) t).id;
-                List<Building> arr = targetMap.get(tid);
-                if (arr == null) {
-                    arr = new ArrayList<>();
-                    targetMap.put(tid, arr);
+        recycleTargetMap();
+        Block[] blks = getTurretBlocks();
+        if (blks != null && Vars.state != null && Vars.state.teams != null) {
+            try {
+                Seq<Teams.TeamData> active = Vars.state.teams.active;
+                for (int ti = 0; ti < active.size; ti++) {
+                    Teams.TeamData td = active.get(ti);
+                    for (int bi = 0; bi < blks.length; bi++) {
+                        Seq<Building> list = td.getBuildings(blks[bi]);
+                        if (list == null || list.isEmpty()) continue;
+                        for (int k = 0; k < list.size; k++) {
+                            addTurretToCache(list.get(k));
+                        }
+                    }
                 }
-                arr.add(b);
-            }
+                return;
+            } catch (Throwable ignored) {}
+        }
+        // Fallback nếu TeamData lỗi
+        Groups.build.each(b -> {
+            if (b == null || !b.isValid() || b.block == null) return;
+            if (!elementOf.containsKey(b.block.name)) return;
+            addTurretToCache(b);
         });
     }
 
@@ -310,13 +362,13 @@ public final class ElementSystem {
     }
 
     private static void attribute(Unit unit, float drop, float now) {
-        Float lastU = unitCd.get(unit.id);
-        if (lastU != null && now - lastU < UNIT_COOLDOWN) return;
+        float lastU = unitCd.get(unit.id, -99999f);
+        if (lastU > -99998f && now - lastU < UNIT_COOLDOWN) return;
         unitCd.put(unit.id, now);
 
-        List<Building> list = targetMap.get(unit.id);
+        Seq<Building> list = targetMap.get(unit.id);
         if (list != null) {
-            for (int i = 0; i < list.size(); i++) {
+            for (int i = 0; i < list.size; i++) {
                 Building b = list.get(i);
                 if (b.isValid() && b.team != unit.team) rollFor(b, unit, drop, now);
             }
@@ -345,35 +397,32 @@ public final class ElementSystem {
 
     private static void observe(final float now) {
         frame++;
-        if (turretCache.size() == 0) {
-            track.clear();
+        if (turretCache.isEmpty()) {
+            if (track.size > 0) track.clear();
             return;
         }
+        if (Groups.unit.isEmpty()) return;
         Groups.unit.each(u -> {
             if (u.dead || !u.isValid()) return;
             int id = u.id;
             float hp = u.health + u.shield;
-            Float prev = track.get(id);
+            float prev = track.get(id, -1e30f);
             track.put(id, hp);
-            if (prev == null) return;
+            if (prev <= -1e29f) return;
             float drop = prev - hp;
             if (drop < MIN_DROP) return;
-            Integer ex = exactStamp.get(id);
-            if (ex != null && ex >= frame - 1) return;
+            int ex = exactStamp.get(id, -999999);
+            if (ex >= frame - 1) return;
             attribute(u, drop, now);
         });
 
         if (now - lastPrune > 600 || now < lastPrune) {
             lastPrune = now;
             track.clear();
+            unitCd.clear();
+            exactStamp.clear();
             for (Iterator<Map.Entry<String, Float>> it = rollCd.entrySet().iterator(); it.hasNext(); ) {
                 if (now - it.next().getValue() > 120) it.remove();
-            }
-            for (Iterator<Map.Entry<Integer, Float>> it = unitCd.entrySet().iterator(); it.hasNext(); ) {
-                if (now - it.next().getValue() > 120) it.remove();
-            }
-            for (Iterator<Map.Entry<Integer, Integer>> it = exactStamp.entrySet().iterator(); it.hasNext(); ) {
-                if (it.next().getValue() < frame - 120) it.remove();
             }
         }
     }
@@ -381,10 +430,8 @@ public final class ElementSystem {
     private static void pollTurrets() {
         for (int i = 0; i < turretCache.size(); i++) {
             Building b = turretCache.get(i);
-            if (b == null || !b.isValid()) continue;
-            String name = String.valueOf(b.block.name);
-
-            final Float aura = AURA_TURRETS.get(name);
+            if (b == null || !b.isValid() || b.block == null) continue;
+            final Float aura = AURA_TURRETS.get(b.block.name);
             if (aura != null && b instanceof AuraTurret) {
                 final float r = ((AuraTurret) b).affectRadius();
                 if (!(r > 0)) continue;
@@ -407,32 +454,34 @@ public final class ElementSystem {
             refreshTurrets();
         }
 
-        Iterator<Map.Entry<Integer, Mark>> it = marks.entrySet().iterator();
-        while (it.hasNext()) {
-            Mark m = it.next().getValue();
-            Unit u = m.unit;
-            if (u == null || !u.isValid() || u.dead || !u.isAdded()) {
-                it.remove();
-                continue;
-            }
-            if (m.frost > 0 && now >= m.frostEnd) clearFrost(u, m);
-            if (m.burnEnd > 0) {
-                if (now >= m.burnEnd) {
-                    m.burnEnd = 0f;
-                    m.burnDps = 0f;
-                } else if (now >= m.burnNext) {
-                    m.burnNext += 60f;
-                    burnTick(u, m);
+        if (!marks.isEmpty()) {
+            Iterator<Map.Entry<Integer, Mark>> it = marks.entrySet().iterator();
+            while (it.hasNext()) {
+                Mark m = it.next().getValue();
+                Unit u = m.unit;
+                if (u == null || !u.isValid() || u.dead || !u.isAdded()) {
+                    it.remove();
+                    continue;
                 }
+                if (m.frost > 0 && now >= m.frostEnd) clearFrost(u, m);
+                if (m.burnEnd > 0) {
+                    if (now >= m.burnEnd) {
+                        m.burnEnd = 0f;
+                        m.burnDps = 0f;
+                    } else if (now >= m.burnNext) {
+                        m.burnNext += 60f;
+                        burnTick(u, m);
+                    }
+                }
+                if (m.frost <= 0 && m.burnEnd <= 0 && now >= m.huanghuoEnd) it.remove();
             }
-            if (m.frost <= 0 && m.burnEnd <= 0 && now >= m.huanghuoEnd) it.remove();
         }
 
         observe(now);
 
         if (now - lastPoll >= POLL_INTERVAL) {
             lastPoll = now;
-            pollTurrets();
+            if (!turretCache.isEmpty()) pollTurrets();
         }
     }
 
@@ -452,6 +501,7 @@ public final class ElementSystem {
         Events.on(WorldLoadEvent.class, e -> clearAll());
 
         Events.on(ClientLoadEvent.class, e -> {
+            turretBlocksCache = null;
             for (String n : TURRET_NAMES) {
                 Block blk = Vars.content.getByName(ContentType.block, "newex-" + n);
                 if (blk == null) continue;

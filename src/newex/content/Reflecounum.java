@@ -246,22 +246,21 @@ public final class Reflecounum {
         dirty = true;
     }
 
-    /** Cache danh sách khiên đang hoạt động trong cùng 1 frame. */
+    /** Cache danh sách khiên đang hoạt động trong cùng 1 frame (tái sử dụng Seq, không tạo rác GC). */
     static Seq<ReflecounumTurret.ReflecounumBuild> active() {
         if (!dirty && activeAt == Time.time) return activeList;
-        Seq<ReflecounumTurret.ReflecounumBuild> out = new Seq<>();
+        activeList.clear();
         for (int i = list.size - 1; i >= 0; i--) {
             ReflecounumTurret.ReflecounumBuild s = list.get(i);
             if (s == null || !s.isValid()) {
                 list.remove(i);
                 continue;
             }
-            if (!s.isShieldBroken() && s.getShieldHp() > 0) out.add(s);
+            if (!s.isShieldBroken() && s.getShieldHp() > 0) activeList.add(s);
         }
-        activeList = out;
         activeAt = Time.time;
         dirty = false;
-        return out;
+        return activeList;
     }
 
     /** Thay cho global.NexReflect.isProtected (Endyr/Nethyr/Overyr gọi qua Endyr.reflectProtected). */
@@ -508,7 +507,7 @@ public final class Reflecounum {
             bufN = 0;
             blockBufN = 0;
             baseline.clear();
-            lines = new Seq<>();
+            lines.clear();
             lineShields.clear();
             return;
         }
@@ -581,8 +580,8 @@ public final class Reflecounum {
         if (shields.size > 0) {
             lines = collectLines(shields);
         } else {
-            lines = new Seq<>();
-            lineShields.clear();
+            if (!lines.isEmpty()) lines.clear();
+            if (!lineShields.isEmpty()) lineShields.clear();
         }
 
         final IntFloatMap nb = nextBaseline;
@@ -647,6 +646,18 @@ public final class Reflecounum {
         // Khi map đổi (xây/phá block) thì đánh dấu để cache block quét lại
         Events.on(TileChangeEvent.class, e -> blockVer++);
         Events.on(BlockBuildEndEvent.class, e -> blockVer++);
+        Events.on(mindustry.game.EventType.WorldLoadEvent.class, e -> {
+            list.clear();
+            activeList.clear();
+            baseline.clear();
+            nextBaseline.clear();
+            lines.clear();
+            lineShields.clear();
+            bufN = 0;
+            blockBufN = 0;
+            dirty = true;
+            blockVer++;
+        });
 
         Events.run(Trigger.update, () -> {
             if (Core.graphics == null || !Vars.state.isGame() || Time.time % 30f > Time.delta) return;

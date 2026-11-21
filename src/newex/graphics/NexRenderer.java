@@ -1,30 +1,28 @@
 package newex.graphics;
 
+import arc.Core;
 import arc.Events;
 import arc.graphics.Blending;
 import arc.graphics.Color;
+import arc.graphics.GL20;
 import arc.graphics.Gl;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
-import arc.graphics.g2d.Lines;
 import arc.graphics.gl.FrameBuffer;
 import arc.graphics.gl.Shader;
 import arc.math.geom.Vec2;
 import arc.struct.Seq;
+import arc.util.Buffers;
 import arc.util.Log;
-import arc.util.Strings;
 import arc.util.Tmp;
 import arc.util.pooling.Pool;
 import arc.util.pooling.Pools;
 import mindustry.Vars;
 import mindustry.game.EventType;
-import mindustry.gen.Groups;
-import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
-import mindustry.graphics.Pal;
 import mindustry.graphics.Shaders;
 
-import newex.graphics.NexSettings;
+import java.nio.IntBuffer;
 
 import static arc.Core.graphics;
 import static arc.Core.settings;
@@ -39,47 +37,114 @@ public class NexRenderer{
     private final Vec2 hudTakeoffTo = new Vec2();
     public static NexRenderer renderer;
 
-    public FrameBuffer buffer = new FrameBuffer();
-    public FrameBuffer buffer2 = new FrameBuffer();
+    // Lazy-allocated FrameBuffers: 0 MB VRAM during normal gameplay when no distortion/blackhole is active.
+    public FrameBuffer buffer = null;
+    public FrameBuffer buffer2 = null;
     public int width, height;
     private boolean capturing;
+    private int savedOuterFbo = 0;
     private final Runnable beginDistortion = this::beginDistortion;
     private final Runnable endDistortion = this::endDistortion;
 
+    private static final IntBuffer fboQueryBuf = Buffers.newIntBuffer(1);
     private static final float[][] initFloat = new float[512][];
     private static final float[][] initStrength = new float[512][];
     private static final Pool<BlackHole> holePool = Pools.get(BlackHole.class, BlackHole::new);
     private static final Blending premultiplied = new Blending(Gl.one, Gl.oneMinusSrcAlpha, Gl.one, Gl.oneMinusSrcAlpha);
     private static boolean warnedConvexMissing = false;
     private static boolean warnedRectMissing = false;
-    private static boolean warnedHoleMissing = false;
 
     protected NexRenderer(){
         if(!Vars.headless){
             Events.run(EventType.Trigger.draw, this::draw);
+            Events.on(EventType.WorldLoadEvent.class, e -> disposeBuffers());
         }
     }
 
+    private static int currentFboBinding(){
+        try{
+            fboQueryBuf.clear();
+            Gl.getIntegerv(GL20.GL_FRAMEBUFFER_BINDING, fboQueryBuf);
+            return fboQueryBuf.get(0);
+        }catch(Throwable ignored){
+            return 0;
+        }
+    }
+
+    private static void restoreFboBinding(int fbo){
+        try{
+            Gl.bindFramebuffer(GL20.GL_FRAMEBUFFER, fbo);
+            Gl.viewport(0, 0, graphics.getWidth(), graphics.getHeight());
+        }catch(Throwable ignored){}
+    }
+
+    private FrameBuffer ensureBuffer(){
+        int w = Math.max(1, graphics.getWidth());
+        int h = Math.max(1, graphics.getHeight());
+        if(buffer == null){
+            buffer = new FrameBuffer(w, h);
+        }else if(buffer.getWidth() != w || buffer.getHeight() != h){
+            buffer.resize(w, h);
+        }
+        return buffer;
+    }
+
+    private FrameBuffer ensureBuffer2(){
+        int w = Math.max(1, graphics.getWidth());
+        int h = Math.max(1, graphics.getHeight());
+        if(buffer2 == null){
+            buffer2 = new FrameBuffer(w, h);
+        }else if(buffer2.getWidth() != w || buffer2.getHeight() != h){
+            buffer2.resize(w, h);
+        }
+        return buffer2;
+    }
+
+    public void disposeBuffers(){
+        capturing = false;
+        clearQueuedHoles();
+        if(buffer != null){
+            try{ buffer.dispose(); }catch(Throwable ignored){}
+            buffer = null;
+        }
+        if(buffer2 != null){
+            try{ buffer2.dispose(); }catch(Throwable ignored){}
+            buffer2 = null;
+        }
+    }
+
+    private static float[] getHoleArray(int count){
+        float[] arr = initFloat[count];
+        if(arr == null){
+            arr = new float[count * 4];
+            initFloat[count] = arr;
+        }
+        return arr;
+    }
+
+    private static float[] getStrengthArray(int count){
+        float[] arr = initStrength[count];
+        if(arr == null){
+            arr = new float[count * 4];
+            initStrength[count] = arr;
+        }
+        return arr;
+    }
+
     public void draw(){
+        if(Vars.state == null || !Vars.state.isGame()){
+            if(buffer != null || buffer2 != null) disposeBuffers();
+            return;
+        }
         width = graphics.getWidth();
         height = graphics.getHeight();
-
-        buffer2.resize(graphics.getWidth(), graphics.getHeight());
-       /* drawShader(NexShaders.powerArea, NexLayers.POWER_AREA,1);
-        drawShader(NexShaders.powerDynamicArea, NexLayers.POWER_DYNAMIC, 1);*/
-        if(Vars.renderer.animateShields){
-            drawShader(NexShaders.hexagonalShield, NexLayers.HEXAGONAL_SHIELD, 1);
-        }
+        // Skip unused hexagonalShield FBO pass (previously cleared & blitted full-screen buffer2 every frame even with 0 shields,
+        // and unbound NexDarkGraphics/Bloom outer FBO at Layer 137!).
         advancedDraw();
     }
 
     public static void init(){
         if(renderer == null) renderer = new NexRenderer();
-
-        for(int i = 0; i < 512; i++){
-            initFloat[i] = new float[i * 4];
-            initStrength[i] = new float[i * 4];
-        }
 
         if (!Vars.headless && NexShaders.holeShader == null) {
             NexShaders.createHoleShader();
@@ -88,9 +153,20 @@ public class NexRenderer{
 
     public void drawShader(Shader shader, float layer, float range){
         if(shader != null){
-            Draw.drawRange(layer, range, () -> buffer2.begin(Color.clear), () -> {
-                buffer2.end();
-                buffer2.blit(shader);
+            final int[] prev = {0};
+            Draw.drawRange(layer, range, () -> {
+                Draw.flush();
+                prev[0] = currentFboBinding();
+                ensureBuffer2().begin(Color.clear);
+            }, () -> {
+                Draw.flush();
+                if(buffer2 != null){
+                    buffer2.end();
+                    restoreFboBinding(prev[0]);
+                    buffer2.blit(shader);
+                }else{
+                    restoreFboBinding(prev[0]);
+                }
             });
         }
     }
@@ -164,11 +240,19 @@ public class NexRenderer{
         }
     }
 
+    private boolean hasPendingEffects(){
+        return !holes.isEmpty()
+            || (NexShaders.convex != null && NexShaders.convex.hasAny())
+            || (NexShaders.convexRect != null && NexShaders.convexRect.hasAny());
+    }
+
     private void advancedDraw(){
         if(settings.getBool("pixelate") || holes.size >= 512){
             clearQueuedHoles();
             return;
         }
+        // Zero overhead when no black holes or distortion lenses are active!
+        if(!hasPendingEffects()) return;
 
         Draw.draw(Layer.floor - 8, beginDistortion);
         Draw.draw(Layer.effect + 0.03f, endDistortion);
@@ -176,11 +260,12 @@ public class NexRenderer{
 
     private void beginDistortion() {
         capturing = false;
-        if (holes.isEmpty() && (NexShaders.convex == null || !NexShaders.convex.hasAny()) &&
-                (NexShaders.convexRect == null || !NexShaders.convexRect.hasAny())) return;
-        buffer.resize(graphics.getWidth(), graphics.getHeight());
-        if (!buffer.isBound()) {
-            buffer.begin(Color.clear);
+        if (!hasPendingEffects()) return;
+        Draw.flush();
+        savedOuterFbo = currentFboBinding();
+        FrameBuffer b = ensureBuffer();
+        if (!b.isBound()) {
+            b.begin(Color.clear);
             capturing = true;
         }
     }
@@ -192,18 +277,22 @@ public class NexRenderer{
 
         int holeCount = Math.min(holes.size, NexShaders.MaxCont);
 
-        //The capture buffer must be bound from the floor pass; otherwise skip to avoid stale-frame artifacts.
-        if (!buffer.isBound()) {
+        if (buffer == null || !buffer.isBound()) {
             clearQueuedHoles();
+            restoreFboBinding(savedOuterFbo);
             return;
         }
+        Draw.flush();
         buffer.end();
 
-        buffer2.resize(graphics.getWidth(), graphics.getHeight());
-        buffer2.begin(Color.clear);
-        if (NexShaders.holeShader != null) {
-            float[] blackholes = initFloat[holeCount];
-            float[] strengths = initStrength[holeCount];
+        boolean hasCircleDistortion = NexShaders.convex != null && NexShaders.convex.hasAny();
+        boolean hasRectDistortion = NexShaders.convexRect != null && NexShaders.convexRect.hasAny();
+
+        if (holeCount > 0 && NexShaders.holeShader != null) {
+            FrameBuffer b2 = ensureBuffer2();
+            b2.begin(Color.clear);
+            float[] blackholes = getHoleArray(holeCount);
+            float[] strengths = getStrengthArray(holeCount);
 
             for (int i = 0; i < holeCount; i++) {
                 BlackHole hole = holes.get(i);
@@ -216,27 +305,47 @@ public class NexRenderer{
 
             NexShaders.holeShader.blackHoles = blackholes;
             NexShaders.holeShader.blackHoleStrengths = strengths;
-            //Compose blackhole pass into buffer2 first, so convex can sample the already-distorted image.
             blitPremultiplied(buffer, NexShaders.holeShader);
-        } else {
-            blitPremultiplied(buffer, Shaders.screenspace);
-        }
-        buffer2.end();
+            Draw.flush();
+            b2.end();
 
-        boolean hasCircleDistortion = NexShaders.convex != null && NexShaders.convex.hasAny();
-        boolean hasRectDistortion = NexShaders.convexRect != null && NexShaders.convexRect.hasAny();
-        if (hasCircleDistortion && hasRectDistortion) {
-            buffer.resize(graphics.getWidth(), graphics.getHeight());
-            buffer.begin(Color.clear);
-            NexShaders.convex.blitFrom(buffer2);
-            buffer.end();
-            NexShaders.convexRect.blitFrom(buffer);
-        } else if (hasCircleDistortion) {
-            NexShaders.convex.blitFrom(buffer2);
-        } else if (hasRectDistortion) {
-            NexShaders.convexRect.blitFrom(buffer2);
+            if (hasCircleDistortion && hasRectDistortion) {
+                buffer.begin(Color.clear);
+                NexShaders.convex.blitFrom(b2);
+                Draw.flush();
+                buffer.end();
+                restoreFboBinding(savedOuterFbo);
+                NexShaders.convexRect.blitFrom(buffer);
+            } else if (hasCircleDistortion) {
+                restoreFboBinding(savedOuterFbo);
+                NexShaders.convex.blitFrom(b2);
+            } else if (hasRectDistortion) {
+                restoreFboBinding(savedOuterFbo);
+                NexShaders.convexRect.blitFrom(b2);
+            } else {
+                restoreFboBinding(savedOuterFbo);
+                blitPremultiplied(b2, Shaders.screenspace);
+            }
         } else {
-            blitPremultiplied(buffer2, Shaders.screenspace);
+            // Fast path when only lens distortion (no black holes): skip the redundant buffer -> buffer2 copy!
+            if (hasCircleDistortion && hasRectDistortion) {
+                FrameBuffer b2 = ensureBuffer2();
+                b2.begin(Color.clear);
+                NexShaders.convex.blitFrom(buffer);
+                Draw.flush();
+                b2.end();
+                restoreFboBinding(savedOuterFbo);
+                NexShaders.convexRect.blitFrom(b2);
+            } else if (hasCircleDistortion) {
+                restoreFboBinding(savedOuterFbo);
+                NexShaders.convex.blitFrom(buffer);
+            } else if (hasRectDistortion) {
+                restoreFboBinding(savedOuterFbo);
+                NexShaders.convexRect.blitFrom(buffer);
+            } else {
+                restoreFboBinding(savedOuterFbo);
+                blitPremultiplied(buffer, Shaders.screenspace);
+            }
         }
 
         //Draw black cores after post-processing to avoid donut-like rings from re-sampling.
@@ -267,7 +376,6 @@ public class NexRenderer{
         holes.add(holePool.obtain().set(x, y, inRadius, outRadius, alpha, scaledStrength));
     }
 
-
     private static class BlackHole{
         float x, y, inRadius, outRadius, alpha, strength;
 
@@ -282,7 +390,6 @@ public class NexRenderer{
         }
 
         public BlackHole(){
-
         }
     }
 }

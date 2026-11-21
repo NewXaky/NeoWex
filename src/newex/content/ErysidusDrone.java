@@ -135,7 +135,7 @@ public final class ErysidusDrone {
                 if (de.unit != null) droneStorage.remove(de.unit.id);
             });
             Events.run(Trigger.update, () -> {
-                if (Vars.state.isMenu() || Vars.state.isPaused() || Groups.unit.isEmpty()) return;
+                if (Vars.state.isMenu() || Vars.state.isPaused() || !PerfCore.hasAnyUnitType(droneType)) return;
 
                 Groups.unit.each(u -> {
                     if (u != null && u.type == droneType && u.isValid()) {
