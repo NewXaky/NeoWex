@@ -220,6 +220,10 @@ public final class aureon {
                 mount.aimY = target.y();
             }
 
+            // Tự động khai hỏa như Bulvasyr: đã khóa xong + quay mặt tới mục tiêu là tự bắn, không cần giữ nút bắn
+            mount.shoot = true;
+            mount.rotate = true;
+
             super.update(unit, mount);
         }
     }

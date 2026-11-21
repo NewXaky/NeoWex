@@ -114,6 +114,15 @@ public final class Bulvasyr {
     private static Effect rocketMuzzleFx;
     private static Effect rocketHitFx;
     private static Effect rocketSmokeFx;
+    private static Effect footstepFx;
+
+    /** Ngôi sao 4 điểm: 2 cánh dài dọc theo rot, 2 cánh ngắn ngang. */
+    static void drawStar(float x, float y, float rot, float len, float wid, float shortLen) {
+        Drawf.tri(x, y, wid, len, rot);
+        Drawf.tri(x, y, wid, len, rot + 180f);
+        Drawf.tri(x, y, wid * 0.8f, shortLen, rot + 90f);
+        Drawf.tri(x, y, wid * 0.8f, shortLen, rot - 90f);
+    }
 
     private Bulvasyr() {}
 
@@ -154,6 +163,22 @@ public final class Bulvasyr {
             Fill.circle(e.x, e.y, 8f * e.fout());
         });
 
+        // Bước chân nặng: vòng chấn + bụi bung + tia lửa tím
+        footstepFx = new Effect(30f, 70f, e -> {
+            Draw.color(MISS_STEEL, 0.55f * e.fout());
+            Lines.stroke(1.6f * e.fout());
+            Lines.circle(e.x, e.y, 2f + e.fin(Interp.pow2Out) * 15f);
+            Angles.randLenVectors(e.id, 6, 3f + 14f * e.finpow(), (x, y) -> {
+                Draw.color(Tmp.c1.set(Color.valueOf("8d93a6")).lerp(Color.gray, e.fin()), 0.45f * e.fout());
+                Fill.circle(e.x + x, e.y + y, 1.6f + 2.8f * e.fin());
+            });
+            Draw.color(MISS_VIOLET, MISS_YELLOW, e.fin());
+            Lines.stroke(1.1f * e.fout());
+            Angles.randLenVectors(e.id + 5, 4, 4f + 12f * e.finpow(), (x, y) ->
+                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 0.8f + 3f * e.fout())
+            );
+        });
+
         // Khói vệt đuôi: tím xám nở dần, tan chậm
         rocketSmokeFx = new Effect(38f, e -> {
             Draw.color(Tmp.c1.set(MISS_VIOLET).lerp(Color.gray, e.fin()), 0.5f * e.fout());
@@ -176,24 +201,27 @@ public final class Bulvasyr {
             Drawf.light(e.x, e.y, 46f * e.fout(), MISS_VIOLET, 0.7f * e.fout());
         });
 
-        // Nổ điện ảnh: chớp trắng, cầu lửa tím-xanh, sóng xung kích, tia lửa vàng-đỏ, khói
-        rocketHitFx = new Effect(48f, 180f, e -> {
-            Draw.color(Color.white, MISS_YELLOW, e.fin());
-            Fill.circle(e.x, e.y, 13f * e.fout(Interp.pow3Out));
-            Draw.color(MISS_VIOLET, MISS_INDIGO, e.fin());
-            Draw.alpha(0.85f * e.fout());
-            Angles.randLenVectors(e.id, 10, 32f * e.finpow(), (x, y) -> Fill.circle(e.x + x, e.y + y, 7.5f * e.fout()));
-            Draw.color(MISS_STEEL, e.fout());
-            Lines.stroke(2.8f * e.fout());
-            Lines.circle(e.x, e.y, e.fin(Interp.pow2Out) * 46f);
+        // Va chạm: ngôi sao 2 cánh dài phóng to dần và tan chậm
+        rocketHitFx = new Effect(58f, 320f, e -> {
+            float grow = 1f + 7.5f * e.fin(Interp.pow2Out);
+            float a = e.fout(Interp.pow2);
+            Draw.blend(Blending.additive);
+            Draw.color(MISS_VIOLET, 0.55f * a);
+            drawStar(e.x, e.y, e.rotation, 17f * grow, 4.2f * grow, 6f * grow);
+            Draw.color(MISS_STEEL, 0.9f * a);
+            drawStar(e.x, e.y, e.rotation, 12f * grow, 2.4f * grow, 4f * grow);
+            Draw.color(Color.white, a);
+            drawStar(e.x, e.y, e.rotation, 7f * grow, 1.2f * grow, 2.2f * grow);
+            Draw.blend();
+            Draw.color(MISS_STEEL, 0.6f * a);
+            Lines.stroke(1.6f * a);
+            Lines.circle(e.x, e.y, e.fin(Interp.pow2Out) * 38f);
             Draw.color(MISS_YELLOW, MISS_RED, e.fin());
-            Lines.stroke(1.7f * e.fout());
-            Angles.randLenVectors(e.id + 7, 14, 6f + 52f * e.finpow(), (x, y) ->
-                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 1f + 7f * e.fout())
+            Lines.stroke(1.3f * a);
+            Angles.randLenVectors(e.id + 7, 10, 6f + 40f * e.finpow(), (x, y) ->
+                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 1f + 5f * a)
             );
-            Draw.color(Color.gray, 0.45f * e.fout());
-            Angles.randLenVectors(e.id + 3, 6, 40f * e.finpow(), (x, y) -> Fill.circle(e.x + x, e.y + y, 4f + 3f * e.fin()));
-            Drawf.light(e.x, e.y, 90f * e.fout(), MISS_VIOLET, 0.85f * e.fout());
+            Draw.reset();
         });
 
         final SalvoMissileBulletType missileBullet = new SalvoMissileBulletType();
@@ -222,11 +250,11 @@ public final class Bulvasyr {
             // Robot 2 chân (Mech): bước luân phiên trái/phải như Dagger/Fortress, sprite bulvasyr-leg vẽ đối xứng 2 bên
             hovering = false;
             canBoost = false;
-            mechStride = 7f;
-            mechFrontSway = 0.5f;
-            mechSideSway = 0.28f;
+            mechStride = 11f;        // sải bước dài hơn: mỗi bước nhìn rõ chân vươn ra
+            mechFrontSway = 0.85f;   // thân chúi nhấp nhô theo nhịp bước
+            mechSideSway = 0.55f;    // thân đảo trái phải như cơ giáp hạng nặng
             mechStepParticles = true;
-            stepShake = 0.7f;
+            stepShake = 1.4f;
 
             outlineRadius = 3;
             outlineColor = OUTLINE_COL;
@@ -343,15 +371,32 @@ public final class Bulvasyr {
             return absorbed;
         }
 
+        private int lastStep = -1;
+
         @Override
         public void draw() {
             super.draw();
             PhysicalShieldAbility.render(this);
         }
 
+        /** Mỗi lần một chân đạp xuống: bụi, tia lửa tím, sóng chấn nhỏ và rung nhẹ màn hình. */
+        private void footstepCinematic() {
+            if (Vars.headless || isFlying() || vel.len() < 0.12f) return;
+            int step = (int) Math.floor(walkExtend(true) / 2f);
+            if (lastStep == -1) { lastStep = step; return; }
+            if (step == lastStep) return;
+            lastStep = step;
+            float side = (step & 1) == 0 ? 1f : -1f;
+            float fx = x + Angles.trnsx(baseRotation + 90f, side * 9.5f) + Angles.trnsx(baseRotation, 8f);
+            float fy = y + Angles.trnsy(baseRotation + 90f, side * 9.5f) + Angles.trnsy(baseRotation, 8f);
+            footstepFx.at(fx, fy, baseRotation);
+            Effect.shake(1.1f, 6f, fx, fy);
+        }
+
         @Override
         public void update() {
             ageTicks++;
+            footstepCinematic();
             ensureShieldInit();
             if (shieldFlash > 0f) shieldFlash = Math.max(0f, shieldFlash - Time.delta / 10f);
 
@@ -549,6 +594,8 @@ public final class Bulvasyr {
     public static class SwirlData {
         public Teamc target;
         public float phase, prev;
+        public float minDst = 1e9f;
+        public boolean passed, expiring;
         public SwirlData(Teamc target, float phase) { this.target = target; this.phase = phase; }
     }
 
@@ -585,6 +632,7 @@ public final class Bulvasyr {
 
             shootEffect = Fx.none;
             smokeEffect = Fx.none;
+            despawnHit = true; // hết giờ (trượt mục tiêu) cũng nổ diện rộng
             hitEffect = rocketHitFx;
             despawnEffect = rocketHitFx;
             hitSound = Sounds.explosion;
@@ -595,6 +643,7 @@ public final class Bulvasyr {
             if (b.time < homingDelay) return;
 
             SwirlData sd = (b.data instanceof SwirlData) ? (SwirlData) b.data : null;
+            if (sd != null && sd.passed) return; // đã lướt qua mục tiêu: bay thẳng thêm 0,5s rồi nổ
             Teamc target = sd != null ? sd.target : null;
             if (!isTargetAlive(target)) {
                 target = Units.closestTarget(b.team, b.x, b.y, homingRange,
@@ -626,6 +675,17 @@ public final class Bulvasyr {
             b.vel.setLength(Mathf.lerp(2.3f, 8.4f, Interp.pow2Out.apply(Mathf.clamp((b.time - 4f) / 28f))));
             if (!(b.data instanceof SwirlData)) return;
             SwirlData sd = (SwirlData) b.data;
+            // Trượt mục tiêu (lướt qua hoặc mất mục tiêu): bay thêm đúng 0,5s (30 tick) rồi va chạm
+            if (!sd.expiring) {
+                if (isTargetAlive(sd.target)) {
+                    float dd = b.dst(sd.target);
+                    sd.minDst = Math.min(sd.minDst, dd);
+                    if (sd.minDst < 90f && dd > sd.minDst + 8f) { sd.passed = true; sd.expiring = true; }
+                } else if (b.time > homingDelay + 12f) {
+                    sd.expiring = true;
+                }
+                if (sd.expiring) b.lifetime = Math.min(b.lifetime, b.time + 30f);
+            }
             float off = swirlOffset(b, sd);
             float d = off - sd.prev;
             sd.prev = off;
@@ -649,23 +709,19 @@ public final class Bulvasyr {
             float sc = (1f + SWIRL_DEPTH * env * Mathf.cos(ph)) * Mathf.lerp(0.55f, 1f, Interp.pow2Out.apply(Mathf.clamp(t / 10f)));
             float heading = r0 + tilt;
             float flick = 0.85f + Mathf.absin(Time.time + b.id, 2.3f, 0.3f);
-            float bx = b.x - Angles.trnsx(heading, height * 0.5f * sc), by = b.y - Angles.trnsy(heading, height * 0.5f * sc);
+            drawTrail(b);
             Draw.blend(Blending.additive);
-            Draw.color(MISS_VIOLET, 0.32f);
-            Fill.circle(b.x, b.y, 10f * sc);
-            Draw.color(MISS_YELLOW, 0.85f);
-            Drawf.tri(bx, by, 4.6f * sc, 17f * sc * flick, heading + 180f);
-            Draw.color(Color.white, 0.9f);
-            Drawf.tri(bx, by, 2.1f * sc, 9f * sc * flick, heading + 180f);
+            Draw.color(MISS_VIOLET, 0.4f);
+            drawStar(b.x, b.y, heading, 17f * sc, 4.2f * sc, 6f * sc);
             Draw.blend();
+            Draw.color(MISS_INDIGO);
+            drawStar(b.x, b.y, heading, 12f * sc, 3.0f * sc, 4.2f * sc);
+            Draw.color(MISS_STEEL);
+            drawStar(b.x, b.y, heading, 9f * sc, 1.8f * sc, 2.8f * sc);
+            Draw.color(Color.white);
+            Fill.circle(b.x, b.y, 1.5f * sc);
             Draw.reset();
-            Drawf.light(b.x, b.y, 38f * sc, MISS_VIOLET, 0.55f);
-            float w0 = width, h0 = height;
-            width = w0 * sc; height = h0 * sc;
-            b.rotation(heading);
-            super.draw(b);
-            b.rotation(r0);
-            width = w0; height = h0;
+            Drawf.light(b.x, b.y, 28f * sc, MISS_VIOLET, 0.5f);
         }
 
         @Override
@@ -676,7 +732,7 @@ public final class Bulvasyr {
                 dynSplash = calcAtk((Unit) b.owner) * ROCKET_SPLASH_RATIO;
             }
             hitEffect.at(x, y, b.rotation(), hitColor);
-            Effect.shake(2.4f, 10f, x, y);
+            Effect.shake(1.8f, 8f, x, y);
             hitSound.at(x, y, hitSoundPitch, hitSoundVolume * 0.65f);
 
             // Gây sát thương nổ xuyên giáp diện rộng (pierceArmor = true)
@@ -884,7 +940,7 @@ public final class Bulvasyr {
             float py = bu.y + Angles.trnsy(shieldFacing, bu.hitSize * 0.48f);
 
             float zPrev = Draw.z();
-            Draw.z(Layer.groundUnit - 0.01f);
+            Draw.z(Layer.groundUnit + 0.03f);
 
             // Nếu đã có sprite bulvasyr-shield.png thì vẽ sprite; chưa có thì vẽ vector tấm khiên vát chéo đúng ảnh 1 & 2
             if (shieldRegion == null && !Vars.headless) {
@@ -898,15 +954,9 @@ public final class Bulvasyr {
                 drawVectorShieldPlate(bu, px, py, ratio);
             }
 
-            // Đường cung cảnh báo vùng bảo vệ khi người chơi điều khiển hoặc khiên vừa chặn đạn
-            if ((Vars.player != null && Vars.player.unit() == bu) || bu.shieldFlash > 0.05f) {
+            // Thanh độ bền khiên: chỉ phe đồng minh với người chơi mới nhìn thấy (không còn vẽ cung cảnh báo)
+            if (Vars.player != null && bu.team == Vars.player.team()) {
                 Draw.z(Layer.overlayUI);
-                float arcAlpha = (Vars.player != null && Vars.player.unit() == bu ? 0.35f : 0f) + bu.shieldFlash * 0.55f;
-                Draw.color(Tmp.c1.set(SHIELD_STEEL).lerp(SHIELD_SPARK, bu.shieldFlash), Mathf.clamp(arcAlpha));
-                Lines.stroke(2.0f + bu.shieldFlash * 1.4f);
-                Lines.arc(bu.x, bu.y, bu.hitSize * 0.76f, (SHIELD_HALF_ARC * 2f) / 360f, shieldFacing - SHIELD_HALF_ARC);
-
-                // Thanh độ bền khiên vật lý nhỏ ngay cạnh unit
                 float bw = bu.hitSize * 1.15f;
                 float bh = 3.2f;
                 float by = bu.y - bu.hitSize * 0.85f;
