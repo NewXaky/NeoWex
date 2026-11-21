@@ -7,6 +7,7 @@ import arc.util.Time;
 import mindustry.Vars;
 import mindustry.game.EventType.Trigger;
 import mindustry.gen.Decal;
+import mindustry.gen.Entityc;
 import mindustry.gen.Groups;
 
 /**
@@ -39,29 +40,28 @@ public final class DecalLimiter {
     }
 
     private static void tick() {
-        if (Vars.state == null || !Vars.state.isGame() || Groups.decal == null) return;
+        if (Vars.state == null || !Vars.state.isGame()) return;
         // quét 4 lần/giây là đủ: vết mới sinh ra sẽ bị cắt ngắn trong tối đa ~15 tick
         if (Time.time % 15f > Time.delta) return;
         final int sec = lifeSeconds();
         if (sec >= MAX_SECONDS) return;
         final float max = sec * 60f;
-        for (int i = Groups.decal.size() - 1; i >= 0; i--) {
-            Decal d = Groups.decal.index(i);
-            if (d == null) continue;
+        // Decal không có nhóm riêng (Groups.decal không tồn tại) nên lọc từ Groups.all
+        tmp.clear();
+        for (int i = 0, n = Groups.all.size(); i < n; i++) {
+            Entityc e = Groups.all.index(i);
+            if (e instanceof Decal) tmp.add((Decal) e);
+        }
+        for (int i = 0; i < tmp.size; i++) {
+            Decal d = tmp.get(i);
             if (sec <= 0) { d.remove(); continue; }
             if (d.lifetime > max) d.lifetime = max;
         }
-        int n = Groups.decal.size();
-        if (n > CAP) {
-            tmp.clear();
-            for (int i = 0; i < n; i++) {
-                Decal d = Groups.decal.index(i);
-                if (d != null) tmp.add(d);
-            }
+        if (sec > 0 && tmp.size > CAP) {
             // vết già nhất (đã tồn tại lâu nhất) bị xoá trước
             tmp.sort((a, b) -> Float.compare(b.time, a.time));
-            for (int i = 0, r = n - CAP; i < r && i < tmp.size; i++) tmp.get(i).remove();
-            tmp.clear();
+            for (int i = 0, r = tmp.size - CAP; i < r; i++) tmp.get(i).remove();
         }
+        tmp.clear();
     }
 }
