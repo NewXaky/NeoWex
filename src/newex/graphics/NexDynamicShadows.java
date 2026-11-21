@@ -263,6 +263,7 @@ public final class NexDynamicShadows {
 
         Events.on(EventType.ClientLoadEvent.class, e -> {
             loadSettings();
+            Log.info("[NexDynamicShadows] preDraw v2 initialized (enabled=" + enabled + ", lite=" + liteMode + ")");
             if (!Vars.headless) {
                 Core.app.post(() -> {
                     registerGraphicsSettings();
@@ -295,6 +296,9 @@ public final class NexDynamicShadows {
         });
 
         if (!Vars.headless) {
+            // Dựng & cập nhật FBO bóng ở Trigger.preDraw (TRƯỚC khi Renderer.draw / SortedSpriteBatch / Bloom / NexDarkGraphics bắt đầu!)
+            Events.run(EventType.Trigger.preDraw, NexDynamicShadows::prepareShadows);
+            // Trong Trigger.draw chỉ gửi các lệnh Draw.rect vẽ ảnh bóng đã dựng sẵn -> 0 đổi FBO, 0 xung đột trên PC & Mobile!
             Events.run(EventType.Trigger.draw, NexDynamicShadows::queue);
         }
     }
@@ -532,11 +536,21 @@ public final class NexDynamicShadows {
         Fill.circle(x, y, radius * 0.40f);
     }
 
-    public static void queue() {
-        if (!enabled || Vars.headless || Vars.state == null || !Vars.state.isGame()) {
+    // Trạng thái khung hình hiện tại được tính 1 lần ở Trigger.preDraw rồi dùng lại ở Trigger.draw
+    private static boolean frameActive = false;
+    private static float frameAlpha = 0f, frameGlobalFade = 0f, frameUnitFade = 0f;
+    private static int frameChX1 = 0, frameChY1 = 0, frameChX2 = -1, frameChY2 = -1;
+    private static boolean frameHasVisibleTrees = false;
+
+    /** Bước 1 (Trigger.preDraw): Dựng/cập nhật FBO bóng HOÀN TOÀN NGOÀI SortedSpriteBatch, Bloom và NexDarkGraphics! */
+    public static void prepareShadows() {
+        frameActive = false;
+        if (!enabled || Vars.headless || Vars.state == null || !Vars.state.isGame() || Vars.world == null || Core.camera == null) {
             if (scratchA != null || shadowOut != null || mtnBlockShadowOut != null) disposeFBOs();
             return;
         }
+        int gw = Core.graphics.getWidth(), gh = Core.graphics.getHeight();
+        if (gw <= 0 || gh <= 0 || Core.camera.width <= 0.001f || Core.camera.height <= 0.001f) return;
         if (emptyRegion == null) emptyRegion = Core.atlas.find("clear");
 
         // Dùng Time.globalTime (thời gian khung hình thực mượt 60/120Hz) thay vì Time.time để bóng xoay mượt tuyệt đối, không bị khựng theo tick
@@ -571,7 +585,7 @@ public final class NexDynamicShadows {
         final float shadowScale = shadowLength * Vars.tilesize * (1f + darkness * 1.15f);
         final float alpha = shadowAlpha * (1f - darkness * 0.5f) * darkFade;
 
-        final float rawTilePixels = (Vars.tilesize / Core.camera.width) * Core.graphics.getWidth();
+        final float rawTilePixels = (Vars.tilesize / Core.camera.width) * gw;
         float minTilePixels = (Vars.renderer != null && Vars.renderer.minScale() > 0.001f) ? Vars.tilesize * Vars.renderer.minScale() : 6.0f;
         final float tilePixels = minTilePixels > 0.001f ? (rawTilePixels / minTilePixels) * 6.0f : rawTilePixels;
         final float globalFade = zoomFadeEnabled ? Mathf.clamp((tilePixels - 6.0f) / 6.0f, 0f, 1f) : 1f;
@@ -579,6 +593,8 @@ public final class NexDynamicShadows {
         if (globalFade <= 0.005f && (!unitShadowsEnabled || unitFade <= 0.005f)) {
             freeUnitShadows();
             freeDynLights();
+            hasShadowContent = false;
+            hasMtnBlockShadow = false;
             return;
         }
 
@@ -601,7 +617,6 @@ public final class NexDynamicShadows {
         final float screenY2 = camY + overH * 0.5f + margin;
 
         final float fboScale = qualityScale();
-        int gw = Core.graphics.getWidth(), gh = Core.graphics.getHeight();
         int maxDim = Vars.mobile ? 512 : 896;
         final int fw = Mathf.clamp((int) (gw * fboScale), 1, maxDim);
         final int fh = Mathf.clamp((int) (gh * fboScale), 1, maxDim);
@@ -622,18 +637,25 @@ public final class NexDynamicShadows {
                     mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
                 }
             } catch (Throwable err) {
+                Log.err("[NexDynamicShadows] FBO alloc failed", err);
                 disposeFBOs();
                 return;
             } finally {
                 restoreFboAndViewport(prevCreateFbo);
             }
-        } else if (!liteMode && mtnBlockShadowOut == null) {
+        } else if (!liteMode && (mtnBlockShadowOut == null || mtnBlockShadowOut.getTexture() == null || mtnBlockShadowOut.getTexture().getTextureObjectHandle() == 0)) {
             int prevCreateFbo = saveFboAndViewport();
+            if (mtnBlockShadowOut != null) {
+                try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {}
+                mtnBlockShadowOut = null;
+                mtnBlockRegOut = null;
+            }
             try {
                 mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
                 mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
                 shadDirty = true;
             } catch (Throwable err) {
+                Log.err("[NexDynamicShadows] mtn FBO alloc failed", err);
                 mtnBlockShadowOut = null;
                 mtnBlockRegOut = null;
             } finally {
@@ -711,40 +733,30 @@ public final class NexDynamicShadows {
             lastCachedCamY = camY;
             lastCachedCamW = overW;
             lastCachedCamH = overH;
-        }
 
-        final float fDarkFade = darkFade;
-
-        // Tách hẳn bước dựng FBO bóng sang Layer.floor - 9.5f (0.5f, TRƯỚC khi NexDarkGraphics mở postBuf ở 1.0f)!
-        // Nhờ đó tuyệt đối KHÔNG có bất kỳ thao tác đổi FBO / đổi viewport nào diễn ra bên trong postBuf -> hết hẳn giật giật và giữ nguyên 100% Saturation + Bloom trên Mobile & PC!
-        if (needsRedraw) {
-            Draw.draw(Layer.floor - 9.5f, () -> {
-                if (globalFade <= 0.005f) {
-                    hasShadowContent = false;
-                    hasMtnBlockShadow = false;
-                } else {
-                    boolean anyCaster = false;
-                    for (int cx = chX1; cx <= chX2 && !anyCaster; cx++) {
-                        for (int cy = chY1; cy <= chY2; cy++) {
-                            if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
-                            ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                            if (chunk == null || !chunk.valid || !chunk.casters.isEmpty()) {
-                                anyCaster = true;
-                                break;
-                            }
+            if (globalFade <= 0.005f) {
+                hasShadowContent = false;
+                hasMtnBlockShadow = false;
+            } else {
+                boolean anyCaster = false;
+                for (int cx = chX1; cx <= chX2 && !anyCaster; cx++) {
+                    for (int cy = chY1; cy <= chY2; cy++) {
+                        if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                        ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                        if (chunk == null || !chunk.valid || !chunk.casters.isEmpty()) {
+                            anyCaster = true;
+                            break;
                         }
                     }
-                    hasShadowContent = anyCaster;
-                    if (!anyCaster) hasMtnBlockShadow = false;
-                    if (anyCaster) {
-                        Draw.flush();
-                        int prevFbo = saveFboAndViewport();
-
-                        // Dựng tối đa 1 chunk/frame trên Mobile (2-4 trên PC) và dùng ma trận overscan (overW x overH)
-                        Tmp.m3.set(Draw.proj());
-                        Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
-                        try {
-
+                }
+                hasShadowContent = anyCaster;
+                if (!anyCaster) hasMtnBlockShadow = false;
+                if (anyCaster) {
+                    Draw.flush();
+                    int prevFbo = saveFboAndViewport();
+                    Tmp.m3.set(Draw.proj());
+                    Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
+                    try {
                         int rebuiltChunks = 0;
                         int maxRebuildPerFrame = Vars.mobile ? 1 : (lowPerf ? 2 : 4);
                         boolean anyMtn = false, anyNonMtn = false;
@@ -767,13 +779,14 @@ public final class NexDynamicShadows {
                         }
 
                         if (liteMode) {
-                            // === CHẾ ĐỘ LITE (SIÊU MƯỢT): 1 FBO duy nhất gộp toàn bộ bóng, không đổi texture, không vẽ mtnBlockShadowOut ===
+                            // === CHẾ ĐỘ LITE (SIÊU MƯỢT): 1 FBO duy nhất gộp toàn bộ bóng ===
                             hasMtnBlockShadow = false;
                             hasShadowContent = anyMtn || anyNonMtn;
                             if (hasShadowContent) {
                                 scratchA.begin();
                                 Gl.clearColor(0f, 0f, 0f, 0f);
                                 Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                Draw.blend(Blending.normal);
                                 Draw.color(0.04f, 0.03f, 0.08f, 1f);
                                 for (int cx = chX1; cx <= chX2; cx++) {
                                     for (int cy = chY1; cy <= chY2; cy++) {
@@ -794,7 +807,7 @@ public final class NexDynamicShadows {
                                             if (e.isProp) {
                                                 float propLen = (e.region.height * Draw.scl) * (shadowScale / 80f) * 1.35f;
                                                 if (propLen < 0.4f) continue;
-                                                NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * fDarkFade, 1f);
+                                                NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * darkFade, 1f);
                                             } else {
                                                 float fLen = shadowScale * e.elev * e.mod;
                                                 if (fLen < 0.2f) continue;
@@ -835,6 +848,7 @@ public final class NexDynamicShadows {
                                 scratchA.begin();
                                 Gl.clearColor(0f, 0f, 0f, 0f);
                                 Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                Draw.blend(Blending.normal);
                                 Draw.color(0.04f, 0.03f, 0.08f, 1f);
                                 for (int cx = chX1; cx <= chX2; cx++) {
                                     for (int cy = chY1; cy <= chY2; cy++) {
@@ -887,6 +901,7 @@ public final class NexDynamicShadows {
                                 scratchA.begin();
                                 Gl.clearColor(0f, 0f, 0f, 0f);
                                 Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
+                                Draw.blend(Blending.normal);
                                 Draw.color(0.04f, 0.03f, 0.08f, 1f);
                                 for (int cx = chX1; cx <= chX2; cx++) {
                                     for (int cy = chY1; cy <= chY2; cy++) {
@@ -906,7 +921,7 @@ public final class NexDynamicShadows {
                                             if (e.isProp) {
                                                 float propLen = (e.region.height * Draw.scl) * (shadowScale / 80f) * 1.35f;
                                                 if (propLen < 0.4f) continue;
-                                                NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * fDarkFade, 1f);
+                                                NexShadowConfig.drawPropShadow(e.cx, e.cy, e.region, e.propType, propLen, cosA, sinA, angle, contactShadow * 0.55f * darkFade, 1f);
                                             } else {
                                                 float fLen = shadowScale * e.elev * e.mod;
                                                 if (fLen < 0.2f) continue;
@@ -932,39 +947,74 @@ public final class NexDynamicShadows {
                                 eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                                 Draw.flush();
 
-                                Draw.blend(LIGHT_ERASE_BLEND);
                                 if (hasMtnBlockShadow && mtnBlockRegOut != null) {
+                                    Draw.blend(LIGHT_ERASE_BLEND);
                                     Draw.color(Color.white, 1f);
                                     Draw.rect(mtnBlockRegOut, camX, camY, overW, overH);
+                                    Draw.flush();
                                 }
                                 if (lightEraseEnabled) {
+                                    Draw.blend(LIGHT_ERASE_BLEND);
                                     punchChunkLights(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
+                                    Draw.flush();
                                 }
-                                Draw.flush();
                                 Draw.blend(Blending.normal);
                                 shadowOut.end();
                             }
                         }
-
-                        } finally {
-                            // BẮT BUỘC đặt lại màu/blend/shader/proj trước khi trả FBO, tránh rò màu đen (0,0,0) sang BlockRenderer khi tắt Lite!
-                            Draw.flush();
-                            Draw.shader();
-                            Draw.blend(Blending.normal);
-                            Draw.reset();
-                            Draw.proj(Tmp.m3);
-                            restoreFboAndViewport(prevFbo);
-                        }
+                    } catch (Throwable err) {
+                        Log.err("[NexDynamicShadows] shadow bake failed", err);
+                        hasShadowContent = false;
+                        hasMtnBlockShadow = false;
+                    } finally {
+                        Draw.flush();
+                        Draw.shader();
+                        Draw.blend(Blending.normal);
+                        Draw.reset();
+                        Draw.proj(Tmp.m3);
+                        restoreFboAndViewport(prevFbo);
                     }
                 }
-            });
+            }
         }
 
-        // Vẽ kết quả bóng đã dựng lên mặt đất ở Layer.block - 0.5f (29.5f) — CHỈ vẽ quad thường, KHÔNG đổi FBO!
+        boolean anyVisibleTrees = false;
+        for (int cx = chX1; cx <= chX2 && !anyVisibleTrees; cx++) {
+            for (int cy = chY1; cy <= chY2; cy++) {
+                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                if (chunk != null && chunk.valid && !chunk.treeTiles.isEmpty()) {
+                    anyVisibleTrees = true;
+                    break;
+                }
+            }
+        }
+
+        frameAlpha = alpha;
+        frameGlobalFade = globalFade;
+        frameUnitFade = unitFade;
+        frameChX1 = chX1;
+        frameChY1 = chY1;
+        frameChX2 = chX2;
+        frameChY2 = chY2;
+        frameHasVisibleTrees = anyVisibleTrees;
+        frameActive = true;
+    }
+
+    /** Bước 2 (Trigger.draw): CHỈ vẽ quad ảnh bóng đã dựng sẵn — tuyệt đối 0 thao tác FBO, 0 đổi viewport/shader! */
+    public static void queue() {
+        if (!frameActive || !enabled || Vars.headless || Vars.state == null || !Vars.state.isGame()) return;
+
+        final float alpha = frameAlpha;
+        final float globalFade = frameGlobalFade;
+        final float unitFade = frameUnitFade;
+        final int chX1 = frameChX1, chY1 = frameChY1, chX2 = frameChX2, chY2 = frameChY2;
+
+        // Vẽ kết quả bóng đã dựng lên mặt đất ở Layer.block - 0.5f (29.5f)
         Draw.draw(Layer.block - 0.5f, () -> {
             if (enabled && hasShadowContent && globalFade > 0.005f && shadowRegOut != null && shadowRegOut.texture != null) {
+                Draw.blend(Blending.normal);
                 Draw.color(Color.white, alpha * globalFade);
-                // Vẽ theo đúng tọa độ thế giới đã chụp FBO (lastCachedCamX/Y/W/H) để bóng ghim cố định xuống mặt đất 100%, không trượt theo camera!
                 Draw.rect(shadowRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
                 Draw.color();
             }
@@ -992,6 +1042,7 @@ public final class NexDynamicShadows {
                 }
                 if (started) { Draw.mixcol(); Draw.color(); }
             }
+            Draw.reset();
         });
 
         // Bóng unit bay
@@ -1006,6 +1057,7 @@ public final class NexDynamicShadows {
                     Draw.rect(ud.region, ud.x, ud.y, ud.w, ud.h, ud.rotation - 90f);
                 }
                 if (started) { Draw.mixcol(); Draw.color(); }
+                Draw.reset();
             });
         }
 
@@ -1022,18 +1074,7 @@ public final class NexDynamicShadows {
         }
 
         // Cây tĩnh vẽ trên bóng (chỉ đăng ký draw pass nếu trong khung hình thực sự có cây tĩnh)
-        boolean anyVisibleTrees = false;
-        for (int cx = chX1; cx <= chX2 && !anyVisibleTrees; cx++) {
-            for (int cy = chY1; cy <= chY2; cy++) {
-                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
-                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                if (chunk != null && chunk.valid && !chunk.treeTiles.isEmpty()) {
-                    anyVisibleTrees = true;
-                    break;
-                }
-            }
-        }
-        if (anyVisibleTrees) {
+        if (frameHasVisibleTrees) {
             Draw.draw(NexShadowConfig.Z_TREE, () -> {
                 for (int cx = chX1; cx <= chX2; cx++) {
                     for (int cy = chY1; cy <= chY2; cy++) {
