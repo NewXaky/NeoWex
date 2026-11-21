@@ -360,6 +360,7 @@ public final class NexDarkGraphics {
                 postReg.flip(false, true);
             }
             postBuf.begin(Color.clear);
+            Draw.reset();
             capturing = true;
         } catch (Throwable err) {
             capturing = false;

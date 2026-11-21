@@ -609,6 +609,7 @@ public final class NexDynamicShadows {
         if (scratchA == null || scratchA.getWidth() != fw || scratchA.getHeight() != fh
                 || scratchA.getTexture() == null || scratchA.getTexture().getTextureObjectHandle() == 0
                 || lastFboScale != fboScale) {
+            int prevCreateFbo = saveFboAndViewport();
             disposeFBOs();
             lastFboScale = fboScale;
             try {
@@ -623,19 +624,26 @@ public final class NexDynamicShadows {
             } catch (Throwable err) {
                 disposeFBOs();
                 return;
+            } finally {
+                restoreFboAndViewport(prevCreateFbo);
             }
         } else if (!liteMode && mtnBlockShadowOut == null) {
+            int prevCreateFbo = saveFboAndViewport();
             try {
                 mtnBlockShadowOut = new FrameBuffer(fw, fh); mtnBlockRegOut = flipped(mtnBlockShadowOut);
                 mtnBlockShadowOut.getTexture().setFilter(Texture.TextureFilter.linear);
+                shadDirty = true;
             } catch (Throwable err) {
                 mtnBlockShadowOut = null;
                 mtnBlockRegOut = null;
+            } finally {
+                restoreFboAndViewport(prevCreateFbo);
             }
         } else if (liteMode && mtnBlockShadowOut != null) {
             try { mtnBlockShadowOut.dispose(); } catch (Throwable ignored) {}
             mtnBlockShadowOut = null;
             mtnBlockRegOut = null;
+            hasMtnBlockShadow = false;
         }
 
         if (!ChunkCache.initialized) ChunkCache.init();
@@ -713,6 +721,7 @@ public final class NexDynamicShadows {
             Draw.draw(Layer.floor - 9.5f, () -> {
                 if (globalFade <= 0.005f) {
                     hasShadowContent = false;
+                    hasMtnBlockShadow = false;
                 } else {
                     boolean anyCaster = false;
                     for (int cx = chX1; cx <= chX2 && !anyCaster; cx++) {
@@ -726,13 +735,15 @@ public final class NexDynamicShadows {
                         }
                     }
                     hasShadowContent = anyCaster;
+                    if (!anyCaster) hasMtnBlockShadow = false;
                     if (anyCaster) {
                         Draw.flush();
                         int prevFbo = saveFboAndViewport();
 
-                        // Dựng tối đa 2 chunk/frame trên Mobile (4 trên PC) và dùng ma trận overscan (overW x overH)
+                        // Dựng tối đa 1 chunk/frame trên Mobile (2-4 trên PC) và dùng ma trận overscan (overW x overH)
                         Tmp.m3.set(Draw.proj());
                         Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
+                        try {
 
                         int rebuiltChunks = 0;
                         int maxRebuildPerFrame = Vars.mobile ? 1 : (lowPerf ? 2 : 4);
@@ -935,8 +946,15 @@ public final class NexDynamicShadows {
                             }
                         }
 
-                        Draw.proj(Tmp.m3);
-                        restoreFboAndViewport(prevFbo);
+                        } finally {
+                            // BẮT BUỘC đặt lại màu/blend/shader/proj trước khi trả FBO, tránh rò màu đen (0,0,0) sang BlockRenderer khi tắt Lite!
+                            Draw.flush();
+                            Draw.shader();
+                            Draw.blend(Blending.normal);
+                            Draw.reset();
+                            Draw.proj(Tmp.m3);
+                            restoreFboAndViewport(prevFbo);
+                        }
                     }
                 }
             });
@@ -995,9 +1013,10 @@ public final class NexDynamicShadows {
         if (!liteMode) {
             Draw.draw(Layer.blockOver + 0.5f, () -> {
                 if (enabled && hasMtnBlockShadow && globalFade > 0.005f && mtnBlockRegOut != null && mtnBlockRegOut.texture != null) {
+                    Draw.blend(Blending.normal);
                     Draw.color(Color.white, alpha * globalFade);
                     Draw.rect(mtnBlockRegOut, lastCachedCamX, lastCachedCamY, lastCachedCamW, lastCachedCamH);
-                    Draw.color();
+                    Draw.reset();
                 }
             });
         }
