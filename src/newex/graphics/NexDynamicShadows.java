@@ -13,6 +13,7 @@ import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.TextureRegion;
 import arc.graphics.gl.FrameBuffer;
 import arc.graphics.gl.Shader;
+import arc.math.Mat;
 import arc.math.Mathf;
 import arc.math.geom.Point2;
 import arc.scene.ui.CheckBox;
@@ -116,6 +117,8 @@ public final class NexDynamicShadows {
     private static final java.nio.IntBuffer fboQueryBuf = arc.util.Buffers.newIntBuffer(1);
     private static final java.nio.IntBuffer vpQueryBuf = arc.util.Buffers.newIntBuffer(4);
     private static int savedVpX = 0, savedVpY = 0, savedVpW = 1, savedVpH = 1;
+    private static final Mat savedProj = new Mat();
+    private static final Mat shadowProj = new Mat();
 
     private static int saveFboAndViewport() {
         int prevFbo = 0;
@@ -801,8 +804,8 @@ public final class NexDynamicShadows {
                 if (anyCaster) {
                     Draw.flush();
                     int prevFbo = saveFboAndViewport();
-                    Tmp.m3.set(Draw.proj());
-                    Draw.proj(Tmp.m2.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
+                    savedProj.set(Draw.proj());
+                    Draw.proj(shadowProj.setOrtho(camX - overW * 0.5f, camY - overH * 0.5f, overW, overH));
                     try {
                         int rebuiltChunks = 0;
                         int maxRebuildPerFrame = Vars.mobile ? 1 : (lowPerf ? 2 : 4);
@@ -1017,8 +1020,9 @@ public final class NexDynamicShadows {
                         Draw.flush();
                         Draw.shader();
                         Draw.blend(Blending.normal);
+                        Blending.normal.apply();
                         Draw.reset();
-                        Draw.proj(Tmp.m3);
+                        Draw.proj(savedProj);
                         restoreFboAndViewport(prevFbo);
                     }
                 }

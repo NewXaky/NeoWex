@@ -11,6 +11,7 @@ import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.TextureRegion;
 import arc.graphics.gl.FrameBuffer;
 import arc.graphics.gl.Shader;
+import arc.math.Mat;
 import arc.math.Mathf;
 import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Table;
@@ -122,6 +123,8 @@ public final class NexDarkGraphics {
 
     private static final IntBuffer fboQueryBuf = Buffers.newIntBuffer(1);
     private static final IntBuffer vpQueryBuf = Buffers.newIntBuffer(4);
+    private static final Mat savedProj = new Mat();
+    private static final Mat postProj = new Mat();
     private static final Runnable beginPost = NexDarkGraphics::beginCapture;
     private static final Runnable endPost = NexDarkGraphics::endCapture;
 
@@ -408,8 +411,8 @@ public final class NexDarkGraphics {
             postShader.bg = bloomCol.g;
             postShader.bb = bloomCol.b;
 
-            Tmp.m2.set(Draw.proj());
-            Draw.proj(Tmp.m1.setOrtho(0f, 0f, curW, curH));
+            savedProj.set(Draw.proj());
+            Draw.proj(postProj.setOrtho(0f, 0f, curW, curH));
             Draw.blend(Blending.disabled);
             Draw.shader(postShader);
             Draw.color(Color.white, 1f);
@@ -417,10 +420,12 @@ public final class NexDarkGraphics {
             Draw.flush();
             Draw.shader();
             Draw.blend(Blending.normal);
-            Draw.proj(Tmp.m2);
+            Blending.normal.apply();
+            Draw.proj(savedProj);
             Draw.reset();
         } catch (Throwable err) {
             Log.err("[NexDarkGraphics] post blit failed", err);
+            Blending.normal.apply();
             restoreOuterState();
         }
     }
