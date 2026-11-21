@@ -989,6 +989,9 @@ public final class NexDynamicShadows {
                         unstickFbos();
                         Draw.shader();
                         Draw.blend(Blending.normal);
+                        // QUAN TRỌNG: ép GL về blend thường NGAY. Batch chỉ áp blend khi flush có dữ liệu, nên hàm blend xóa-bóng
+                        // (ZERO, ONE_MINUS_SRC_ALPHA) bị rò sang khung hình -> FloorRenderer (chỉ Gl.enable(blend), không đặt hàm blend) vẽ nền ra đen thui.
+                        Blending.normal.apply();
                         Draw.reset();
                         Draw.proj(Tmp.m3);
                         restoreFboAndViewport(prevFbo);
