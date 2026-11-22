@@ -458,7 +458,7 @@ public final class LoadoutSelection {
 
         // --- SPAWN ĐỊCH NGẪU NHIÊN (camera lướt tới, chờ 1 giây rồi spawn) ---
         NexNet.on("randomspawnE", (player, payload) -> {
-            if (PvpDomination.isActive() || Vars.state == null || !Vars.state.isGame() || Vars.world == null) return;
+            if (Vars.state == null || !Vars.state.isGame() || Vars.world == null) return;
             String[] a = payload.split("\\|");
             if (a.length < 2) return;
             float tx = Strings.parseFloat(a[0], Float.NaN), ty = Strings.parseFloat(a[1], Float.NaN);
@@ -488,7 +488,7 @@ public final class LoadoutSelection {
 
         // --- PHÁ HẾT CÔNG TRÌNH (trừ lõi) + XOÁ TÀI NGUYÊN LÕI ---
         NexNet.on("wipeall", (player, payload) -> {
-            if (PvpDomination.isActive() || Vars.state == null || !Vars.state.isGame()) return;
+            if (Vars.state == null || !Vars.state.isGame()) return;
             Team team = requesterTeam(player);
             if (team == null) return;
             Seq<CoreBuild> cores = team.cores();
@@ -575,7 +575,7 @@ public final class LoadoutSelection {
     }
 
     static void triggerRandomSpawnEnemy(TextButton btn) {
-        if (PvpDomination.isActive() || Vars.state == null || !Vars.state.isGame() || Vars.world == null) return;
+        if (Vars.state == null || !Vars.state.isGame() || Vars.world == null) return;
         Seq<Tile> valid = new Seq<>();
         int width = Vars.world.width(), height = Vars.world.height();
         for (int x = 2; x < width - 2; x += 3) {
@@ -599,7 +599,7 @@ public final class LoadoutSelection {
     }
 
     static void triggerWipeAll(TextButton btn) {
-        if (PvpDomination.isActive() || Vars.state == null || !Vars.state.isGame()) return;
+        if (Vars.state == null || !Vars.state.isGame()) return;
         long now = Time.millis();
         if (now > wipeArmedUntil) {
             wipeArmedUntil = now + WIPE_CONFIRM_MS;
@@ -791,7 +791,7 @@ public final class LoadoutSelection {
         Core.settings.put("hits", hits);
     }
 
-    static boolean canUseHud() { return !Vars.mobile && !Vars.net.client() && !PvpDomination.isActive(); }
+    static boolean canUseHud() { return !Vars.mobile && !Vars.net.client(); }
 
     static void centerWaveButton() {
         if (!canUseHud() || customWaveContainer == null) return;
@@ -1354,12 +1354,13 @@ public final class LoadoutSelection {
                 // --- PHÍM TẮT 1-6 ---
                 boolean typing = Core.scene.hasKeyboard() || Core.scene.hasDialog()
                     || (Vars.ui.chatfrag != null && Vars.ui.chatfrag.shown());
-                if (!typing && !shift) {
+                boolean domModKey = Core.input.keyDown(KeyCode.f1) || Core.input.keyDown(KeyCode.f2);
+                if (!typing && !shift && !domModKey) {
                     if (hotkeyTapped(HK_WAVE)) triggerNextWave(hudButtons.get("wave"));
                     if (hotkeyTapped(HK_METEOR)) triggerRandomMeteor(hudButtons.get("meteor"));
                     if (hotkeyTapped(HK_WAVE10)) triggerMultipleWaves(10, hudButtons.get("wave10"));
-                    if (!PvpDomination.isActive() && hotkeyTapped(HK_SPAWNE)) triggerRandomSpawnEnemy(hudButtons.get("spawnE"));
-                    if (!PvpDomination.isActive() && hotkeyTapped(HK_WIPE)) triggerWipeAll(hudButtons.get("wipe"));
+                    if (hotkeyTapped(HK_SPAWNE)) triggerRandomSpawnEnemy(hudButtons.get("spawnE"));
+                    if (hotkeyTapped(HK_WIPE)) triggerWipeAll(hudButtons.get("wipe"));
                     if (hotkeyTapped(HK_MEGA)) triggerSpawnMega(hudButtons.get("mega"));
                 }
 

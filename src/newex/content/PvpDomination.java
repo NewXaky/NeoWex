@@ -523,9 +523,9 @@ public final class PvpDomination {
         initialized = true;
         NewMode.domination = HOOK;
 
-        // Đăng ký gói nhận Unit đã lưu & lệnh phím tắt (4 / Shift+4 / 5) từ Client -> Host
+        // Đăng ký gói nhận Unit đã lưu & lệnh phím tắt (F1+4 / F2+4 / F1+5) từ Client -> Host
         NewModePvp.onReq(REQ_DOM_LOAD, 250, PvpDomination::handleLoadUnitReq);
-        NewModePvp.onReq(REQ_DOM_SPAWN, 150, PvpDomination::handleDomSpawnReq);
+        NewModePvp.onReq(REQ_DOM_SPAWN, 30, PvpDomination::handleDomSpawnReq);
 
         // Đăng ký gói nhận đồng bộ Cứ Điểm & Điểm từ Host -> Client
         if (!Vars.headless) {
@@ -616,6 +616,8 @@ public final class PvpDomination {
         r.attackMode = false;
         r.pvp = true;
         r.winWave = 0;
+        r.unitCapVariable = false;
+        r.unitCap = 999999;
         r.spawns = new Seq<>();
 
         points.clear();
@@ -840,12 +842,17 @@ public final class PvpDomination {
             }
         }
 
-        // Phím tắt trong PvP Chiếm Cứ: 4 = gọi unit hỗ trợ phe vàng, Shift+4 = gọi unit hỗ trợ phe còn lại, 5 = reset toàn bộ cứ điểm
+        // Phím tắt trong PvP Chiếm Cứ: F1+4 = gọi unit hỗ trợ phe vàng (vô hạn), F2+4 = gọi unit hỗ trợ phe còn lại (vô hạn), F1+5 = reset toàn bộ cứ điểm
         if (!Vars.headless && !Core.scene.hasKeyboard() && !Core.scene.hasDialog()) {
-            boolean shift = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
-            if (Core.input.keyTap(KeyCode.num4) || Core.input.keyTap(KeyCode.numpad4)) {
-                NewModePvp.send(REQ_DOM_SPAWN, shift ? "1" : "0");
-            } else if (Core.input.keyTap(KeyCode.num5) || Core.input.keyTap(KeyCode.numpad5)) {
+            boolean f1 = Core.input.keyDown(KeyCode.f1);
+            boolean f2 = Core.input.keyDown(KeyCode.f2);
+            boolean tap4 = Core.input.keyTap(KeyCode.num4) || Core.input.keyTap(KeyCode.numpad4);
+            boolean tap5 = Core.input.keyTap(KeyCode.num5) || Core.input.keyTap(KeyCode.numpad5);
+            if (f1 && tap4) {
+                NewModePvp.send(REQ_DOM_SPAWN, "0");
+            } else if (f2 && tap4) {
+                NewModePvp.send(REQ_DOM_SPAWN, "1");
+            } else if (f1 && tap5) {
                 NewModePvp.send(REQ_DOM_SPAWN, "R");
             }
         }
@@ -927,6 +934,11 @@ public final class PvpDomination {
 
         UnitType ut = pickRandomSupportType();
         if (ut == null) return;
+        // Bảo đảm spawn vô hạn không bị giới hạn unitCap của lõi
+        if (Vars.state != null && Vars.state.rules != null && Vars.state.rules.unitCap < 999999) {
+            Vars.state.rules.unitCapVariable = false;
+            Vars.state.rules.unitCap = 999999;
+        }
         Unit u = ut.create(targetTeam);
         float ang = Mathf.random(360f);
         float rad = core.block.size * Vars.tilesize * 0.65f + u.hitSize * 0.6f + 8f;

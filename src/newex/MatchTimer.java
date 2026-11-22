@@ -233,7 +233,7 @@ public final class MatchTimer {
 
     private static void update() {
         boolean shiftPressed = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
-        if (shiftPressed && Core.input.keyTap(KeyCode.num1) && !newex.content.PvpDomination.isActive()) {
+        if (shiftPressed && Core.input.keyTap(KeyCode.num1)) {
             timerVisible = !timerVisible;
             if (timerVisible) {
                 centerTimer();
