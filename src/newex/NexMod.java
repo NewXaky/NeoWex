@@ -189,6 +189,7 @@ public class NexMod extends Mod {
         Survival.init();
         SurvivorSkills.init();
         NewModePvp.init(); // main.js: require("newmode-pvp") sau survivor-skills, trước archueng-pvp
+        newex.content.TikTokBridge.init(); // cầu nối TikTok LIVE hiển thị tên viewer trên unit spawn
         LeolyrSummoner.init();
         optionalInit("newex.content.Leolyr"); // chua co trong repo CI -> goi qua phan xa, co file la tu chay
         optionalInit("newex.content.Elorix");

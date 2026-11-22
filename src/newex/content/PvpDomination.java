@@ -920,39 +920,37 @@ public final class PvpDomination {
         }
     }
 
-    /** Xử lý phím 4 (phe vàng), Shift+4 (phe còn lại) và phím 5 (reset toàn bộ cứ điểm). */
-    private static void handleDomSpawnReq(Player pl, String payload) {
-        if (!isActive() || Vars.net.client()) return;
-        if ("R".equals(payload)) {
-            for (int i = 0; i < points.size(); i++) {
-                CapPoint cp = points.get(i);
-                cp.ownerTeamId = -1;
-                cp.capTeamId = -1;
-                cp.progress = 0f;
-                cp.contested = false;
-                cp.activeCount = 0;
-                cp.flashT = 25f;
-            }
-            rateCount.clear();
-            broadcastDomState();
-            NewModePvp.toastAll(tr("[accent]Đã reset toàn bộ cứ điểm về chưa phe nào chiếm!",
-                "[accent]All capture points have been reset to neutral!"), 3f);
-            return;
+    /** Reset toàn bộ cứ điểm về trung lập (gọi được từ phím F1+5 hoặc TikTokBridge). */
+    static void resetAllCapturePoints() {
+        for (int i = 0; i < points.size(); i++) {
+            CapPoint cp = points.get(i);
+            cp.ownerTeamId = -1;
+            cp.capTeamId = -1;
+            cp.progress = 0f;
+            cp.contested = false;
+            cp.activeCount = 0;
+            cp.flashT = 25f;
         }
+        rateCount.clear();
+        broadcastDomState();
+    }
 
+    /** Spawn 1 unit hỗ trợ đi chiếm cứ vô hạn cho phe vàng (otherTeam=false) hoặc phe còn lại (otherTeam=true). */
+    static Unit spawnSupportUnit(boolean otherTeam, UnitType forcedType) {
+        if (!isActive() || Vars.net.client()) return null;
         Seq<Team> tl = NewModePvp.pvpTeams();
-        if (tl.isEmpty()) return;
+        if (tl.isEmpty()) return null;
         Team yellow = tl.contains(Team.sharded) ? Team.sharded : tl.get(0);
         Team other = yellow;
         for (int i = 0; i < tl.size; i++) {
             if (tl.get(i) != yellow && tl.get(i).cores().size > 0) { other = tl.get(i); break; }
         }
-        Team targetTeam = "1".equals(payload) ? other : yellow;
+        Team targetTeam = otherTeam ? other : yellow;
         CoreBlock.CoreBuild core = targetTeam.core();
-        if (core == null || !core.isValid()) return;
+        if (core == null || !core.isValid()) return null;
 
-        UnitType ut = pickRandomSupportType();
-        if (ut == null) return;
+        UnitType ut = forcedType != null ? forcedType : pickRandomSupportType();
+        if (ut == null) return null;
         // Bảo đảm spawn vô hạn không bị giới hạn unitCap của lõi
         if (Vars.state != null && Vars.state.rules != null && Vars.state.rules.unitCap < 999999) {
             Vars.state.rules.unitCapVariable = false;
@@ -970,9 +968,25 @@ public final class PvpDomination {
         su.unit = u;
         su.team = targetTeam;
         supportUnits.add(su);
+        return u;
+    }
 
-        NewModePvp.toastAll("[#" + targetTeam.color + "]■ " + targetTeam.localized() + "[] "
-            + tr("gọi hỗ trợ chiếm cứ: ", "deployed capture support: ") + "[accent]" + ut.localizedName + "[]", 2.2f);
+    /** Xử lý phím F1+4 (phe vàng), F2+4 (phe còn lại) và phím F1+5 (reset toàn bộ cứ điểm). */
+    private static void handleDomSpawnReq(Player pl, String payload) {
+        if (!isActive() || Vars.net.client()) return;
+        if ("R".equals(payload)) {
+            resetAllCapturePoints();
+            NewModePvp.toastAll(tr("[accent]Đã reset toàn bộ cứ điểm về chưa phe nào chiếm!",
+                "[accent]All capture points have been reset to neutral!"), 3f);
+            return;
+        }
+
+        Unit u = spawnSupportUnit("1".equals(payload), null);
+        if (u == null) return;
+        TikTokBridge.tagIfRecentDonor(u);
+
+        NewModePvp.toastAll("[#" + u.team.color + "]■ " + u.team.localized() + "[] "
+            + tr("gọi hỗ trợ chiếm cứ: ", "deployed capture support: ") + "[accent]" + u.type.localizedName + "[]", 2.2f);
     }
 
     /** Di chuyển thông minh né tường (dùng PvpBotAI.pathQuery cho bộ binh) hướng đến cứ điểm và chiến đấu. */

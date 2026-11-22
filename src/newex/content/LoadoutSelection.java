@@ -478,6 +478,7 @@ public final class LoadoutSelection {
                     float wx = target.worldx(), wy = target.worldy();
                     spawned.set(wx, wy);
                     spawned.add();
+                    TikTokBridge.tagIfRecentDonor(spawned);
                     Fx.spawn.at(wx, wy);
                     Fx.teleportOut.at(wx, wy);
                     NexNet.fx(Fx.spawn, wx, wy);
