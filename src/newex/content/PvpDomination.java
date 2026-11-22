@@ -42,11 +42,14 @@ import mindustry.content.Blocks;
 import mindustry.content.Fx;
 import mindustry.entities.Effect;
 import mindustry.entities.Units;
+import mindustry.game.EventType.BlockDestroyEvent;
 import mindustry.game.EventType.ClientLoadEvent;
+import mindustry.game.EventType.ContentInitEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Rules;
 import mindustry.game.Team;
+import mindustry.gen.Bullet;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Icon;
@@ -436,6 +439,140 @@ public final class PvpDomination {
         public int power = 0;
     }
 
+    /** Lưu vị trí lõi gốc của bản đồ PvP Chiếm Cứ để bảo đảm bất tử 100% (tự phục hồi kể cả bị skill gọi kill()/setAir()). */
+    static final class SavedCore {
+        int tx, ty;
+        mindustry.world.Block block;
+        Team team;
+    }
+    static final ArrayList<SavedCore> savedCores = new ArrayList<>();
+    private static final HashMap<mindustry.world.Block, boolean[]> origCoreFlags = new HashMap<>();
+    private static boolean corePassThroughApplied = false;
+
+    /**
+     * Đặt underBullets=true & targetable=false cho mọi CoreBlock trong PvP Chiếm Cứ:
+     * - Đạn bay xuyên qua lõi (không va chạm đạn, không nổ trên lõi).
+     * - Unit/AI địch không nhắm bắn vào lõi mà tập trung chiếm cứ điểm.
+     * - Không cần bơm máu ảo! Tự khôi phục trạng thái gốc khi trận kết thúc hoặc sang map khác.
+     */
+    private static boolean coreBuildHooked = false;
+
+    /**
+     * Bọc CoreBuild cho mọi CoreBlock chuẩn để chặn 100% MỌI loại sát thương khi coresInvul()=true:
+     * va chạm đạn, nổ lan, lửa/DoT mỗi giây, laser xuyên, damagePierce() lẫn kill() — không cần bơm máu ảo!
+     */
+    private static void hookCoreBuilds() {
+        if (coreBuildHooked) return;
+        coreBuildHooked = true;
+        try {
+            for (mindustry.world.Block b : Vars.content.blocks()) {
+                if (!(b instanceof CoreBlock)) continue;
+                final CoreBlock cb = (CoreBlock) b;
+                // Chỉ bọc các CoreBlock dùng CoreBuild mặc định (an toàn 100% với lõi mod có subclass riêng)
+                try {
+                    Object sample = cb.buildType.get();
+                    if (sample == null || sample.getClass() != CoreBlock.CoreBuild.class) continue;
+                } catch (Throwable ignored) {
+                    continue;
+                }
+                cb.buildType = () -> cb.new CoreBuild() {
+                    @Override public boolean collide(Bullet other) {
+                        if (PvpDomination.coresInvul()) return false;
+                        return super.collide(other);
+                    }
+                    @Override public void damage(float amount) {
+                        if (PvpDomination.coresInvul()) return;
+                        super.damage(amount);
+                    }
+                    @Override public void damage(float amount, boolean withEffect) {
+                        if (PvpDomination.coresInvul()) return;
+                        super.damage(amount, withEffect);
+                    }
+                    @Override public void damage(Team source, float amount) {
+                        if (PvpDomination.coresInvul()) return;
+                        super.damage(source, amount);
+                    }
+                    @Override public void damageContinuous(float amount) {
+                        if (PvpDomination.coresInvul()) return;
+                        super.damageContinuous(amount);
+                    }
+                    @Override public void damageContinuousPierce(float amount) {
+                        if (PvpDomination.coresInvul()) return;
+                        super.damageContinuousPierce(amount);
+                    }
+                    @Override public void damagePierce(float amount, boolean withEffect) {
+                        if (PvpDomination.coresInvul()) return;
+                        super.damagePierce(amount, withEffect);
+                    }
+                    @Override public void kill() {
+                        if (PvpDomination.coresInvul()) return;
+                        super.kill();
+                    }
+                };
+            }
+        } catch (Throwable err) {
+            Log.err("[PvpDomination] hookCoreBuilds failed", err);
+        }
+    }
+
+    static void setCoresPassThrough(boolean enable) {
+        if (corePassThroughApplied == enable && !origCoreFlags.isEmpty()) return;
+        corePassThroughApplied = enable;
+        try {
+            for (mindustry.world.Block b : Vars.content.blocks()) {
+                if (!(b instanceof CoreBlock)) continue;
+                boolean[] orig = origCoreFlags.get(b);
+                if (orig == null) {
+                    orig = new boolean[]{b.underBullets, b.targetable};
+                    origCoreFlags.put(b, orig);
+                }
+                if (enable) {
+                    b.underBullets = true;
+                    b.targetable = false;
+                } else {
+                    b.underBullets = orig[0];
+                    b.targetable = orig[1];
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    static void recordMapCores() {
+        savedCores.clear();
+        for (Team tm : Team.all) {
+            if (tm == Team.derelict) continue;
+            Seq<CoreBlock.CoreBuild> cs = tm.cores();
+            for (int i = 0; i < cs.size; i++) {
+                CoreBlock.CoreBuild cb = cs.get(i);
+                if (cb == null || !cb.isValid()) continue;
+                SavedCore sc = new SavedCore();
+                sc.tx = cb.tileX();
+                sc.ty = cb.tileY();
+                sc.block = cb.block;
+                sc.team = tm;
+                savedCores.add(sc);
+            }
+        }
+    }
+
+    static void ensureCoresAlive() {
+        if (!coresInvul() || Vars.net.client() || Vars.world == null) return;
+        if (savedCores.isEmpty()) recordMapCores();
+        for (int i = 0; i < savedCores.size(); i++) {
+            SavedCore sc = savedCores.get(i);
+            Tile t = Vars.world.tile(sc.tx, sc.ty);
+            if (t == null) continue;
+            if (t.build instanceof CoreBlock.CoreBuild && t.build.team == sc.team && !t.build.dead) {
+                t.build.health = t.build.maxHealth;
+            } else {
+                try {
+                    t.setNet(sc.block, sc.team, 0);
+                    if (t.build != null) t.build.health = t.build.maxHealth;
+                } catch (Throwable ignored) {}
+            }
+        }
+    }
+
     // ===== Trạng thái trận Chiếm Cứ =====
     static final ArrayList<CapPoint> points = new ArrayList<>();
     static final HashMap<Integer, Float> scores = new HashMap<>();
@@ -532,6 +669,7 @@ public final class PvpDomination {
         // Đăng ký gói nhận Unit đã lưu & lệnh phím tắt (F1+4 / F2+4 / F1+5) từ Client -> Host
         NewModePvp.onReq(REQ_DOM_LOAD, 250, PvpDomination::handleLoadUnitReq);
         NewModePvp.onReq(REQ_DOM_SPAWN, 30, PvpDomination::handleDomSpawnReq);
+        Events.on(ContentInitEvent.class, e -> hookCoreBuilds());
 
         // Đăng ký gói nhận đồng bộ Cứ Điểm & Điểm từ Host -> Client
         if (!Vars.headless) {
@@ -549,11 +687,17 @@ public final class PvpDomination {
             Events.run(Trigger.uiDrawEnd, PvpDomination::drawMinimapOverlays);
         }
 
+        Events.on(BlockDestroyEvent.class, e -> {
+            if (coresInvul() && !Vars.net.client() && e.tile != null && e.tile.block() instanceof CoreBlock) {
+                Core.app.post(PvpDomination::ensureCoresAlive);
+            }
+        });
         Events.run(Trigger.update, PvpDomination::tick);
     }
 
     public static void onWorldLoad() {
         points.clear();
+        savedCores.clear();
         scores.clear();
         rateCount.clear();
         supportUnits.clear();
@@ -565,6 +709,7 @@ public final class PvpDomination {
         localLife.spectating = false;
         matchEnded = false;
         winnerTeamId = -1;
+        setCoresPassThrough(true);
         syncTimer = 0f;
         healTimer = 0f;
         botAiTimer = 0f;
@@ -589,6 +734,7 @@ public final class PvpDomination {
         }
 
         if (isActive()) {
+            setCoresPassThrough(true);
             scanCapturePoints();
             restoreStateFromTags();
             if (!Vars.net.client()) {
@@ -600,6 +746,8 @@ public final class PvpDomination {
                     }
                 });
             }
+        } else {
+            setCoresPassThrough(false);
         }
     }
 
@@ -627,6 +775,7 @@ public final class PvpDomination {
         r.spawns = new Seq<>();
 
         points.clear();
+        savedCores.clear();
         scores.clear();
         rateCount.clear();
         supportUnits.clear();
@@ -638,6 +787,7 @@ public final class PvpDomination {
         localLife.spectating = false;
         matchEnded = false;
         winnerTeamId = -1;
+        setCoresPassThrough(true);
         soloBotUnit = null;
         soloBotTeam = null;
         soloBotRespawn = 90f;
@@ -884,8 +1034,9 @@ public final class PvpDomination {
 
         if (Vars.net.client()) return;
 
-        // Server / Host cập nhật logic chiếm cứ điểm, hồi máu tại lõi, điểm số, unit hỗ trợ và bot solo
+        // Server / Host cập nhật logic bảo vệ lõi bất tử, chiếm cứ điểm, hồi máu tại lõi, điểm số, unit hỗ trợ và bot solo
         if (points.isEmpty()) scanCapturePoints();
+        ensureCoresAlive();
         tickCoreFountain();
         tickSoloBot();
         tickSupportUnits();
@@ -945,6 +1096,7 @@ public final class PvpDomination {
         for (int i = 0; i < tl.size; i++) {
             if (tl.get(i) != yellow && tl.get(i).cores().size > 0) { other = tl.get(i); break; }
         }
+        if (other == yellow && Team.crux.cores().size > 0) other = Team.crux;
         Team targetTeam = otherTeam ? other : yellow;
         CoreBlock.CoreBuild core = targetTeam.core();
         if (core == null || !core.isValid()) return null;
@@ -1266,6 +1418,7 @@ public final class PvpDomination {
         if (matchEnded || winner == null) return;
         matchEnded = true;
         winnerTeamId = winner.id;
+        setCoresPassThrough(false);
         scores.put(winner.id, SCORE_GOAL);
         broadcastDomState();
 
@@ -1274,12 +1427,10 @@ public final class PvpDomination {
                "filled the Domination bar! Enemy cores are being destroyed!");
         NewModePvp.toastAll(banner, 5f);
 
-        // Phá hủy toàn bộ lõi của các phe đối phương bằng chuỗi nổ lõi của NewModePvp
+        // Phá hủy toàn bộ lõi của các phe đối phương (kể cả Team.crux nếu có) bằng chuỗi nổ lõi của NewModePvp
         boolean destroyedAny = false;
-        Seq<Team> tl = NewModePvp.pvpTeams();
-        for (int i = 0; i < tl.size; i++) {
-            Team tm = tl.get(i);
-            if (tm == winner || tm == Team.derelict || tm == Team.crux) continue;
+        for (Team tm : Team.all) {
+            if (tm == winner || tm == Team.derelict) continue;
             Seq<CoreBlock.CoreBuild> cs = tm.cores().copy();
             for (int j = 0; j < cs.size; j++) {
                 CoreBlock.CoreBuild cb = cs.get(j);

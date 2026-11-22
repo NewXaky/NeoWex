@@ -997,6 +997,7 @@ public final class Cos {
     }
 
     static void breakTile(Tile t, Team team) {
+        if (PvpDomination.isActive()) return;
         Building b = t.build;
         if (b != null) {
             if (BEAM_DESTROY_ALLY_BLOCKS || b.team != team) b.kill();
@@ -1054,7 +1055,7 @@ public final class Cos {
                         }
                     }
                 }
-            } else if (!s.charging) {
+            } else if (!s.charging && !PvpDomination.isActive()) {
                 if (mount.reload > s.reloads[i] + 0.5f && beamWillHit(unit, mount)) {
                     s.hitsB++;
                     if (s.hitsB >= BEAM_HITS_NEEDED) startCharge(unit, s);

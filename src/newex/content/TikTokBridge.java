@@ -48,9 +48,14 @@ import java.util.Map;
 public final class TikTokBridge {
     private TikTokBridge() {}
 
+    static final String INBOX_DIR = "newex-tiktok-inbox";
     static final String QUEUE_FILE = "newex-tiktok-queue.jsonl";
     static final String DONOR_FILE = "newex-tiktok-donor.json";
     static final String TT_NAME_KIND = "newex-tt-name";
+
+    public static boolean isTaggedUnit(Unit u) {
+        return u != null && unitTags.containsKey(u.id);
+    }
 
     static final class ViewerTag {
         String viewer;
@@ -117,16 +122,41 @@ public final class TikTokBridge {
     private static void pollQueueFile() {
         try {
             if (Vars.dataDirectory == null) return;
+            int processed = 0;
+
+            // 1) Đọc thư mục hộp thư nguyên tử (mỗi quà 1 file .json -> 0% mất quà khi nhiều người tặng cùng lúc!)
+            Fi inbox = Vars.dataDirectory.child(INBOX_DIR);
+            if (inbox.exists() && inbox.isDirectory()) {
+                Fi[] files = inbox.list(".json");
+                if (files != null && files.length > 0) {
+                    java.util.Arrays.sort(files, (a, b) -> a.name().compareTo(b.name()));
+                    for (Fi jf : files) {
+                        if (processed >= 25) break;
+                        try {
+                            String raw = jf.readString("UTF-8");
+                            jf.delete();
+                            if (raw != null && !raw.trim().isEmpty()) {
+                                JsonValue j = new JsonReader().parse(raw.trim());
+                                executeCommand(j);
+                                processed++;
+                            }
+                        } catch (Throwable err) {
+                            try { jf.delete(); } catch (Throwable ignored) {}
+                            Log.err("[TikTokBridge] bad inbox file: " + jf.name(), err);
+                        }
+                    }
+                }
+            }
+
+            // 2) Tương thích ngược nếu có file queue cũ newex-tiktok-queue.jsonl
             Fi f = Vars.dataDirectory.child(QUEUE_FILE);
             if (!f.exists() || f.length() <= 0L) return;
 
             String content = f.readString("UTF-8");
-            // Xóa nội dung file ngay sau khi đọc để không chạy lặp
             try { f.writeString("", false, "UTF-8"); } catch (Throwable ignored) {}
             if (content == null || content.trim().isEmpty()) return;
 
             String[] lines = content.split("\\r?\\n");
-            int processed = 0;
             for (String line : lines) {
                 if (processed >= 25) break;
                 String s = line.trim();
@@ -162,10 +192,16 @@ public final class TikTokBridge {
         }
 
         if ("meteor".equals(cmd)) {
-            for (int i = 0; i < Math.min(count, 5); i++) {
-                LoadoutSelection.triggerRandomMeteor(null);
+            int n = Math.min(count, 5);
+            for (int i = 0; i < n; i++) {
+                // Giãn cách 0.75s mỗi thiên thạch để không dính cooldown 500ms của NexNet
+                Time.run(i * 45f, () -> {
+                    if (Vars.state != null && Vars.state.isGame()) {
+                        LoadoutSelection.triggerRandomMeteor(null);
+                    }
+                });
             }
-            announceGift(viewer, gift, diamonds, NewModePvp.tr("Gọi thiên thạch x" + Math.min(count, 5) + "!", "Meteor x" + Math.min(count, 5) + "!"));
+            announceGift(viewer, gift, diamonds, NewModePvp.tr("Gọi thiên thạch x" + n + "!", "Meteor x" + n + "!"));
             return;
         }
 

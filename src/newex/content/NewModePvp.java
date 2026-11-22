@@ -2479,6 +2479,11 @@ public class NewModePvp {
             if (shieldMinCache > 0) toastAll(tr("[accent]Khiên bất tử của lõi đã hết! Chuyển sang khiên hấp thụ " + SHIELD_HP + " sát thương.",
                 "[accent]Core invincible shield ended! Now an absorb shield of " + SHIELD_HP + " damage."), 5f);
         }
+        boolean domInv = PvpDomination.coresInvul();
+        if (domInv) {
+            // PvP Chiếm Cứ: lõi không nhận va chạm đạn (underBullets=true, targetable=false), không cần bơm máu ảo!
+            return;
+        }
         Seq<Team> tl = pvpTeams();
         for (int i = 0; i < tl.size; i++) {
             Seq<CoreBlock.CoreBuild> cores = tl.get(i).cores();
@@ -2504,6 +2509,7 @@ public class NewModePvp {
         }
     }
     static void startCoreDeath(CoreBlock.CoreBuild cb) {
+        if (PvpDomination.coresInvul()) return;
         if (coreDying.containsKey(cb.id)) return;
         if (ChaosMode.coreExtraLife(cb)) return;
         CoreDie d = new CoreDie(); d.b = cb; coreDying.put(cb.id, d);
@@ -3647,6 +3653,7 @@ public class NewModePvp {
         if (u.isPlayer()) return;
         if (botUnitOf(u) != null) return;
         if (PvpDomination.isSoloBot(u)) return;
+        if (TikTokBridge.isTaggedUnit(u)) return;
         if (orphanTypes == null) { orphanTypes = new ArrayList<>(); for (int k = 1; k <= TIER_MAX; k++) orphanTypes.add(tierType(k)); }
         for (UnitType t : orphanTypes) if (u.type == t) { try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); } return; }
     }
@@ -4108,7 +4115,7 @@ public class NewModePvp {
         }
     }
     static void checkWin() {
-        if (winning || Vars.state.gameOver) return;
+        if (winning || Vars.state.gameOver || PvpDomination.coresInvul()) return;
         Seq<Team> tl = pvpTeams();
         ArrayList<Team> alive = new ArrayList<>();
         for (int i = 0; i < tl.size; i++) if (tl.get(i).cores().size > 0) alive.add(tl.get(i));
