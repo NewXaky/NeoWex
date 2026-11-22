@@ -7,10 +7,13 @@ import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
 import arc.graphics.g2d.TextureRegion;
+import arc.input.KeyCode;
 import arc.math.Angles;
 import arc.math.Mathf;
 import arc.math.geom.Vec2;
 import arc.scene.Element;
+import arc.scene.event.InputEvent;
+import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
 import arc.scene.ui.Image;
 import arc.scene.ui.ScrollPane;
@@ -77,6 +80,10 @@ public final class PvpDomination {
     public static final String TAG_PLAY_TICKS = "newex-pvp-playticks";
 
     public static final String KEY_SAVED_UNITS = "newex-pvp-saved-units-v1";
+    private static final String KEY_BAR_X = "newex-dom-bar-x";
+    private static final String KEY_BAR_Y = "newex-dom-bar-y";
+    private static final String KEY_SWAP_X = "newex-dom-swap-x";
+    private static final String KEY_SWAP_Y = "newex-dom-swap-y";
     public static final int MAX_SAVED_SLOTS = 5;
     public static final int SAVE_TRIGGER_MINUTES = 10;
     public static final float SAVE_TRIGGER_TICKS = SAVE_TRIGGER_MINUTES * 60f * 60f; // 36,000 ticks
@@ -223,7 +230,6 @@ public final class PvpDomination {
                 addHudElements();
             });
             Events.run(Trigger.draw, PvpDomination::drawWorldFx);
-            Events.run(Trigger.uiDrawEnd, PvpDomination::drawDominationBar);
         }
 
         Events.run(Trigger.update, PvpDomination::tick);
@@ -968,8 +974,20 @@ public final class PvpDomination {
         });
     }
 
-    // ===== UI Thanh Tiến Độ Đường Thẳng (trên đầu màn hình) =====
-    private static void drawDominationBar() {
+    // ===== UI Thanh Tiến Độ Đường Thẳng (tự do kéo thả) & Nút Đổi Unit (tự do kéo thả) =====
+    private static void clampPos(Element el, String kx, String ky) {
+        float sw = Core.scene != null ? Core.scene.getWidth() : Core.graphics.getWidth();
+        float sh = Core.scene != null ? Core.scene.getHeight() : Core.graphics.getHeight();
+        float mx = Math.max(0f, sw - el.getWidth());
+        float my = Math.max(0f, sh - el.getHeight());
+        el.setPosition(Mathf.clamp(el.x, 0f, mx), Mathf.clamp(el.y, 0f, my));
+        if (kx != null && ky != null) {
+            Core.settings.put(kx, el.x);
+            Core.settings.put(ky, el.y);
+        }
+    }
+
+    private static void drawDominationBarAt(float ox, float oy, float panelW, float panelH, float u) {
         if (Vars.headless || !isActive() || Vars.state == null || !Vars.state.isGame()) return;
 
         Seq<Team> tl = NewModePvp.pvpTeams();
@@ -989,20 +1007,15 @@ public final class PvpDomination {
         int cntL = rateCount.getOrDefault(leftTeam.id, 0);
         int cntR = rateCount.getOrDefault(rightTeam.id, 0);
 
-        float sw = Core.graphics.getWidth();
-        float sh = Core.graphics.getHeight();
-        float u = Scl.scl(Vars.mobile ? 0.88f : 1.0f);
-        float panelW = Math.min(sw - 24f * u, (Vars.mobile ? 370f : 480f) * u);
-        float panelH = (points.isEmpty() ? 52f : 74f) * u;
-        float cx = sw * 0.5f;
-        float topY = sh - (Vars.mobile ? 56f : 44f) * u;
+        float cx = ox + panelW * 0.5f;
+        float topY = oy + panelH;
 
         // Khung nền kính tối
         Draw.color(0.04f, 0.06f, 0.11f, 0.80f);
-        Fill.rect(cx, topY - panelH * 0.5f, panelW, panelH);
+        Fill.rect(cx, oy + panelH * 0.5f, panelW, panelH);
         Lines.stroke(1.5f * u);
         Draw.color(0.35f, 0.78f, 1f, 0.55f);
-        Lines.rect(cx - panelW * 0.5f, topY - panelH, panelW, panelH);
+        Lines.rect(ox, oy, panelW, panelH);
 
         // Tiêu đề & số điểm 2 phe
         float textY = topY - 8f * u;
@@ -1010,25 +1023,23 @@ public final class PvpDomination {
         Fonts.outline.setColor(leftTeam.color);
         String lTxt = leftTeam.localized() + " " + Math.round(sLeft) + "/" + (int) SCORE_GOAL
             + (cntL > 0 ? " (+" + Strings.fixed(cntL * PTS_PER_POINT_SEC, 1) + "/s)" : "");
-        Fonts.outline.draw(lTxt, cx - panelW * 0.5f + 10f * u, textY, Align.left);
+        Fonts.outline.draw(lTxt, ox + 10f * u, textY, Align.left);
 
         Fonts.outline.setColor(rightTeam.color);
         String rTxt = (cntR > 0 ? "(+" + Strings.fixed(cntR * PTS_PER_POINT_SEC, 1) + "/s) " : "")
             + Math.round(sRight) + "/" + (int) SCORE_GOAL + " " + rightTeam.localized();
-        Fonts.outline.draw(rTxt, cx + panelW * 0.5f - 10f * u, textY, Align.right);
+        Fonts.outline.draw(rTxt, ox + panelW - 10f * u, textY, Align.right);
 
-        // 1 ĐƯỜNG THẲNG TIẾN ĐỘ ĐỐI ĐẦU (2 nửa nạp tiến vào tâm mốc 100%, dễ nhìn cực kỳ rõ ràng!)
+        // 1 ĐƯỜNG THẲNG TIẾN ĐỘ ĐỐI ĐẦU
         float barW = panelW - 24f * u;
         float barH = 12f * u;
         float barY = topY - 34f * u;
         float halfW = barW * 0.5f - 3f * u;
 
-        // Nền thanh trái & phải
         Draw.color(0.14f, 0.16f, 0.22f, 0.92f);
         Fill.rect(cx - halfW * 0.5f - 2f * u, barY, halfW, barH);
         Fill.rect(cx + halfW * 0.5f + 2f * u, barY, halfW, barH);
 
-        // Đường nạp phe trái (chạy từ trái sang tâm)
         if (fracL > 0.002f) {
             float fw = halfW * fracL;
             float leftEdge = cx - halfW - 2f * u;
@@ -1042,7 +1053,6 @@ public final class PvpDomination {
             }
         }
 
-        // Đường nạp phe phải (chạy từ phải sang tâm)
         if (fracR > 0.002f) {
             float fw = halfW * fracR;
             float rightEdge = cx + halfW + 2f * u;
@@ -1056,7 +1066,6 @@ public final class PvpDomination {
             }
         }
 
-        // Viền ngoài đường thẳng & vạch đích ở giữa
         Lines.stroke(1.2f * u);
         Draw.color(Color.white, 0.45f);
         Lines.rect(cx - halfW - 2f * u, barY - barH * 0.5f, halfW, barH);
@@ -1095,40 +1104,116 @@ public final class PvpDomination {
         Draw.reset();
     }
 
-    // ===== Nút HUD nhỏ gọn: [Đổi Unit] trong Chiếm Cứ & [Lưu Unit] khi bảo lưu trong PvP Cày Cấp =====
+    // ===== Thêm các phần tử HUD tự do kéo thả (Thanh Tiến Độ, Nút Đổi Unit) & Nút Lưu Unit =====
     private static void addHudElements() {
         if (Vars.headless || Vars.ui == null || Vars.ui.hudGroup == null) return;
         try {
-            Table box = new Table();
-            box.name = "newex-dom-hud-btns";
-            box.top().right();
-            box.setFillParent(true);
-            box.touchable = Touchable.childrenOnly;
+            // 1) Thanh hiển thị tiến độ PvP Chiếm Cứ — tự do kéo thả mọi vị trí
+            final float barU = Scl.scl(Vars.mobile ? 0.88f : 1.0f);
+            final float initSw = Core.scene != null ? Core.scene.getWidth() : Core.graphics.getWidth();
+            final float initSh = Core.scene != null ? Core.scene.getHeight() : Core.graphics.getHeight();
+            final float barW = Math.min(initSw - 24f * barU, (Vars.mobile ? 370f : 480f) * barU);
+            final float barH = 74f * barU;
 
-            // Nút [Đổi Unit] khi đang ở PvP Chiếm Cứ
-            TextButton swapBtn = new TextButton(tr("Đổi Unit", "Switch Unit"), Styles.flatBordert);
-            swapBtn.clicked(() -> {
-                if (!isActive()) return;
-                if (!NewModePvp.nearOwnCore() && Vars.player != null && Vars.player.unit() != null && !Vars.player.unit().dead) {
-                    Vars.ui.showInfoToast(tr("[scarlet]Hãy về gần Lõi nhà để đổi Unit đã lưu!", "[scarlet]Return near your Core to switch saved Unit!"), 2.5f);
-                    return;
+            final Element barEl = new Element() {
+                @Override
+                public void draw() {
+                    if (!isActive() || Vars.state == null || !Vars.state.isGame()) return;
+                    float curU = Scl.scl(Vars.mobile ? 0.88f : 1.0f);
+                    float sw = Core.scene != null ? Core.scene.getWidth() : Core.graphics.getWidth();
+                    float w = Math.min(sw - 24f * curU, (Vars.mobile ? 370f : 480f) * curU);
+                    float h = (points.isEmpty() ? 52f : 74f) * curU;
+                    if (Math.abs(width - w) > 1f || Math.abs(height - h) > 1f) {
+                        setSize(w, h);
+                        clampPos(this, null, null);
+                    }
+                    drawDominationBarAt(x, y, width, height, curU);
                 }
-                openUnitPickerDialog(true);
+            };
+            barEl.name = "newex-dom-progress-bar";
+            barEl.setSize(barW, barH);
+            barEl.touchable = Touchable.enabled;
+            barEl.visibility = () -> isActive() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
+            if (Core.settings.has(KEY_BAR_X) && Core.settings.has(KEY_BAR_Y)) {
+                barEl.setPosition(Core.settings.getFloat(KEY_BAR_X, 0f), Core.settings.getFloat(KEY_BAR_Y, 0f));
+                clampPos(barEl, null, null);
+            } else {
+                barEl.setPosition((initSw - barW) * 0.5f, initSh - barH - (Vars.mobile ? 56f : 44f) * barU);
+                clampPos(barEl, null, null);
+            }
+            final float[] barOff = new float[2];
+            barEl.addListener(new InputListener() {
+                @Override public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button) {
+                    barOff[0] = x; barOff[1] = y;
+                    return true;
+                }
+                @Override public void touchDragged(InputEvent event, float x, float y, int pointer) {
+                    barEl.setPosition(barEl.x + x - barOff[0], barEl.y + y - barOff[1]);
+                    clampPos(barEl, KEY_BAR_X, KEY_BAR_Y);
+                }
             });
-            swapBtn.visibility = () -> isActive() && Vars.state != null && Vars.state.isGame();
+            Vars.ui.hudGroup.addChild(barEl);
 
-            // Nút [Lưu Unit] khi đã đủ điều kiện lưu (10 phút hoặc có đồ Thần Thoại) và người chơi nhấn "Không (Bảo lưu)" trong PvP Cày Cấp
+            // 2) Thanh nút [Đổi Unit] — tự do kéo thả mọi vị trí (nhấn nhẹ = mở chọn Unit, kéo >= 6px = di chuyển)
+            final Table swapWrap = new Table(Styles.black6);
+            swapWrap.name = "newex-dom-swap-unit";
+            swapWrap.margin(4f);
+            swapWrap.touchable = Touchable.enabled;
+            final TextButton swapBtn = new TextButton(tr("Đổi Unit", "Switch Unit"), Styles.flatBordert);
+            swapBtn.touchable = Touchable.disabled; // để swapWrap xử lý cả kéo thả lẫn bấm không xung đột!
+            swapWrap.add(swapBtn).size(118f, 36f);
+            swapWrap.pack();
+            swapWrap.visibility = () -> isActive() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
+            if (Core.settings.has(KEY_SWAP_X) && Core.settings.has(KEY_SWAP_Y)) {
+                swapWrap.setPosition(Core.settings.getFloat(KEY_SWAP_X, 0f), Core.settings.getFloat(KEY_SWAP_Y, 0f));
+                clampPos(swapWrap, null, null);
+            } else {
+                swapWrap.setPosition(initSw - swapWrap.getWidth() - 12f, initSh - swapWrap.getHeight() - (Vars.mobile ? 115f : 96f));
+                clampPos(swapWrap, null, null);
+            }
+            final boolean[] swapDrag = {false};
+            final float[] swapOff = new float[2];
+            swapWrap.addListener(new InputListener() {
+                @Override public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button) {
+                    swapDrag[0] = false;
+                    swapOff[0] = x;
+                    swapOff[1] = y;
+                    return true;
+                }
+                @Override public void touchDragged(InputEvent event, float x, float y, int pointer) {
+                    if (Math.abs(x - swapOff[0]) > 6f || Math.abs(y - swapOff[1]) > 6f) swapDrag[0] = true;
+                    if (swapDrag[0]) {
+                        swapWrap.setPosition(swapWrap.x + x - swapOff[0], swapWrap.y + y - swapOff[1]);
+                        clampPos(swapWrap, KEY_SWAP_X, KEY_SWAP_Y);
+                    }
+                }
+                @Override public void touchUp(InputEvent event, float x, float y, int pointer, KeyCode button) {
+                    boolean wasDrag = swapDrag[0];
+                    swapDrag[0] = false;
+                    if (!wasDrag && isActive()) {
+                        if (!NewModePvp.nearOwnCore() && Vars.player != null && Vars.player.unit() != null && !Vars.player.unit().dead) {
+                            Vars.ui.showInfoToast(tr("[scarlet]Hãy về gần Lõi nhà để đổi Unit đã lưu!", "[scarlet]Return near your Core to switch saved Unit!"), 2.5f);
+                            return;
+                        }
+                        openUnitPickerDialog(true);
+                    }
+                }
+            });
+            Vars.ui.hudGroup.addChild(swapWrap);
+
+            // 3) Nút [Lưu Unit] khi đã đủ điều kiện lưu (10 phút hoặc có đồ Thần Thoại) và người chơi nhấn "Không (Bảo lưu)" trong PvP Cày Cấp
+            Table saveBox = new Table();
+            saveBox.name = "newex-dom-save-btn";
+            saveBox.top().right();
+            saveBox.setFillParent(true);
+            saveBox.touchable = Touchable.childrenOnly;
             TextButton saveBtn = new TextButton(tr("[#ffd166]Lưu Unit[]", "[#ffd166]Save Unit[]"), Styles.flatBordert);
             saveBtn.clicked(() -> openSaveUnitPromptDialog(tr("Lưu Unit theo yêu cầu (từ chế độ bảo lưu)", "Save Unit (from deferred prompt)")));
             saveBtn.visibility = () -> NewModePvp.isFull() && !isActive()
                 && ("deferred".equals(localPromptState) || "saved".equals(localPromptState))
                 && Vars.state != null && Vars.state.isGame();
-
-            Table inner = new Table();
-            inner.add(swapBtn).size(116f, 36f).pad(4f).row();
-            inner.add(saveBtn).size(116f, 36f).pad(4f).row();
-            box.add(inner).top().right().padTop(Vars.mobile ? 110f : 92f).padRight(8f);
-            Vars.ui.hudGroup.addChild(box);
+            saveBox.add(saveBtn).size(116f, 36f).top().right().padTop(Vars.mobile ? 110f : 92f).padRight(8f);
+            Vars.ui.hudGroup.addChild(saveBox);
         } catch (Throwable err) {
             Log.err("[PvpDomination] addHudElements failed", err);
         }

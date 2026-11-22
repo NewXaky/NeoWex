@@ -3727,11 +3727,19 @@ public class NewModePvp {
             try {
                 CoreBlock.CoreBuild cr0 = pl.team().core();
                 boolean toCore = cr0 != null && u.type == ((CoreBlock) cr0.block).unitType;
-                if (toCore && !PvpDomination.isActive() && pv.isValid() && !pv.dead && pv.team == pl.team() && !canReturnCore(pv, cr0)) {
-                    try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); }
-                    pl.unit(pv);
-                    toast(pl, tr("[scarlet]Chỉ về lõi được khi đứng trên nền đặt lõi ở nửa map phe ta!", "[scarlet]You can only return to core on core-zone floor on your half of the map!"));
-                    return;
+                if (toCore && pv.isValid() && !pv.dead && pv.team == pl.team()) {
+                    if (PvpDomination.isActive()) {
+                        try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); }
+                        pl.unit(pv);
+                        toast(pl, tr("[scarlet]Không thể biến về trong chế độ PvP Chiếm Cứ!", "[scarlet]Cannot recall to core in PvP Domination!"));
+                        return;
+                    }
+                    if (!canReturnCore(pv, cr0)) {
+                        try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); }
+                        pl.unit(pv);
+                        toast(pl, tr("[scarlet]Chỉ về lõi được khi đứng trên nền đặt lõi ở nửa map phe ta!", "[scarlet]You can only return to core on core-zone floor on your half of the map!"));
+                        return;
+                    }
                 }
             } catch (Throwable err) {}
         }
@@ -4608,7 +4616,7 @@ public class NewModePvp {
     }
 
     static St reqState(Player player, boolean anyDist) {
-        if (!isActive() || player == null) return null;
+        if (!isActive() || PvpDomination.isActive() || player == null) return null;
         Unit u = player.unit();
         CoreBlock.CoreBuild core = player.team().core();
         if (core == null) return null;
@@ -5518,7 +5526,7 @@ public class NewModePvp {
         }
     }
     static void openBag() {
-        if (Vars.headless || !isActive()) return;
+        if (Vars.headless || !isActive() || PvpDomination.isActive()) return;
         if (bagDialog != null && bagDialog.isShown()) return;
         GearItems.filterSlot = GearItems.pendingFilter; GearItems.pendingFilter = -1;   // chạm ô trang bị -> danh sách vật phẩm của ô đó lên đầu
         final MachineUi.Panel p = MachineUi.panel(tr("Túi đồ", "Bag"));
@@ -6425,7 +6433,7 @@ public class NewModePvp {
     }
     @SuppressWarnings("unchecked")
     static void openUpgrade() {
-        if (Vars.headless || !isActive()) return;
+        if (Vars.headless || !isActive() || PvpDomination.isActive()) return;
         if (upDialog != null && upDialog.isShown()) return;
         if (Core.scene.hasDialog()) return;
         if (!nearOwnCore()) { Vars.ui.showInfoToast(tr("[scarlet]Hãy về gần lõi và nhấn vào lõi để nâng cấp!", "[scarlet]Go near your core and tap it to upgrade!"), 2.5f); return; }
@@ -6937,7 +6945,7 @@ public class NewModePvp {
     }
     static void initTap() {
         Events.on(TapEvent.class, e -> {
-            if (Vars.headless || !isActive() || e.player != Vars.player || e.tile == null) return;
+            if (Vars.headless || !isActive() || PvpDomination.isActive() || e.player != Vars.player || e.tile == null) return;
             if (buildMode != null) { buildTap(e.tile); return; }
             if (cmdPick) { cmdTap(e.tile); return; }
             if (!(e.tile.block() instanceof CoreBlock)) return;
@@ -7013,7 +7021,7 @@ public class NewModePvp {
             t.row();
             TextButton ub = t.button(tr("Nâng cấp", "Upgrade"), Icon.up, () -> openUpgrade()).size(W, Vars.mobile ? 36 : 28).padTop(5).get();
             ub.getLabel().setFontScale(0.8f);
-            t.visibility = () -> isActive() && Vars.ui.hudfrag.shown && hudVisible();
+            t.visibility = () -> isActive() && !PvpDomination.isActive() && Vars.ui.hudfrag.shown && hudVisible();
             t.pack();
             if (Core.settings.has(KEY_HUD_X) && Core.settings.has(KEY_HUD_Y)) { t.setPosition(Core.settings.getFloat(KEY_HUD_X, 0f), Core.settings.getFloat(KEY_HUD_Y, 0f)); hudClamp(); }
             else hudCenter();
