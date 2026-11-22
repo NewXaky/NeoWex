@@ -3706,6 +3706,10 @@ public class NewModePvp {
     static void eachPlayerServer(Player pl) {
         if (isFull()) assignTeam(pl);
         St st = bind(pl);
+        if (PvpDomination.isPlayerHeldOut(pl)) {
+            holdDeath(pl);
+            return;
+        }
         Float lk = respawnLock.get(pl.id);
         if (lk != null) {
             lk -= Time.delta;
@@ -4532,7 +4536,11 @@ public class NewModePvp {
             boolean killedByEnemyPl = gearKiller != null && gearKiller.team() != u.team && isPvpTeam(gearKiller.team());
             lastHitBy.remove(u.id);
             if (dp != null && isFull() && isPvpTeam(u.team)) {
-                startRespawnLock(dp, killedByEnemyPl);
+                if (PvpDomination.isActive()) {
+                    PvpDomination.onPlayerUnitDeath(dp);
+                } else {
+                    startRespawnLock(dp, killedByEnemyPl);
+                }
                 if (killedByEnemyPl) {
                     try { GearItems.onKilledByEnemyPlayer(dp, byId.get(dp.id)); } catch (Throwable err) {}
                     try {

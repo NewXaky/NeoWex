@@ -2,6 +2,7 @@ package newex.content;
 
 import arc.Core;
 import arc.Events;
+import arc.func.Boolc;
 import arc.graphics.Color;
 import arc.graphics.GL20;
 import arc.graphics.Gl;
@@ -20,8 +21,10 @@ import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
 import arc.scene.ui.Image;
+import arc.scene.ui.Label;
 import arc.scene.ui.ScrollPane;
 import arc.scene.ui.TextButton;
+import arc.scene.ui.TextField;
 import arc.scene.ui.layout.Scl;
 import arc.scene.ui.layout.Table;
 import arc.struct.IntSeq;
@@ -89,7 +92,19 @@ public final class PvpDomination {
     private static final String KEY_BAR_Y = "newex-dom-bar-y";
     private static final String KEY_SWAP_X = "newex-dom-swap-x";
     private static final String KEY_SWAP_Y = "newex-dom-swap-y";
+
+    // Cài đặt riêng cho map PvP Chiếm Cứ (lưu Core.settings & đồng bộ qua rules.tags)
+    public static final String KEY_CFG_RATE = "newex-dom-cfg-rate";           // % tốc độ tăng điểm mốc (10..1000, mặc định 100%)
+    public static final String KEY_CFG_RESPAWN = "newex-dom-cfg-respawn";     // true = hồi sinh & đổi unit; false = mỗi unit 1 mạng, hết -> khán giả
+    public static final String KEY_CFG_CD_ON = "newex-dom-cfg-cd-on";         // bật/tắt hồi chiêu chọn lại unit mới bị hạ
+    public static final String KEY_CFG_CD_SEC = "newex-dom-cfg-cd-sec";       // thời gian hồi chiêu (giây, mặc định 60)
+    private static final String TAG_CFG_RATE = "newex-dom-rate";
+    private static final String TAG_CFG_RESPAWN = "newex-dom-respawn";
+    private static final String TAG_CFG_CD_ON = "newex-dom-cd-on";
+    private static final String TAG_CFG_CD_SEC = "newex-dom-cd-sec";
+
     public static final int MAX_SAVED_SLOTS = 5;
+    public static final int EMPTY_SLOT_IDX = MAX_SAVED_SLOTS; // chỉ số 5 = Unit Rỗng
     public static final int SAVE_TRIGGER_MINUTES = 10;
     public static final float SAVE_TRIGGER_TICKS = SAVE_TRIGGER_MINUTES * 60f * 60f; // 36,000 ticks
 
@@ -102,6 +117,246 @@ public final class PvpDomination {
     static final String REQ_DOM_LOAD = "newex-dom-load";
     static final String SYNC_DOM_KIND = "newex-dom-sync";
     static final String FX_CAP_KIND = "newex-dom-capfx";
+    static final String DEATH_DOM_KIND = "newex-dom-death";
+
+    /** Trạng thái vòng đời Unit của từng player trong trận PvP Chiếm Cứ (hồi sinh / khán giả / hồi chiêu ô bị hạ). */
+    static final class DomLife {
+        int activeSlot = EMPTY_SLOT_IDX; // 0..4 = ô đã lưu, 5 = Unit Rỗng
+        int deadMask = 0;                // bitmask các ô đã bị hạ vĩnh viễn (khi tắt hồi sinh)
+        final float[] cdUntil = new float[MAX_SAVED_SLOTS + 1]; // Time.time hết hồi chiêu từng ô
+        boolean waitingPick = false;     // đang chờ người chơi chọn unit khác (hoặc chờ hết CD)
+        boolean spectating = false;      // hết sạch unit -> trạng thái khán giả xem trận chiến
+    }
+    static final HashMap<Integer, DomLife> lifeByPid = new HashMap<>();
+    static final DomLife localLife = new DomLife();
+
+    static DomLife lifeOf(int pid) {
+        DomLife lf = lifeByPid.get(pid);
+        if (lf == null) { lf = new DomLife(); lifeByPid.put(pid, lf); }
+        return lf;
+    }
+
+    // ===== Đọc cài đặt PvP Chiếm Cứ (ưu tiên rules.tags trong trận để đồng bộ multiplayer) =====
+    public static int scoreRatePct() {
+        StringMap tg = NewModePvp.getTags();
+        if (tg != null && tg.containsKey(TAG_CFG_RATE)) {
+            try { return Mathf.clamp(Integer.parseInt(tg.get(TAG_CFG_RATE, "100")), 10, 1000); } catch (Throwable ignored) {}
+        }
+        return Mathf.clamp(Core.settings.getInt(KEY_CFG_RATE, 100), 10, 1000);
+    }
+    public static float effectivePtsPerSec() {
+        return PTS_PER_POINT_SEC * (scoreRatePct() / 100f);
+    }
+    public static boolean allowRespawnAndSwap() {
+        StringMap tg = NewModePvp.getTags();
+        if (tg != null && tg.containsKey(TAG_CFG_RESPAWN)) return "1".equals(tg.get(TAG_CFG_RESPAWN, "1"));
+        return Core.settings.getBool(KEY_CFG_RESPAWN, true);
+    }
+    public static boolean slotCooldownOn() {
+        StringMap tg = NewModePvp.getTags();
+        if (tg != null && tg.containsKey(TAG_CFG_CD_ON)) return "1".equals(tg.get(TAG_CFG_CD_ON, "0"));
+        return Core.settings.getBool(KEY_CFG_CD_ON, false);
+    }
+    public static int slotCooldownSec() {
+        StringMap tg = NewModePvp.getTags();
+        if (tg != null && tg.containsKey(TAG_CFG_CD_SEC)) {
+            try { return Mathf.clamp(Integer.parseInt(tg.get(TAG_CFG_CD_SEC, "60")), 5, 600); } catch (Throwable ignored) {}
+        }
+        return Mathf.clamp(Core.settings.getInt(KEY_CFG_CD_SEC, 60), 5, 600);
+    }
+    private static void stampSettingsTags(Rules r) {
+        if (r == null || r.tags == null) return;
+        r.tags.put(TAG_CFG_RATE, String.valueOf(Mathf.clamp(Core.settings.getInt(KEY_CFG_RATE, 100), 10, 1000)));
+        r.tags.put(TAG_CFG_RESPAWN, Core.settings.getBool(KEY_CFG_RESPAWN, true) ? "1" : "0");
+        r.tags.put(TAG_CFG_CD_ON, Core.settings.getBool(KEY_CFG_CD_ON, false) ? "1" : "0");
+        r.tags.put(TAG_CFG_CD_SEC, String.valueOf(Mathf.clamp(Core.settings.getInt(KEY_CFG_CD_SEC, 60), 5, 600)));
+    }
+
+    /** Trang cài đặt riêng cho bản đồ PvP Chiếm Cứ. */
+    public static void openSettingsDialog() {
+        if (Vars.headless) return;
+        final BaseDialog d = new BaseDialog(tr("Cài Đặt — PvP Chiếm Cứ", "Settings — PvP Domination"));
+        float w = Math.min(Core.graphics.getWidth() / Scl.scl() - 36f, 520f);
+        Table c = d.cont;
+        c.margin(12f).left().defaults().left();
+
+        final int[] rateVal = {Mathf.clamp(Core.settings.getInt(KEY_CFG_RATE, 100), 10, 1000)};
+        final boolean[] respawnVal = {Core.settings.getBool(KEY_CFG_RESPAWN, true)};
+        final boolean[] cdOnVal = {Core.settings.getBool(KEY_CFG_CD_ON, false)};
+        final int[] cdSecVal = {Mathf.clamp(Core.settings.getInt(KEY_CFG_CD_SEC, 60), 5, 600)};
+
+        c.add("[accent]" + tr("-- TÙY CHỈNH CHẾ ĐỘ PVP CHIẾM CỨ --", "-- PVP DOMINATION SETTINGS --") + "[]").padBottom(8f).row();
+
+        // 1) Tốc độ tăng điểm mốc
+        final Label ratePreview = new Label("");
+        final Runnable updateRateLbl = () -> ratePreview.setText("[lightgray]" + tr("Tốc độ thực tế: ", "Actual rate: ")
+            + "[#7cfc00]+" + Strings.fixed(PTS_PER_POINT_SEC * (rateVal[0] / 100f), 1) + tr(" điểm/giây mỗi cứ điểm", " pts/sec per point") + "[]");
+        c.add(tr("Tốc độ tăng điểm mốc (%):", "Capture score speed (%):")).padTop(4f).row();
+        Table rateRow = new Table();
+        final TextField rateField = rateRow.field(String.valueOf(rateVal[0]), txt -> {
+            try {
+                int v = Integer.parseInt(txt.trim());
+                rateVal[0] = Mathf.clamp(v, 10, 1000);
+            } catch (Throwable ignored) {}
+            updateRateLbl.run();
+        }).width(110f).get();
+        rateField.setFilter(TextField.TextFieldFilter.digitsOnly);
+        rateField.setMaxLength(4);
+        rateRow.add("[lightgray]% (10 - 1000, mặc định 100%)[]").padLeft(8f);
+        c.add(rateRow).padTop(2f).row();
+        updateRateLbl.run();
+        c.add(ratePreview).padBottom(10f).row();
+
+        // 2) Bật/tắt cho phép hồi sinh & dùng unit khác (tắt = hết unit thành khán giả)
+        c.check(tr("Cho phép Unit player hồi sinh & dùng lại (Tắt: mỗi Unit 1 mạng, hết Unit -> Khán giả)",
+            "Allow player Unit respawn & reuse (Off: 1 life per Unit, out of Units -> Spectator)"),
+            respawnVal[0], (Boolc) b -> respawnVal[0] = b).width(w - 20f).left().padBottom(8f).get().getLabel().setWrap(true);
+        c.row();
+
+        // 3) Bật/tắt thời gian hồi chiêu chọn lại Unit mới bị hạ + tùy chỉnh giây
+        c.check(tr("Bật thời gian hồi chiêu khi chọn lại Unit mới bị hạ",
+            "Enable cooldown before re-selecting a recently killed Unit"),
+            cdOnVal[0], (Boolc) b -> cdOnVal[0] = b).width(w - 20f).left().padBottom(4f).get().getLabel().setWrap(true);
+        c.row();
+
+        c.add(tr("Thời gian hồi chiêu chọn lại Unit bị hạ (giây):", "Dead Unit re-select cooldown (seconds):")).padTop(4f).row();
+        Table cdRow = new Table();
+        final TextField cdField = cdRow.field(String.valueOf(cdSecVal[0]), txt -> {
+            try { cdSecVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), 5, 600); } catch (Throwable ignored) {}
+        }).width(110f).get();
+        cdField.setFilter(TextField.TextFieldFilter.digitsOnly);
+        cdField.setMaxLength(3);
+        cdRow.add("[lightgray]" + tr("giây (5 - 600, mặc định 60s)", "sec (5 - 600, default 60s)") + "[]").padLeft(8f);
+        c.add(cdRow).padBottom(12f).row();
+
+        c.add("[gray]" + tr("Lưu ý: Cài đặt áp dụng khi tạo trận PvP Chiếm Cứ mới (Host chia sẻ cho cả phòng).",
+            "Note: Settings apply when starting a new PvP Domination match (Host syncs to all players).") + "[]")
+            .wrap().width(w - 20f).row();
+
+        d.buttons.button(tr("Lưu Cài Đặt", "Save Settings"), Styles.flatBordert, () -> {
+            try { rateVal[0] = Mathf.clamp(Integer.parseInt(rateField.getText().trim()), 10, 1000); } catch (Throwable ignored) {}
+            try { cdSecVal[0] = Mathf.clamp(Integer.parseInt(cdField.getText().trim()), 5, 600); } catch (Throwable ignored) {}
+            Core.settings.put(KEY_CFG_RATE, rateVal[0]);
+            Core.settings.put(KEY_CFG_RESPAWN, respawnVal[0]);
+            Core.settings.put(KEY_CFG_CD_ON, cdOnVal[0]);
+            Core.settings.put(KEY_CFG_CD_SEC, cdSecVal[0]);
+            Vars.ui.showInfoToast(tr("[green]Đã lưu cài đặt PvP Chiếm Cứ![]", "[green]Saved PvP Domination settings![]"), 2.5f);
+            d.hide();
+        }).size(170f, 44f).pad(4f);
+        d.buttons.button(tr("Đóng", "Close"), Styles.flatBordert, d::hide).size(130f, 44f).pad(4f);
+        d.show();
+    }
+
+    /** Server: kiểm tra player đang ở trạng thái Khán giả hoặc chờ chọn unit mới -> giữ không cho spawn unit. */
+    static boolean isPlayerHeldOut(Player pl) {
+        if (!isActive() || pl == null) return false;
+        DomLife lf = lifeByPid.get(pl.id);
+        if (lf == null) return false;
+        if (lf.spectating) return true;
+        if (lf.waitingPick) {
+            // Nếu đang chờ hồi chiêu ô duy nhất của mình và hồi chiêu đã xong -> tự giải phóng cho hồi sinh
+            if (allowRespawnAndSwap() && slotCooldownOn() && lf.activeSlot >= 0 && lf.activeSlot <= EMPTY_SLOT_IDX) {
+                if (Time.time >= lf.cdUntil[lf.activeSlot]) {
+                    lf.waitingPick = false;
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** Server gọi khi unit của player bị hạ trong PvP Chiếm Cứ. */
+    static void onPlayerUnitDeath(Player pl) {
+        if (!isActive() || pl == null) return;
+        DomLife lf = lifeOf(pl.id);
+        int diedSlot = Mathf.clamp(lf.activeSlot, 0, EMPTY_SLOT_IDX);
+        boolean respawnAllowed = allowRespawnAndSwap();
+        boolean cdOn = slotCooldownOn();
+        int cdSec = slotCooldownSec();
+
+        if (!respawnAllowed) {
+            // Đánh dấu ô vừa chết bị loại vĩnh viễn trong trận này
+            lf.deadMask |= (1 << diedSlot);
+            lf.waitingPick = true;
+        } else if (cdOn) {
+            // Đặt hồi chiêu cho ô vừa bị hạ
+            lf.cdUntil[diedSlot] = Time.time + cdSec * 60f;
+            lf.waitingPick = true;
+        } else {
+            // Hồi sinh bình thường sau 4 giây
+            NewModePvp.startRespawnLock(pl, false);
+            return;
+        }
+
+        // Gửi sự kiện tử vong cho chính player đó (nếu là host cục bộ -> gọi thẳng; nếu client -> gửi packet)
+        String msg = pl.id + "|" + diedSlot + "|" + (respawnAllowed ? 1 : 0) + "|" + (cdOn ? cdSec : 0);
+        if (Vars.player != null && pl == Vars.player) {
+            handleLocalDeathNotice(diedSlot, respawnAllowed, cdOn ? cdSec : 0);
+        } else if (Vars.net.server() && pl.con != null) {
+            try { Call.clientPacketReliable(pl.con, DEATH_DOM_KIND, msg); } catch (Throwable ignored) {}
+        }
+    }
+
+    private static void onDeathPacket(String raw) {
+        if (Vars.headless || raw == null) return;
+        try {
+            String[] p = raw.split("\\|");
+            if (p.length < 4) return;
+            int pid = Integer.parseInt(p[0]);
+            if (Vars.player == null || Vars.player.id != pid) return;
+            int slot = Integer.parseInt(p[1]);
+            boolean respawn = "1".equals(p[2]);
+            int cdSec = Integer.parseInt(p[3]);
+            handleLocalDeathNotice(slot, respawn, cdSec);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Client/Host cục bộ xử lý khi unit của mình bị hạ theo luật phòng (loại unit -> khán giả hoặc hồi chiêu ô). */
+    private static void handleLocalDeathNotice(int diedSlot, boolean respawnAllowed, int cdSec) {
+        if (Vars.headless) return;
+        int slot = Mathf.clamp(diedSlot, 0, EMPTY_SLOT_IDX);
+        if (!respawnAllowed) {
+            localLife.deadMask |= (1 << slot);
+            ArrayList<SavedUnit> saved = loadSavedUnits();
+            boolean anyLeft = false;
+            for (int i = 0; i < saved.size(); i++) {
+                if ((localLife.deadMask & (1 << i)) == 0) { anyLeft = true; break; }
+            }
+            if (!anyLeft && (localLife.deadMask & (1 << EMPTY_SLOT_IDX)) == 0 && saved.isEmpty()) {
+                anyLeft = false;
+            } else if (!anyLeft && (localLife.deadMask & (1 << EMPTY_SLOT_IDX)) == 0) {
+                anyLeft = true;
+            }
+            if (!anyLeft) {
+                localLife.spectating = true;
+                localLife.waitingPick = false;
+                NewModePvp.send(REQ_DOM_LOAD, "SPEC");
+                Vars.ui.showInfoToast(tr("[scarlet]Bạn đã hết Unit! Chuyển sang trạng thái Khán giả xem trận chiến.",
+                    "[scarlet]No Units left! You are now Spectating the battle."), 5f);
+                return;
+            }
+            localLife.waitingPick = true;
+            Vars.ui.showInfoToast(tr("[scarlet]Unit vừa bị hạ đã bị loại! Hãy chọn Unit khác để tiếp tục.",
+                "[scarlet]Your fallen Unit is eliminated! Choose another Unit."), 3.5f);
+            Time.run(20f, () -> { if (isActive() && !localLife.spectating) openUnitPickerDialog(false); });
+        } else if (cdSec > 0) {
+            localLife.cdUntil[slot] = Time.time + cdSec * 60f;
+            localLife.waitingPick = true;
+            Vars.ui.showInfoToast(tr("[accent]Unit vừa bị hạ đang hồi chiêu " + cdSec + "s! Hãy chọn Unit khác hoặc đợi hết hồi chiêu.",
+                "[accent]Fallen Unit is on " + cdSec + "s cooldown! Pick another Unit or wait."), 4f);
+            Time.run(20f, () -> { if (isActive()) openUnitPickerDialog(true); });
+        }
+    }
+
+    private static float localSlotCdLeft(int slotIdx) {
+        if (slotIdx < 0 || slotIdx > EMPTY_SLOT_IDX) return 0f;
+        return Math.max(0f, (localLife.cdUntil[slotIdx] - Time.time) / 60f);
+    }
+    private static boolean localSlotDead(int slotIdx) {
+        if (allowRespawnAndSwap() || slotIdx < 0 || slotIdx > EMPTY_SLOT_IDX) return false;
+        return (localLife.deadMask & (1 << slotIdx)) != 0;
+    }
 
     // ===== Dữ liệu 1 Cứ Điểm (cụm nền core-zone) =====
     static final class CapPoint {
@@ -229,6 +484,7 @@ public final class PvpDomination {
                 try {
                     Vars.netClient.addPacketHandler(SYNC_DOM_KIND, PvpDomination::onSyncPacket);
                     Vars.netClient.addPacketHandler(FX_CAP_KIND, PvpDomination::onCapFxPacket);
+                    Vars.netClient.addPacketHandler(DEATH_DOM_KIND, PvpDomination::onDeathPacket);
                 } catch (Throwable err) {
                     Log.err("[PvpDomination] client packet handler failed", err);
                 }
@@ -245,6 +501,12 @@ public final class PvpDomination {
         points.clear();
         scores.clear();
         rateCount.clear();
+        lifeByPid.clear();
+        localLife.activeSlot = EMPTY_SLOT_IDX;
+        localLife.deadMask = 0;
+        Arrays.fill(localLife.cdUntil, 0f);
+        localLife.waitingPick = false;
+        localLife.spectating = false;
         matchEnded = false;
         winnerTeamId = -1;
         syncTimer = 0f;
@@ -296,6 +558,7 @@ public final class PvpDomination {
         NewModePvp.onBegin();
         Rules r = Vars.state.rules;
         r.tags.put(TAG_DOM, "1");
+        stampSettingsTags(r);
         r.tags.put(ChaosMode.TAG, "0"); // Tắt Hỗn loạn để mọi trang bị GearItems lưu từ PvP Cày Cấp luôn hoạt động đầy đủ
         r.tags.put(GearItems.TAG_SLOTS, String.valueOf(GearItems.MAXSLOTS));
         r.waves = false;
@@ -308,6 +571,12 @@ public final class PvpDomination {
         points.clear();
         scores.clear();
         rateCount.clear();
+        lifeByPid.clear();
+        localLife.activeSlot = EMPTY_SLOT_IDX;
+        localLife.deadMask = 0;
+        Arrays.fill(localLife.cdUntil, 0f);
+        localLife.waitingPick = false;
+        localLife.spectating = false;
         matchEnded = false;
         winnerTeamId = -1;
         soloBotUnit = null;
@@ -741,7 +1010,7 @@ public final class PvpDomination {
 
             if (cp.ownerTeamId >= 0) {
                 rateCount.merge(cp.ownerTeamId, 1, Integer::sum);
-                float ns = scores.getOrDefault(cp.ownerTeamId, 0f) + PTS_PER_POINT_SEC * dtSec;
+                float ns = scores.getOrDefault(cp.ownerTeamId, 0f) + effectivePtsPerSec() * dtSec;
                 scores.put(cp.ownerTeamId, Math.min(SCORE_GOAL, ns));
                 if (ns >= SCORE_GOAL && !matchEnded) {
                     triggerDominationVictory(Team.get(cp.ownerTeamId));
@@ -1186,14 +1455,15 @@ public final class PvpDomination {
 
         // Tiêu đề & số điểm 2 phe
         float textY = topY - 8f * u;
+        float ptsPerSec = effectivePtsPerSec();
         Fonts.outline.getData().setScale(0.72f * u);
         Fonts.outline.setColor(leftTeam.color);
         String lTxt = leftTeam.localized() + " " + Math.round(sLeft) + "/" + (int) SCORE_GOAL
-            + (cntL > 0 ? " (+" + Strings.fixed(cntL * PTS_PER_POINT_SEC, 1) + "/s)" : "");
+            + (cntL > 0 ? " (+" + Strings.fixed(cntL * ptsPerSec, 1) + "/s)" : "");
         Fonts.outline.draw(lTxt, ox + 10f * u, textY, Align.left);
 
         Fonts.outline.setColor(rightTeam.color);
-        String rTxt = (cntR > 0 ? "(+" + Strings.fixed(cntR * PTS_PER_POINT_SEC, 1) + "/s) " : "")
+        String rTxt = (cntR > 0 ? "(+" + Strings.fixed(cntR * ptsPerSec, 1) + "/s) " : "")
             + Math.round(sRight) + "/" + (int) SCORE_GOAL + " " + rightTeam.localized();
         Fonts.outline.draw(rTxt, ox + panelW - 10f * u, textY, Align.right);
 
@@ -1358,7 +1628,11 @@ public final class PvpDomination {
                     boolean wasDrag = swapDrag[0];
                     swapDrag[0] = false;
                     if (!wasDrag && isActive()) {
-                        if (!NewModePvp.nearOwnCore() && Vars.player != null && Vars.player.unit() != null && !Vars.player.unit().dead) {
+                        if (localLife.spectating) {
+                            Vars.ui.showInfoToast(tr("[scarlet]Bạn đã hết Unit và đang ở chế độ Khán giả!", "[scarlet]Out of Units — Spectating!"), 2.5f);
+                            return;
+                        }
+                        if (!localLife.waitingPick && !NewModePvp.nearOwnCore() && Vars.player != null && Vars.player.unit() != null && !Vars.player.unit().dead) {
                             Vars.ui.showInfoToast(tr("[scarlet]Hãy về gần Lõi nhà để đổi Unit đã lưu!", "[scarlet]Return near your Core to switch saved Unit!"), 2.5f);
                             return;
                         }
@@ -1563,19 +1837,33 @@ public final class PvpDomination {
                 if (i < slots.size()) {
                     final int idx = i;
                     final SavedUnit su = slots.get(i);
-                    Table card = buildUnitCard(su, w - 24f, i,
-                        manageOnly ? null : tr("Ra Trận", "Deploy"),
-                        manageOnly ? null : () -> {
-                            applySavedUnitSelection(su);
-                            d.hide();
-                        },
-                        tr("Xóa", "Delete"),
-                        () -> {
+                    boolean dead = !manageOnly && localSlotDead(idx);
+                    float cdLeft = !manageOnly && slotCooldownOn() ? localSlotCdLeft(idx) : 0f;
+                    String actLbl = manageOnly ? null
+                        : dead ? tr("[scarlet]Đã hạ[]", "[scarlet]Dead[]")
+                        : cdLeft > 0.5f ? ("[yellow]" + (int) Math.ceil(cdLeft) + "s[]")
+                        : tr("Ra Trận", "Deploy");
+                    Runnable actRun = manageOnly ? null : () -> {
+                        if (localSlotDead(idx)) {
+                            Vars.ui.showInfoToast(tr("[scarlet]Unit này đã bị hạ trong trận!", "[scarlet]This Unit is eliminated!"), 2f);
+                            return;
+                        }
+                        float rem = slotCooldownOn() ? localSlotCdLeft(idx) : 0f;
+                        if (rem > 0.5f) {
+                            Vars.ui.showInfoToast(tr("[yellow]Unit này đang hồi chiêu: còn " + (int) Math.ceil(rem) + "s!", "[yellow]Unit on cooldown: " + (int) Math.ceil(rem) + "s left!"), 2f);
+                            return;
+                        }
+                        applySavedUnitSelection(idx, su);
+                        d.hide();
+                    };
+                    Table card = buildUnitCard(su, w - 24f, i, actLbl, actRun,
+                        manageOnly ? tr("Xóa", "Delete") : null,
+                        manageOnly ? () -> {
                             slots.remove(idx);
                             persistSavedUnits(slots);
                             d.hide();
                             openUnitPickerDialog(allowClose, manageOnly);
-                        });
+                        } : null);
                     list.add(card).width(w - 24f).pad(4f).row();
                 } else {
                     Table empty = new Table(Styles.black6);
@@ -1589,8 +1877,22 @@ public final class PvpDomination {
 
         Table bot = new Table();
         if (!manageOnly) {
-            bot.button(tr("Dùng Unit Rỗng (Cơ bản)", "Use Empty Unit (Default)"), Styles.flatBordert, () -> {
-                applySavedUnitSelection(null);
+            boolean emptyDead = localSlotDead(EMPTY_SLOT_IDX);
+            float emptyCd = slotCooldownOn() ? localSlotCdLeft(EMPTY_SLOT_IDX) : 0f;
+            String emptyLbl = emptyDead ? tr("[scarlet]Unit Rỗng (Đã hạ)[]", "[scarlet]Empty Unit (Dead)[]")
+                : emptyCd > 0.5f ? tr("[yellow]Unit Rỗng (" + (int) Math.ceil(emptyCd) + "s)[]", "[yellow]Empty (" + (int) Math.ceil(emptyCd) + "s)[]")
+                : tr("Dùng Unit Rỗng (Cơ bản)", "Use Empty Unit (Default)");
+            bot.button(emptyLbl, Styles.flatBordert, () -> {
+                if (localSlotDead(EMPTY_SLOT_IDX)) {
+                    Vars.ui.showInfoToast(tr("[scarlet]Unit Rỗng đã bị hạ trong trận!", "[scarlet]Empty Unit is eliminated!"), 2f);
+                    return;
+                }
+                float rem = slotCooldownOn() ? localSlotCdLeft(EMPTY_SLOT_IDX) : 0f;
+                if (rem > 0.5f) {
+                    Vars.ui.showInfoToast(tr("[yellow]Unit Rỗng đang hồi chiêu: còn " + (int) Math.ceil(rem) + "s!", "[yellow]Empty Unit on cooldown: " + (int) Math.ceil(rem) + "s left!"), 2f);
+                    return;
+                }
+                applySavedUnitSelection(EMPTY_SLOT_IDX, null);
                 d.hide();
             }).size(240f, 46f).pad(5f);
         }
@@ -1636,8 +1938,10 @@ public final class PvpDomination {
     }
 
     /** Client/Host gửi yêu cầu áp dụng Unit đã chọn lên Host (hoặc áp dụng trực tiếp khi là Host). */
-    private static void applySavedUnitSelection(SavedUnit su) {
-        String payload = su == null ? "EMPTY" : encodeSavedUnit(su);
+    private static void applySavedUnitSelection(int slotIdx, SavedUnit su) {
+        localLife.activeSlot = Mathf.clamp(slotIdx, 0, EMPTY_SLOT_IDX);
+        localLife.waitingPick = false;
+        String payload = localLife.activeSlot + "|" + (su == null ? "EMPTY" : encodeSavedUnit(su));
         NewModePvp.send(REQ_DOM_LOAD, payload);
         Vars.ui.showInfoToast(su == null
             ? tr("[accent]Đã ra trận bằng Unit Rỗng!", "[accent]Deployed with Empty Unit!")
@@ -1647,6 +1951,38 @@ public final class PvpDomination {
     /** Host nhận gói REQ_DOM_LOAD và áp dụng toàn bộ chỉ số, unit, pilot, pháo, trang bị cho người chơi. */
     private static void handleLoadUnitReq(Player player, String payload) {
         if (!isActive() || player == null) return;
+        DomLife lf = lifeOf(player.id);
+        if ("SPEC".equals(payload)) {
+            lf.spectating = true;
+            lf.waitingPick = false;
+            return;
+        }
+        if (lf.spectating) return;
+
+        int slotIdx = EMPTY_SLOT_IDX;
+        String body = payload == null ? "" : payload;
+        int sep = body.indexOf('|');
+        if (sep > 0) {
+            try { slotIdx = Mathf.clamp(Integer.parseInt(body.substring(0, sep)), 0, EMPTY_SLOT_IDX); }
+            catch (Throwable ignored) {}
+            body = body.substring(sep + 1);
+        }
+
+        // Kiểm tra luật phòng phía máy chủ: cấm chọn lại ô đã bị loại hoặc đang hồi chiêu
+        if (!allowRespawnAndSwap() && (lf.deadMask & (1 << slotIdx)) != 0) {
+            NewModePvp.toast(player, tr("[scarlet]Unit này đã bị hạ trong trận!", "[scarlet]This Unit is eliminated!"));
+            return;
+        }
+        if (allowRespawnAndSwap() && slotCooldownOn() && Time.time < lf.cdUntil[slotIdx]) {
+            int rem = (int) Math.ceil((lf.cdUntil[slotIdx] - Time.time) / 60f);
+            NewModePvp.toast(player, tr("[yellow]Unit này đang hồi chiêu: còn " + rem + "s!", "[yellow]Unit on cooldown: " + rem + "s left!"));
+            return;
+        }
+
+        lf.activeSlot = slotIdx;
+        lf.waitingPick = false;
+        NewModePvp.respawnLock.remove(player.id);
+
         NewModePvp.St st = NewModePvp.bind(player);
         if (st == null) return;
 
@@ -1677,8 +2013,8 @@ public final class PvpDomination {
         st.pi = 0;
         st.tm = 0;
 
-        if (payload != null && !payload.isEmpty() && !"EMPTY".equals(payload)) {
-            SavedUnit su = decodeSavedUnit(payload);
+        if (!body.isEmpty() && !"EMPTY".equals(body)) {
+            SavedUnit su = decodeSavedUnit(body);
             if (su != null) {
                 st.lv = Mathf.clamp(su.lv, 1, NewModePvp.LIMIT_MAXLV);
                 st.u = Mathf.clamp(su.u, 1, NewModePvp.TIER_MAX);

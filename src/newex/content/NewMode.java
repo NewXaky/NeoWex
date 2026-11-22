@@ -196,6 +196,8 @@ public final class NewMode {
                 int savedCnt = PvpDomination.loadSavedUnits().size();
                 btnRow.button("Kho Unit (" + savedCnt + "/" + PvpDomination.MAX_SAVED_SLOTS + ")", Styles.flatTogglet, PvpDomination::openUnitManagerFromMenu)
                     .size(165f, 45f).pad(4f);
+                btnRow.button("Cài Đặt", Styles.flatTogglet, PvpDomination::openSettingsDialog)
+                    .size(120f, 45f).pad(4f);
             }
 
             if (hasSave) {
