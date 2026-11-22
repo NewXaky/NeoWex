@@ -3,6 +3,8 @@ package newex.content;
 import arc.Core;
 import arc.Events;
 import arc.graphics.Color;
+import arc.graphics.GL20;
+import arc.graphics.Gl;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
@@ -17,7 +19,6 @@ import arc.scene.Group;
 import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
-import arc.scene.utils.ScissorStack;
 import arc.scene.ui.Image;
 import arc.scene.ui.ScrollPane;
 import arc.scene.ui.TextButton;
@@ -1077,11 +1078,8 @@ public final class PvpDomination {
         float ySpan = Math.max(0.0001f, yMax - yMin);
 
         Draw.flush();
-        boolean scissored = false;
-        try {
-            mmScissor.set(mx, my, mw, mh);
-            scissored = ScissorStack.push(mmScissor);
-        } catch (Throwable ignored) {}
+        Gl.enable(GL20.GL_SCISSOR_TEST);
+        Gl.scissor(Math.max(0, Math.round(mx)), Math.max(0, Math.round(my)), Math.max(1, Math.round(mw)), Math.max(1, Math.round(mh)));
 
         for (int i = 0; i < points.size(); i++) {
             CapPoint cp = points.get(i);
@@ -1089,14 +1087,11 @@ public final class PvpDomination {
             float ny = cp.y / worldH;
             float sx = mx + ((nx - uMin) / uSpan) * mw;
             float sy = my + ((ny - yMin) / ySpan) * mh;
-            if (!scissored && (sx < mx || sx > mx + mw || sy < my || sy > my + mh)) continue;
             float sr = Mathf.clamp((cp.radius / worldW / uSpan) * mw, Scl.scl(6.5f), mw * 0.24f);
             drawMapPointMarker(cp, sx, sy, sr, false);
         }
         Draw.flush();
-        if (scissored) {
-            try { ScissorStack.pop(); } catch (Throwable ignored) {}
-        }
+        Gl.disable(GL20.GL_SCISSOR_TEST);
         Draw.reset();
     }
 
