@@ -1354,7 +1354,7 @@ public final class LoadoutSelection {
                 // --- PHÍM TẮT 1-6 ---
                 boolean typing = Core.scene.hasKeyboard() || Core.scene.hasDialog()
                     || (Vars.ui.chatfrag != null && Vars.ui.chatfrag.shown());
-                boolean domModKey = Core.input.keyDown(KeyCode.f1) || Core.input.keyDown(KeyCode.f2);
+                boolean domModKey = PvpDomination.isActive() && PvpDomination.isDomModKeyActive();
                 if (!typing && !shift && !domModKey) {
                     if (hotkeyTapped(HK_WAVE)) triggerNextWave(hudButtons.get("wave"));
                     if (hotkeyTapped(HK_METEOR)) triggerRandomMeteor(hudButtons.get("meteor"));

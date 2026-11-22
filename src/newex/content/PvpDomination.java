@@ -140,7 +140,6 @@ public final class PvpDomination {
     public static boolean isValidRandomSpawnUnit(UnitType ut) {
         if (ut == null || ut.naval || ut.internal || ut.hidden || !ut.isEnemy || !ut.useUnitCap) return false;
         if (ut instanceof mindustry.type.unit.MissileUnitType) return false;
-        if (ut.lifetime > 0f && ut.lifetime < 6000f) return false;
         if (ut.weapons == null || ut.weapons.isEmpty()) return false;
         String cn = ut.getClass().getSimpleName().toLowerCase();
         if (cn.contains("missile") || cn.contains("tether") || cn.contains("cargo")) return false;
@@ -148,6 +147,13 @@ public final class PvpDomination {
         if (nm.contains("cargo") || nm.contains("missile") || nm.contains("torpedo")
             || nm.contains("bullet") || nm.contains("projectile") || nm.contains("tether")) return false;
         return true;
+    }
+
+    private static long f1ArmUntil = 0L, f2ArmUntil = 0L;
+    public static boolean isDomModKeyActive() {
+        long now = Time.millis();
+        return Core.input.keyDown(KeyCode.f1) || Core.input.keyDown(KeyCode.f2)
+            || now <= f1ArmUntil || now <= f2ArmUntil;
     }
 
     private static UnitType pickRandomSupportType() {
@@ -843,16 +849,29 @@ public final class PvpDomination {
         }
 
         // Phím tắt trong PvP Chiếm Cứ: F1+4 = gọi unit hỗ trợ phe vàng (vô hạn), F2+4 = gọi unit hỗ trợ phe còn lại (vô hạn), F1+5 = reset toàn bộ cứ điểm
+        // Hỗ trợ cả nhấn giữ đồng thời (F1+4) lẫn bấm nối tiếp nhanh trong 0.8s (F1 -> 4) cho mọi bàn phím laptop/PC!
         if (!Vars.headless && !Core.scene.hasKeyboard() && !Core.scene.hasDialog()) {
-            boolean f1 = Core.input.keyDown(KeyCode.f1);
-            boolean f2 = Core.input.keyDown(KeyCode.f2);
+            long now = Time.millis();
+            boolean f1Tap = Core.input.keyTap(KeyCode.f1);
+            boolean f2Tap = Core.input.keyTap(KeyCode.f2);
+            if (f1Tap) { f1ArmUntil = now + 800L; f2ArmUntil = 0L; }
+            if (f2Tap) { f2ArmUntil = now + 800L; f1ArmUntil = 0L; }
+
+            boolean f1 = Core.input.keyDown(KeyCode.f1) || now <= f1ArmUntil;
+            boolean f2 = Core.input.keyDown(KeyCode.f2) || now <= f2ArmUntil;
             boolean tap4 = Core.input.keyTap(KeyCode.num4) || Core.input.keyTap(KeyCode.numpad4);
             boolean tap5 = Core.input.keyTap(KeyCode.num5) || Core.input.keyTap(KeyCode.numpad5);
-            if (f1 && tap4) {
+            boolean down4 = Core.input.keyDown(KeyCode.num4) || Core.input.keyDown(KeyCode.numpad4);
+            boolean down5 = Core.input.keyDown(KeyCode.num5) || Core.input.keyDown(KeyCode.numpad5);
+
+            if ((f1 && tap4) || (f1Tap && down4)) {
+                f1ArmUntil = now + 800L;
                 NewModePvp.send(REQ_DOM_SPAWN, "0");
-            } else if (f2 && tap4) {
+            } else if ((f2 && tap4) || (f2Tap && down4)) {
+                f2ArmUntil = now + 800L;
                 NewModePvp.send(REQ_DOM_SPAWN, "1");
-            } else if (f1 && tap5) {
+            } else if ((f1 && tap5) || (f1Tap && down5)) {
+                f1ArmUntil = 0L;
                 NewModePvp.send(REQ_DOM_SPAWN, "R");
             }
         }
