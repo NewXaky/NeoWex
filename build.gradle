@@ -38,7 +38,7 @@ jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(rootDir) {
         include 'mod.hjson', 'mod.json', 'icon.png'
-        include 'content/**', 'sprites/**', 'maps/**', 'music/**', 'sounds/**', 'bundles/**', 'shaders/**'
+        include 'content/**', 'sprites/**', 'maps/**', 'file/**', 'music/**', 'sounds/**', 'bundles/**', 'shaders/**'
         // KHÔNG đưa scripts/*.js vào jar: mod đã chuyển sang Java.
     }
 }

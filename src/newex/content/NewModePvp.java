@@ -2407,6 +2407,7 @@ public class NewModePvp {
     static final float CORE_DIE_TICKS_F = CORE_DIE_TICKS;
 
     static float invulTicksLeft() {
+        if (PvpDomination.isActive()) return PvpDomination.coresInvul() ? SHIELD_FOREVER_TICKS : 0f;
         if (Vars.net.client()) { float l = shieldView.inv - (Time.time - shieldView.at); return l > 0 ? l : 0; }
         if (shieldMinT <= 0) { shieldMinCache = shieldMinutes(); shieldMinT = 120; }
         if (shieldMinCache >= LIMIT_SHIELD_MIN) return SHIELD_FOREVER_TICKS;
@@ -3645,6 +3646,7 @@ public class NewModePvp {
         if (!isPvpTeam(u.team)) return;
         if (u.isPlayer()) return;
         if (botUnitOf(u) != null) return;
+        if (PvpDomination.isSoloBot(u)) return;
         if (orphanTypes == null) { orphanTypes = new ArrayList<>(); for (int k = 1; k <= TIER_MAX; k++) orphanTypes.add(tierType(k)); }
         for (UnitType t : orphanTypes) if (u.type == t) { try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); } return; }
     }
@@ -3659,7 +3661,7 @@ public class NewModePvp {
     static void startRespawnLock(Player pl, boolean killedByEnemyPl) {
         St st = bind(pl);
         int tier = activeTier(st);
-        int sec = RESPAWN_SEC[Math.min(RESPAWN_SEC.length, Math.max(1, tier)) - 1];
+        int sec = PvpDomination.isActive() ? 4 : RESPAWN_SEC[Math.min(RESPAWN_SEC.length, Math.max(1, tier)) - 1];
         boolean half = killedByEnemyPl && GearItems.hasDeathCdr(st);
         if (half) sec = Math.max(1, Math.round(sec * 0.5f));
         int ticks = Math.max(0, sec * 60 - 60);
@@ -3725,7 +3727,7 @@ public class NewModePvp {
             try {
                 CoreBlock.CoreBuild cr0 = pl.team().core();
                 boolean toCore = cr0 != null && u.type == ((CoreBlock) cr0.block).unitType;
-                if (toCore && pv.isValid() && !pv.dead && pv.team == pl.team() && !canReturnCore(pv, cr0)) {
+                if (toCore && !PvpDomination.isActive() && pv.isValid() && !pv.dead && pv.team == pl.team() && !canReturnCore(pv, cr0)) {
                     try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); }
                     pl.unit(pv);
                     toast(pl, tr("[scarlet]Chỉ về lõi được khi đứng trên nền đặt lõi ở nửa map phe ta!", "[scarlet]You can only return to core on core-zone floor on your half of the map!"));
@@ -4387,27 +4389,28 @@ public class NewModePvp {
             if (!isActive() || Vars.state.isPaused()) return;
             boolean auth = !Vars.net.client(), full = isFull();
             if (auth) {
+                boolean dom = PvpDomination.isActive();
                 eachPl(NewModePvp::eachPlayerServer);
                 botT -= Time.delta;
-                if (full && botT <= 0) { botT = 60; try { botManage(); } catch (Throwable err) { logOnce("botmanage", "bot manage failed: " + err, false); } }
-                if (full) botTick();
-                if (full) lateExpCheck();
-                if (full) eachPl(NewModePvp::eachBarracks);
-                if (full) eachPl(NewModePvp::eachSoldierAI);
+                if (full && !dom && botT <= 0) { botT = 60; try { botManage(); } catch (Throwable err) { logOnce("botmanage", "bot manage failed: " + err, false); } }
+                if (full && !dom) botTick();
+                if (full && !dom) lateExpCheck();
+                if (full && !dom) eachPl(NewModePvp::eachBarracks);
+                if (full && !dom) eachPl(NewModePvp::eachSoldierAI);
                 soldSyncT -= Time.delta;
-                if (full && soldSyncT <= 0) { soldSyncT = 60; soldierSync(); }
+                if (full && !dom && soldSyncT <= 0) { soldSyncT = 60; soldierSync(); }
                 bulletStatT -= Time.delta;
                 if (bulletStatT <= 0) { bulletStatT = 30; bulletStatOn = anyBulletStat(); }
                 if (bulletStatOn && !Groups.bullet.isEmpty()) Groups.bullet.each(NewModePvp::eachBullet);
                 wallT -= Time.delta;
-                if (full && wallT <= 0) { wallT = 30; eachPl(NewModePvp::eachWall); }
+                if (full && !dom && wallT <= 0) { wallT = 30; eachPl(NewModePvp::eachWall); }
                 syncT -= Time.delta;
                 if (dirty && syncT <= 0) { dirty = false; syncT = 20; broadcast(); persistStore(); }
                 else if (syncT < -300) { syncT = 20; broadcast(); persistStore(); }
                 coreT -= Time.delta;
-                if (full && coreT <= 0) { coreT = 30; coreStatsTick(30f); }
+                if (full && !dom && coreT <= 0) { coreT = 30; coreStatsTick(30f); }
                 passiveT -= Time.delta;
-                if (full && passiveT <= 0) { passiveT = PASSIVE_INTERVAL; eachPl(NewModePvp::eachPassiveExp); }
+                if (full && !dom && passiveT <= 0) { passiveT = PASSIVE_INTERVAL; eachPl(NewModePvp::eachPassiveExp); }
                 orphanT -= Time.delta;
                 if (orphanT <= 0) { orphanT = 30; Groups.unit.each(NewModePvp::eachOrphan); }
                 winT -= Time.delta;
@@ -4424,7 +4427,7 @@ public class NewModePvp {
             if (!auth) { pruneT -= Time.delta; if (pruneT <= 0) { pruneT = 300; prune(); } }
         });
         Events.run(Trigger.update, () -> {
-            if (Vars.net.client() || !isFull() || Vars.state.gameOver || Vars.state.isPaused()) return;
+            if (Vars.net.client() || !isFull() || PvpDomination.isActive() || Vars.state.gameOver || Vars.state.isPaused()) return;
             if (Groups.player.size() == 0) return;
             bonusWaveT += Time.delta;
             if (bonusWaveT < BONUS_WAVE_INTERVAL) return;
@@ -4442,7 +4445,7 @@ public class NewModePvp {
             pushNotif(tr("[scarlet]Đã tự động spawn x" + BONUS_WAVE_TIMES + " đợt quái!", "[scarlet]Auto-spawned x" + BONUS_WAVE_TIMES + " waves!"));
         });
         Events.on(WaveEvent.class, e -> {
-            if (Vars.net.client() || !isFull() || Vars.state.gameOver) return;
+            if (Vars.net.client() || !isFull() || PvpDomination.isActive() || Vars.state.gameOver) return;
             spawnWave(Vars.state.wave - 1);
         });
         Events.on(UnitDamageEvent.class, e -> damageEvent(e));
@@ -4593,6 +4596,7 @@ public class NewModePvp {
         passiveT = PASSIVE_INTERVAL; logged.clear(); rolled.clear(); rolledN = 0; winning = false; seenBoth = false; dirty = false; syncT = 0; stVer++;
         PvpBotAI.clear(); notifLog.clear(); notifUnread = 0; autoPauseFixed = false;
         restoreStore();
+        PvpDomination.onWorldLoad();
         if (!Vars.net.client()) {
             Time.run(2f, () -> {
                 if (Vars.state == null || !Vars.state.isGame() || !isPvpMap()) return;
@@ -7295,6 +7299,7 @@ public class NewModePvp {
         initDrawShield();
         initPilot();
         initUpdate();
+        PvpDomination.init();
         initNet();
         initUnitListUi();
         initExpUi();

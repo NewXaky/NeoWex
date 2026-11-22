@@ -50,11 +50,13 @@ public final class NewMode {
 
     public static ModeHook survival;
     public static ModeHook pvp;
+    public static ModeHook domination;
 
     static final String MOD_NAME = "newex";
     static final String GACHA_POINTS_KEY = "newex-gacha-points";
     static final String SURVIVAL_ID = "newmodesurvival";
     static final String PVP_ID = "pvpnewex3110";
+    static final String DOM_ID = "pvpchiemcu";
     static final String MAP_SIG_KEY = "newex-newmode-mapsig-";
     static final String SLOT_PREFIX = "NewEx_NewMode_Save_";
 
@@ -76,18 +78,29 @@ public final class NewMode {
         {"defxy3", "Def Xy-3"},
         {"rock", "Rocks"},
         {SURVIVAL_ID, "Survival (Diệt 1000 địch)"},
-        {PVP_ID, "PvP Cày Cấp (Cùng bạn bè)"}
+        {PVP_ID, "PvP Cày Cấp (Cùng bạn bè)"},
+        {DOM_ID, "PvP Chiếm Cứ"}
     };
 
     private static Fi getMapFile(String mapName) {
         try {
             mindustry.mod.Mods.LoadedMod mod = Vars.mods.getMod(MOD_NAME);
             if (mod != null && mod.root != null) {
+                if (DOM_ID.equals(mapName)) {
+                    Fi f1 = mod.root.child("file").child(mapName + ".msav");
+                    if (f1.exists()) return f1;
+                }
                 Fi f = mod.root.child("maps").child(mapName + ".msav");
                 if (f.exists()) return f;
+                Fi f2 = mod.root.child("file").child(mapName + ".msav");
+                if (f2.exists()) return f2;
             }
         } catch (Throwable ignored) {}
         return null;
+    }
+
+    private static String mapDisplayPath(String mapName) {
+        return DOM_ID.equals(mapName) ? ("file/" + mapName + ".msav") : ("maps/" + mapName + ".msav");
     }
 
     /** {size, crc} hoặc null nếu không thấy file. */
@@ -123,6 +136,7 @@ public final class NewMode {
     private static ModeHook hookFor(String id) {
         if (SURVIVAL_ID.equals(id)) return survival;
         if (PVP_ID.equals(id)) return pvp;
+        if (DOM_ID.equals(id)) return domination;
         return null;
     }
 
@@ -151,13 +165,18 @@ public final class NewMode {
                 card.add("[lightgray]Tiêu diệt đủ " + survival.killGoal() + " địch để thắng. Địch xuất hiện ngẫu nhiên khắp bản đồ theo từng đợt.[]").left().padBottom(4f).row();
             }
             if (id.equals(PVP_ID)) {
-                card.add("[lightgray]Điều khiển unit riêng, diệt địch wave để lấy EXP, về lõi nâng cấp rồi phá lõi đối phương. Bấm Host Game trong menu tạm dừng để mời bạn bè.[]").left().wrap().width(520f).padBottom(4f).row();
+                card.add("[lightgray]Điều khiển unit riêng, diệt địch wave để lấy EXP, về lõi nâng cấp rồi phá lõi đối phương. Chơi đủ 10 phút hoặc mang đồ Thần Thoại để lưu Unit (tối đa 5 ô) cho PvP Chiếm Cứ.[]").left().wrap().width(520f).padBottom(4f).row();
+            }
+            if (id.equals(DOM_ID)) {
+                int savedCnt = PvpDomination.loadSavedUnits().size();
+                card.add("[lightgray]Mang Unit đã lưu từ PvP Cày Cấp (" + savedCnt + "/" + PvpDomination.MAX_SAVED_SLOTS + " ô) ra chiếm các nền lõi (cứ điểm)! Lõi bất tử làm nơi spawn; phe nào nạp đầy thanh tiến độ trước sẽ phá hủy lõi đối phương.[]").left().wrap().width(520f).padBottom(4f).row();
             }
             long[] sg = mapSig(id);
+            String pathHint = mapDisplayPath(id);
             if (sg != null) {
-                card.add("[gray]File: maps/" + id + ".msav • " + (long) Math.ceil(sg[0] / 1024.0) + " KB • #" + Long.toHexString(sg[1]) + "[]").left().padBottom(4f).row();
+                card.add("[gray]File: " + pathHint + " • " + (long) Math.ceil(sg[0] / 1024.0) + " KB • #" + Long.toHexString(sg[1]) + "[]").left().padBottom(4f).row();
             } else {
-                card.add("[scarlet]Không thấy file maps/" + id + ".msav trong mod![]").left().padBottom(4f).row();
+                card.add("[scarlet]Không thấy file " + pathHint + " trong mod![]").left().padBottom(4f).row();
             }
             if (hasSave) {
                 String titleText = "Save File";
@@ -167,19 +186,28 @@ public final class NewMode {
                 card.add("[gray]Màn chơi mới (Chưa có Save)[]").left().padBottom(6f).row();
             }
 
-            card.button(hasSave ? "Tiếp Tục Chơi" : "Bắt Đầu Chơi", Styles.flatTogglet, () -> {
+            Table btnRow = new Table();
+            btnRow.button(hasSave ? "Tiếp Tục Chơi" : "Bắt Đầu Chơi", Styles.flatTogglet, () -> {
                 dialog.hide();
                 startNewModeMap(id);
             }).size(180f, 45f).pad(4f);
 
+            if (id.equals(DOM_ID)) {
+                int savedCnt = PvpDomination.loadSavedUnits().size();
+                btnRow.button("Kho Unit (" + savedCnt + "/" + PvpDomination.MAX_SAVED_SLOTS + ")", Styles.flatTogglet, PvpDomination::openUnitManagerFromMenu)
+                    .size(165f, 45f).pad(4f);
+            }
+
             if (hasSave) {
-                card.button("Xóa Save & Chơi Mới", Styles.flatTogglet, () -> {
+                btnRow.button("Xóa Save & Chơi Mới", Styles.flatTogglet, () -> {
                     slot.delete();
+                    if (PVP_ID.equals(id)) PvpDomination.onPvpSaveDeleted();
                     Vars.ui.showInfo("Đã xóa dữ liệu lưu của " + display + "!");
                     dialog.hide();
                     showNewModeDialog();
                 }).size(200f, 45f).pad(4f);
             }
+            card.add(btnRow).left().row();
 
             mapTable.add(card).growX().pad(6f).row();
         }
@@ -242,7 +270,7 @@ public final class NewMode {
                 isPlayingNewMode = false;
                 activeMapName = null;
                 Core.settings.put("newex-is-playing-newmode", false);
-                Vars.ui.showInfo("Không đọc được file maps/" + mapName + ".msav: " + ex.getMessage());
+                Vars.ui.showInfo("Không đọc được file " + mapDisplayPath(mapName) + ": " + ex.getMessage());
                 return;
             }
 
@@ -265,7 +293,7 @@ public final class NewMode {
         isPlayingNewMode = false;
         activeMapName = null;
         Core.settings.put("newex-is-playing-newmode", false);
-        Vars.ui.showInfo("Không tìm thấy file maps/" + mapName + ".msav trong thư mục mod!");
+        Vars.ui.showInfo("Không tìm thấy file " + mapDisplayPath(mapName) + " trong thư mục mod!");
     }
 
     private static void saveNewModeGame() {
@@ -274,9 +302,12 @@ public final class NewMode {
             if (activeMapName.equals(SURVIVAL_ID) && survival != null) {
                 try { survival.persistStore(); } catch (Throwable ignored) {}
             }
-            // Ghi tiến trình PvP vào rules.tags trước khi lưu
+            // Ghi tiến trình PvP / PvP Chiếm Cứ vào rules.tags trước khi lưu
             if (activeMapName.equals(PVP_ID) && pvp != null) {
                 try { pvp.persistStore(); } catch (Throwable ignored) {}
+            }
+            if (activeMapName.equals(DOM_ID) && domination != null) {
+                try { domination.persistStore(); } catch (Throwable ignored) {}
             }
             SaveSlot slot = getSlot(activeMapName);
             if (slot == null) slot = Vars.control.saves.addSave(SLOT_PREFIX + activeMapName);
@@ -301,18 +332,22 @@ public final class NewMode {
                 isPlayingNewMode = true; guest = true; activeMapName = SURVIVAL_ID;
             }
             if (!isPlayingNewMode) return;
-            boolean isPvp = PVP_ID.equals(activeMapName) && pvp != null;
+            boolean isPvp = (PVP_ID.equals(activeMapName) && pvp != null) || (DOM_ID.equals(activeMapName) && domination != null);
             boolean wonNow = isPvp
                 ? (event.winner != null && Vars.player != null && event.winner == Vars.player.team())
                 : (event.winner != null && event.winner == Vars.state.rules.defaultTeam);
             if (wonNow) {
                 hasWonPending = true;
-                if (isPvp) pendingGachaReward = pvp.rewardPoints();
+                if (DOM_ID.equals(activeMapName) && domination != null) pendingGachaReward = domination.rewardPoints();
+                else if (PVP_ID.equals(activeMapName) && pvp != null) pendingGachaReward = pvp.rewardPoints();
                 else if ("Newbie".equals(activeMapName)) pendingGachaReward = 20;
                 else if (SURVIVAL_ID.equals(activeMapName) && survival != null) pendingGachaReward = survival.rewardPoints();
                 else pendingGachaReward = 50;
             }
-            if (!guest) deleteNewModeSave();
+            if (!guest) {
+                if (PVP_ID.equals(activeMapName)) PvpDomination.onPvpSaveDeleted();
+                deleteNewModeSave();
+            }
         });
 
         Events.on(StateChangeEvent.class, event -> {
