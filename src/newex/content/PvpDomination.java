@@ -138,7 +138,7 @@ public final class PvpDomination {
      * và nhóm unit cargo / tether / không có vũ khí.
      */
     public static boolean isValidRandomSpawnUnit(UnitType ut) {
-        if (ut == null || ut.naval || ut.internal || ut.hidden || !ut.isCounted) return false;
+        if (ut == null || ut.naval || ut.internal || ut.hidden || !ut.isEnemy || !ut.useUnitCap) return false;
         if (ut instanceof mindustry.type.unit.MissileUnitType) return false;
         if (ut.lifetime > 0f && ut.lifetime < 6000f) return false;
         if (ut.weapons == null || ut.weapons.isEmpty()) return false;
