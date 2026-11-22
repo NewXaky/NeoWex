@@ -501,6 +501,8 @@ public class NewModePvp {
         ArrayList<Integer> gInv = new ArrayList<>(); ArrayList<Byte> gInvSrc = new ArrayList<>(); int[] gEq = GearItems.newEq(); int gEqSrc = 0; int[] gEqBonus = new int[GearItems.MAXSLOTS];
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
         int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false, gSlowBonus = false;
+        /** Số đợt tối đa đã huấn luyện để tạo ra Unit này (dùng trong PvP Chiếm Cứ để xem thông tin Unit Host/Player). */
+        int trainWaves = 0;
         void padStats() {
             if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length);
             if (plv == null || plv.length < PILOT_COUNT) plv = plv == null ? new int[PILOT_COUNT] : Arrays.copyOf(plv, PILOT_COUNT);
@@ -851,7 +853,7 @@ public class NewModePvp {
             sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\",").append(s.tm).append(",\"").append(GearItems.enc(s)).append("\",");
             arr(sb, s.plv != null ? s.plv : new int[PILOT_COUNT]); sb.append(',');
             arr(sb, s.pexp != null ? s.pexp : new int[PILOT_COUNT]); sb.append(',');
-            ints(sb, s.pgift != null ? s.pgift : new ArrayList<>());
+            ints(sb, s.pgift != null ? s.pgift : new ArrayList<>()); sb.append(',').append(s.trainWaves);
             sb.append(']');
         }
         sb.append("},\"cr\":").append(ChaosMode.round).append(",\"th\":").append(ChaosMode.hideFlag ? 1 : 0).append("}");
@@ -882,6 +884,7 @@ public class NewModePvp {
                 if (a.size > 16) s.plv = readInts(a.get(16), PILOT_COUNT, s.plv);
                 if (a.size > 17) s.pexp = readInts(a.get(17), PILOT_COUNT, s.pexp);
                 if (a.size > 18 && a.get(18).isArray()) for (JsonValue c = a.get(18).child; c != null; c = c.next) s.pgift.add((int) c.asDouble());
+                if (a.size > 19) s.trainWaves = a.get(19).asInt();
                 n.put(Integer.parseInt(a.name), s);
             }
             byId = n;
@@ -4423,11 +4426,13 @@ public class NewModePvp {
             boolean auth = !Vars.net.client(), full = isFull();
             if (auth) {
                 boolean dom = PvpDomination.isActive();
+                boolean trn = PvpDomination.isTraining();
+                boolean noPvpLoop = dom || trn;
                 eachPl(NewModePvp::eachPlayerServer);
                 botT -= Time.delta;
-                if (full && !dom && botT <= 0) { botT = 60; try { botManage(); } catch (Throwable err) { logOnce("botmanage", "bot manage failed: " + err, false); } }
-                if (full && !dom) botTick();
-                if (full && !dom) lateExpCheck();
+                if (full && !noPvpLoop && botT <= 0) { botT = 60; try { botManage(); } catch (Throwable err) { logOnce("botmanage", "bot manage failed: " + err, false); } }
+                if (full && !noPvpLoop) botTick();
+                if (full && !noPvpLoop) lateExpCheck();
                 if (full && !dom) eachPl(NewModePvp::eachBarracks);
                 if (full && !dom) eachPl(NewModePvp::eachSoldierAI);
                 soldSyncT -= Time.delta;
@@ -4443,11 +4448,11 @@ public class NewModePvp {
                 coreT -= Time.delta;
                 if (full && !dom && coreT <= 0) { coreT = 30; coreStatsTick(30f); }
                 passiveT -= Time.delta;
-                if (full && !dom && passiveT <= 0) { passiveT = PASSIVE_INTERVAL; eachPl(NewModePvp::eachPassiveExp); }
+                if (full && !noPvpLoop && passiveT <= 0) { passiveT = PASSIVE_INTERVAL; eachPl(NewModePvp::eachPassiveExp); }
                 orphanT -= Time.delta;
                 if (orphanT <= 0) { orphanT = 30; Groups.unit.each(NewModePvp::eachOrphan); }
                 winT -= Time.delta;
-                if (full && winT <= 0) { winT = 60; checkWin(); }
+                if (full && !trn && winT <= 0) { winT = 60; checkWin(); }
                 pruneT -= Time.delta;
                 if (pruneT <= 0) { pruneT = 300; prune(); }
             }
@@ -4460,7 +4465,7 @@ public class NewModePvp {
             if (!auth) { pruneT -= Time.delta; if (pruneT <= 0) { pruneT = 300; prune(); } }
         });
         Events.run(Trigger.update, () -> {
-            if (Vars.net.client() || !isFull() || PvpDomination.isActive() || Vars.state.gameOver || Vars.state.isPaused()) return;
+            if (Vars.net.client() || !isFull() || PvpDomination.isActive() || PvpDomination.isTraining() || Vars.state.gameOver || Vars.state.isPaused()) return;
             if (Groups.player.size() == 0) return;
             bonusWaveT += Time.delta;
             if (bonusWaveT < BONUS_WAVE_INTERVAL) return;
@@ -4478,7 +4483,7 @@ public class NewModePvp {
             pushNotif(tr("[scarlet]Đã tự động spawn x" + BONUS_WAVE_TIMES + " đợt quái!", "[scarlet]Auto-spawned x" + BONUS_WAVE_TIMES + " waves!"));
         });
         Events.on(WaveEvent.class, e -> {
-            if (Vars.net.client() || !isFull() || PvpDomination.isActive() || Vars.state.gameOver) return;
+            if (Vars.net.client() || !isFull() || PvpDomination.isActive() || PvpDomination.isTraining() || Vars.state.gameOver) return;
             spawnWave(Vars.state.wave - 1);
         });
         Events.on(UnitDamageEvent.class, e -> damageEvent(e));
@@ -4602,7 +4607,9 @@ public class NewModePvp {
             } catch (Throwable err) {}
         }
         if (u.team == Vars.state.rules.waveTeam) {
-            try { GearItems.onWaveKill(u, krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS ? krGear.pid : -1); } catch (Throwable err) { logOnce("gear-drop", "gear drop failed: " + err, false); }
+            int dropPid = (krGear != null && Time.time - krGear.t <= KILL_CREDIT_TICKS) ? krGear.pid : -1;
+            if (dropPid < 0 && PvpDomination.isTraining() && Vars.player != null) dropPid = Vars.player.id;
+            try { GearItems.onWaveKill(u, dropPid); } catch (Throwable err) { logOnce("gear-drop", "gear drop failed: " + err, false); }
             final float gained = killExp(u);
             if (gained > 0) {
                 final float rx = u.x, ry = u.y;
@@ -4612,9 +4619,12 @@ public class NewModePvp {
                     Unit pu = pl.unit();
                     if (pu == null || !pu.isValid()) return;
                     float dx = pu.x - rx, dy = pu.y - ry;
-                    if (dx * dx + dy * dy <= CREDIT_RADIUS * CREDIT_RADIUS) { addExp(pl, gained); expGot.add(pl.id); expGotTeam.add(pl.team().id); }
+                    if (PvpDomination.isTraining() || dx * dx + dy * dy <= CREDIT_RADIUS * CREDIT_RADIUS) { addExp(pl, gained); expGot.add(pl.id); expGotTeam.add(pl.team().id); }
                 });
                 eachPl(pl -> { if (!expGot.contains(pl.id) && expGotTeam.contains(pl.team().id)) addExp(pl, gained); });
+            }
+            if (PvpDomination.isTraining()) {
+                PvpDomination.onTrainingUnitKilled(u);
             }
         }
     }
@@ -6193,7 +6203,14 @@ public class NewModePvp {
             p.top();
             St st = byId.get(pid);
             if (st == null) { p.add("[scarlet]" + tr("Người chơi đã rời đi.", "Player left.") + "[]").row(); return; }
-            p.add("[#ffd166]" + plName(pid) + "[]  [#4ef2d2]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
+            boolean isHost = PvpDomination.isActive() && pid == PvpDomination.hostPlayerId();
+            String hostBadge = isHost ? "[gold][HOST][] " : "";
+            String trainBadge = st.trainWaves > 0 ? ("  [cyan](" + tr("Huấn luyện: ", "Trained: ") + st.trainWaves + " " + tr("đợt", "waves") + ")[]") : "";
+            p.add(hostBadge + "[#ffd166]" + plName(pid) + "[]  [#4ef2d2]" + tr("Cấp ", "Lv ") + st.lv + "[]" + trainBadge).left().wrap().growX().row();
+            if (st.pi > 0) {
+                int plv = st.plv != null && st.pi < st.plv.length ? st.plv[st.pi] : 0;
+                p.add("[lightgray]Pilot: [white]" + pilotNameById(st.pi) + " (Lv." + plv + ")[]").left().wrap().growX().row();
+            }
             p.add(kcText(st)).left().wrap().growX().padBottom(6).row();
             Unit u = plUnit(pid);
             if (u != null && !(u.isValid() && !u.dead)) u = null;
@@ -6281,7 +6298,10 @@ public class NewModePvp {
             p.clear();
             p.top();
             int n = 0;
-            for (final int pid : orderedIds()) {
+            final int hpid = PvpDomination.isActive() ? PvpDomination.hostPlayerId() : -1;
+            ArrayList<Integer> listIds = orderedIds();
+            if (hpid >= 0 && listIds.remove(Integer.valueOf(hpid))) listIds.add(0, hpid);
+            for (final int pid : listIds) {
                 St st = byId.get(pid);
                 if (st == null) continue;
                 n++;
@@ -6291,7 +6311,9 @@ public class NewModePvp {
                 row.add(new Image(tierType(activeTier(st)).uiIcon)).size(nr ? 32 : 40).padRight(10);
                 Table col = new Table();
                 col.left();
-                col.add("[white]" + plName(pid) + "[]  [accent]" + tr("Cấp ", "Lv ") + st.lv + "[]").left().wrap().growX().row();
+                String hTag = (pid == hpid && hpid >= 0) ? "[gold][HOST][] " : "";
+                String twTag = st.trainWaves > 0 ? ("  [cyan]" + st.trainWaves + " " + tr("đợt", "w") + "[]") : "";
+                col.add(hTag + "[white]" + plName(pid) + "[]  [accent]" + tr("Cấp ", "Lv ") + st.lv + "[]" + twTag).left().wrap().growX().row();
                 col.add(kcText(st)).left().wrap().growX();
                 row.add(col).growX().left().minWidth(0);
                 row.clicked(() -> openUnitDetail(pid));

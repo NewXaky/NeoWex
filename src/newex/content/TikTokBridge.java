@@ -20,6 +20,7 @@ import mindustry.Vars;
 import mindustry.content.Fx;
 import mindustry.ctype.ContentType;
 import mindustry.game.EventType.ClientLoadEvent;
+import mindustry.game.EventType.PlayerJoin;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
@@ -52,6 +53,8 @@ public final class TikTokBridge {
     static final String QUEUE_FILE = "newex-tiktok-queue.jsonl";
     static final String DONOR_FILE = "newex-tiktok-donor.json";
     static final String TT_NAME_KIND = "newex-tt-name";
+    static final String TT_SYNC_KIND = "newex-tt-sync";
+    private static float syncTimer = 0f;
 
     public static boolean isTaggedUnit(Unit u) {
         return u != null && unitTags.containsKey(u.id);
@@ -79,11 +82,17 @@ public final class TikTokBridge {
         initialized = true;
 
         Events.on(WorldLoadEvent.class, e -> unitTags.clear());
+        Events.on(PlayerJoin.class, e -> {
+            if (!Vars.net.server() || e.player == null || e.player.con == null || unitTags.isEmpty()) return;
+            final mindustry.net.NetConnection con = e.player.con;
+            Time.run(60f, () -> sendFullSyncTo(con));
+        });
 
         if (!Vars.headless) {
             Events.on(ClientLoadEvent.class, e -> {
                 try {
                     Vars.netClient.addPacketHandler(TT_NAME_KIND, TikTokBridge::onNamePacket);
+                    Vars.netClient.addPacketHandler(TT_SYNC_KIND, TikTokBridge::onSyncPacket);
                 } catch (Throwable err) {
                     Log.err("[TikTokBridge] packet handler failed", err);
                 }
@@ -112,6 +121,13 @@ public final class TikTokBridge {
 
         // Chỉ Host / Singleplayer đọc file hàng đợi lệnh từ bridge.py (~6 lần/giây, 0ms khi file rỗng)
         if (Vars.net.client()) return;
+        if (Vars.net.server() && !unitTags.isEmpty()) {
+            syncTimer -= Time.delta;
+            if (syncTimer <= 0f) {
+                syncTimer = 90f; // đồng bộ toàn bộ tên viewer cho mọi client mỗi 1.5s
+                broadcastFullSync();
+            }
+        }
         pollTimer -= Time.delta;
         if (pollTimer > 0f) return;
         pollTimer = 10f;
@@ -385,11 +401,59 @@ public final class TikTokBridge {
 
         if (Vars.net.server()) {
             try {
-                String safeV = cleanViewer.replace("|", " ");
-                String safeG = cleanGift.replace("|", " ");
+                String safeV = cleanViewer.replace("|", " ").replace("\n", " ");
+                String safeG = cleanGift.replace("|", " ").replace("\n", " ");
                 Call.clientPacketReliable(TT_NAME_KIND, u.id + "|" + diamonds + "|" + safeV + "|" + safeG);
             } catch (Throwable ignored) {}
         }
+    }
+
+    private static String buildSyncPayload() {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<Integer, ViewerTag> e : unitTags.entrySet()) {
+            Unit u = Groups.unit.getByID(e.getKey());
+            if (u == null || !u.isValid() || u.dead) continue;
+            ViewerTag tag = e.getValue();
+            if (sb.length() > 0) sb.append('\n');
+            String safeV = tag.viewer.replace("|", " ").replace("\n", " ");
+            String safeG = (tag.gift == null ? "" : tag.gift).replace("|", " ").replace("\n", " ");
+            sb.append(e.getKey()).append('|').append(tag.diamonds).append('|').append(safeV).append('|').append(safeG);
+        }
+        return sb.toString();
+    }
+
+    private static void broadcastFullSync() {
+        if (!Vars.net.server() || unitTags.isEmpty()) return;
+        try {
+            String data = buildSyncPayload();
+            if (!data.isEmpty()) Call.clientPacketReliable(TT_SYNC_KIND, data);
+        } catch (Throwable ignored) {}
+    }
+
+    private static void sendFullSyncTo(mindustry.net.NetConnection con) {
+        if (!Vars.net.server() || con == null || unitTags.isEmpty()) return;
+        try {
+            String data = buildSyncPayload();
+            if (!data.isEmpty()) Call.clientPacketReliable(con, TT_SYNC_KIND, data);
+        } catch (Throwable ignored) {}
+    }
+
+    private static void onSyncPacket(String raw) {
+        if (!Vars.net.client() || raw == null || raw.isEmpty()) return;
+        try {
+            String[] lines = raw.split("\n");
+            for (String line : lines) {
+                if (line.isEmpty()) continue;
+                String[] p = line.split("\\|", -1);
+                if (p.length >= 3) {
+                    int uid = Integer.parseInt(p[0]);
+                    int dm = Integer.parseInt(p[1]);
+                    String viewer = p[2];
+                    String gift = p.length >= 4 ? p[3] : "";
+                    if (!unitTags.containsKey(uid)) putLocalTag(uid, viewer, gift, dm);
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     private static void putLocalTag(int uid, String viewer, String gift, int diamonds) {

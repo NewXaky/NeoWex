@@ -84,13 +84,18 @@ public final class PvpDomination {
     private PvpDomination() {}
 
     public static final String MAP_ID = "pvpchiemcu";
+    public static final String TRAIN_MAP_ID = "huanluyenunitplayer";
     public static final String TAG_DOM = "newex-pvp-dom";
+    public static final String TAG_TRAIN = "newex-pvp-train";
+    public static final String TAG_TRAIN_MAXW = "newex-train-maxw";
     public static final String TAG_DOM_SCORES = "newex-dom-scores";
     public static final String TAG_DOM_PTS = "newex-dom-pts";
-    public static final String TAG_SAVE_PROMPT = "newex-pvp-saveprompt"; // "" | "deferred" | "saved"
+    public static final String TAG_SAVE_PROMPT = "newex-pvp-saveprompt";
     public static final String TAG_PLAY_TICKS = "newex-pvp-playticks";
 
     public static final String KEY_SAVED_UNITS = "newex-pvp-saved-units-v1";
+    public static final String KEY_TRAIN_MAX_WAVES = "newex-train-max-waves";
+    public static final int DEFAULT_TRAIN_MAX_WAVES = 15;
     private static final String KEY_BAR_X = "newex-dom-bar-x";
     private static final String KEY_BAR_Y = "newex-dom-bar-y";
     private static final String KEY_SWAP_X = "newex-dom-swap-x";
@@ -437,6 +442,7 @@ public final class PvpDomination {
         public int[] gEqBonus = new int[GearItems.MAXSLOTS];
         public String ch = "";
         public int power = 0;
+        public int maxWaves = 0;
     }
 
     /** Lưu vị trí lõi gốc của bản đồ PvP Chiếm Cứ để bảo đảm bất tử 100% (tự phục hồi kể cả bị skill gọi kill()/setAir()). */
@@ -579,6 +585,7 @@ public final class PvpDomination {
     static final HashMap<Integer, Integer> rateCount = new HashMap<>();
     static boolean matchEnded = false;
     static int winnerTeamId = -1;
+    static int hostPid = -1;
     static float syncTimer = 0f;
     static float healTimer = 0f;
     static float botAiTimer = 0f;
@@ -587,10 +594,17 @@ public final class PvpDomination {
     static BaseDialog activePickerDialog = null;
     static BaseDialog activeSaveDialog = null;
 
-    // Trạng thái theo dõi lưu Unit ở PvP Cày Cấp (pvpnewex3110)
-    static float localPlayTicks = 0f;
-    static float saveCheckTimer = 0f;
-    static String localPromptState = ""; // "" | "deferred" | "saved"
+    // ===== Trạng thái chế độ Huấn Luyện Unit Player (huanluyenunitplayer.msav) =====
+    static final ArrayList<Tile> trainSpawnTiles = new ArrayList<>();
+    static Unit trainUnit = null;
+    static int trainWave = 0;
+    static int trainMaxWaves = DEFAULT_TRAIN_MAX_WAVES;
+    static float trainNextDelay = 0f;
+    static boolean trainFinished = false;
+    static boolean trainPromptShown = false;
+    static ArrayList<UnitType> trainPoolCache = null;
+
+    // Trạng thái chung
     static boolean savePromptOpen = false;
     static boolean initialized = false;
 
@@ -632,6 +646,28 @@ public final class PvpDomination {
             }
         } catch (Throwable ignored) {}
         return false;
+    }
+
+    /** Kiểm tra hiện có đang ở chế độ Huấn Luyện Unit Player (huanluyenunitplayer.msav) không. */
+    public static boolean isTraining() {
+        if (Vars.state == null || !Vars.state.isGame()) return false;
+        StringMap tags = NewModePvp.getTags();
+        if (tags != null && "1".equals(tags.get(TAG_TRAIN, "0"))) return true;
+        try {
+            if (Vars.state.map != null && Vars.state.map.file != null) {
+                return TRAIN_MAP_ID.equalsIgnoreCase(Vars.state.map.file.nameWithoutExtension());
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    public static int getTrainMaxWaves() {
+        return Mathf.clamp(Core.settings.getInt(KEY_TRAIN_MAX_WAVES, DEFAULT_TRAIN_MAX_WAVES), 1, 200);
+    }
+
+    public static int hostPlayerId() {
+        if (!Vars.net.client() && Vars.player != null) return Vars.player.id;
+        return hostPid;
     }
 
     /** Lõi có đang bất tử trong PvP Chiếm Cứ không (chỉ mất bất tử khi trận đã phân thắng bại). */
@@ -709,6 +745,14 @@ public final class PvpDomination {
         localLife.spectating = false;
         matchEnded = false;
         winnerTeamId = -1;
+        hostPid = (!Vars.net.client() && Vars.player != null) ? Vars.player.id : -1;
+        trainSpawnTiles.clear();
+        trainUnit = null;
+        trainWave = 0;
+        trainMaxWaves = getTrainMaxWaves();
+        trainNextDelay = 0f;
+        trainFinished = false;
+        trainPromptShown = false;
         setCoresPassThrough(true);
         syncTimer = 0f;
         healTimer = 0f;
@@ -721,17 +765,6 @@ public final class PvpDomination {
         if (activePickerDialog != null) { try { activePickerDialog.hide(); } catch (Throwable ignored) {} activePickerDialog = null; }
         if (activeSaveDialog != null) { try { activeSaveDialog.hide(); } catch (Throwable ignored) {} activeSaveDialog = null; }
         savePromptOpen = false;
-        saveCheckTimer = 60f;
-
-        StringMap tags = NewModePvp.getTags();
-        if (tags != null) {
-            localPromptState = tags.get(TAG_SAVE_PROMPT, "");
-            try { localPlayTicks = Float.parseFloat(tags.get(TAG_PLAY_TICKS, "0")); }
-            catch (Throwable ignored) { localPlayTicks = 0f; }
-        } else {
-            localPromptState = "";
-            localPlayTicks = 0f;
-        }
 
         if (isActive()) {
             setCoresPassThrough(true);
@@ -747,16 +780,174 @@ public final class PvpDomination {
                     }
                 });
             }
+        } else if (isTraining()) {
+            setCoresPassThrough(false);
+            scanTrainingSpawns();
+            StringMap tg = NewModePvp.getTags();
+            if (tg != null && tg.containsKey(TAG_TRAIN_MAXW)) {
+                try { trainMaxWaves = Mathf.clamp(Integer.parseInt(tg.get(TAG_TRAIN_MAXW, String.valueOf(DEFAULT_TRAIN_MAX_WAVES))), 1, 200); } catch (Throwable ignored) {}
+            }
         } else {
             setCoresPassThrough(false);
         }
     }
 
-    /** Gọi từ NewMode khi người chơi bấm "Xóa Save & Chơi Mới" trên map PvP Cày Cấp. */
+    /** Giữ lại để tương thích với NewMode khi xóa save. */
     public static void onPvpSaveDeleted() {
-        localPromptState = "";
-        localPlayTicks = 0f;
         savePromptOpen = false;
+    }
+
+    // ===== CHẾ ĐỘ HUẤN LUYỆN UNIT PLAYER (maps/huanluyenunitplayer.msav) =====
+    private static boolean isMetalFloor4(Tile t) {
+        if (t == null || t.floor() == null) return false;
+        if (t.floor() == Blocks.metalFloor4) return true;
+        String nm = t.floor().name;
+        return nm != null && nm.equals("metal-floor-4");
+    }
+
+    private static void scanTrainingSpawns() {
+        trainSpawnTiles.clear();
+        if (Vars.world == null) return;
+        int w = Vars.world.width(), h = Vars.world.height();
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                Tile t = Vars.world.tile(x, y);
+                if (isMetalFloor4(t) && (t.block() == null || !t.block().solid)) {
+                    trainSpawnTiles.add(t);
+                }
+            }
+        }
+    }
+
+    private static UnitType pickRandomTrainingUnit() {
+        if (trainPoolCache == null || trainPoolCache.isEmpty()) {
+            trainPoolCache = new ArrayList<>();
+            UnitType[] t1to5 = {
+                mindustry.content.UnitTypes.dagger, mindustry.content.UnitTypes.mace, mindustry.content.UnitTypes.fortress, mindustry.content.UnitTypes.scepter, mindustry.content.UnitTypes.reign,
+                mindustry.content.UnitTypes.nova, mindustry.content.UnitTypes.pulsar, mindustry.content.UnitTypes.quasar, mindustry.content.UnitTypes.vela, mindustry.content.UnitTypes.corvus,
+                mindustry.content.UnitTypes.crawler, mindustry.content.UnitTypes.atrax, mindustry.content.UnitTypes.spiroct, mindustry.content.UnitTypes.arkyid, mindustry.content.UnitTypes.toxopid,
+                mindustry.content.UnitTypes.flare, mindustry.content.UnitTypes.horizon, mindustry.content.UnitTypes.zenith, mindustry.content.UnitTypes.antumbra, mindustry.content.UnitTypes.eclipse,
+                mindustry.content.UnitTypes.stell, mindustry.content.UnitTypes.locus, mindustry.content.UnitTypes.precept, mindustry.content.UnitTypes.vanquish, mindustry.content.UnitTypes.conquer,
+                mindustry.content.UnitTypes.merui, mindustry.content.UnitTypes.cleroi, mindustry.content.UnitTypes.anthicus, mindustry.content.UnitTypes.tecta, mindustry.content.UnitTypes.collaris,
+                mindustry.content.UnitTypes.elude, mindustry.content.UnitTypes.avert, mindustry.content.UnitTypes.obviate, mindustry.content.UnitTypes.quell, mindustry.content.UnitTypes.disrupt
+            };
+            for (UnitType ut : t1to5) {
+                if (ut != null) trainPoolCache.add(ut);
+            }
+        }
+        return trainPoolCache.get(Mathf.random(trainPoolCache.size() - 1));
+    }
+
+    public static void onBeginTraining(int maxWaves) {
+        int clamped = Mathf.clamp(maxWaves, 1, 200);
+        Core.settings.put(KEY_TRAIN_MAX_WAVES, clamped);
+        NewModePvp.onBegin();
+        Rules r = Vars.state.rules;
+        r.tags.put(TAG_DOM, "0");
+        r.tags.put(TAG_TRAIN, "1");
+        r.tags.put(TAG_TRAIN_MAXW, String.valueOf(clamped));
+        r.tags.put(ChaosMode.TAG, "0");
+        r.tags.put(GearItems.TAG_SLOTS, String.valueOf(GearItems.MAXSLOTS));
+        r.waves = false;
+        r.waveTimer = false;
+        r.attackMode = false;
+        r.pvp = false;
+        r.winWave = 0;
+        r.waveTeam = Team.crux;
+        r.unitCapVariable = false;
+        r.unitCap = 999999;
+        NewModePvp.setf(r, "possessionAllowed", true);
+        r.spawns = new Seq<>();
+
+        setCoresPassThrough(false);
+        trainMaxWaves = clamped;
+        trainWave = 0;
+        trainUnit = null;
+        trainFinished = false;
+        trainPromptShown = false;
+        trainNextDelay = 30f;
+        scanTrainingSpawns();
+        NewModePvp.syncRules();
+        if (!Vars.headless) {
+            Vars.ui.showInfoToast(tr("[#38ef7d]Huấn Luyện Unit Player: Hạ lần lượt " + clamped + " quái đợt (tỉ lệ rơi đồ 100%) để tạo bản sao lưu!",
+                "[#38ef7d]Unit Training: Defeat " + clamped + " wave dummies (100% drop rate) to create a saved Unit!"), 4.5f);
+        }
+    }
+
+    private static void spawnNextTrainingMonster() {
+        if (!isTraining() || Vars.net.client() || trainFinished) return;
+        if (trainSpawnTiles.isEmpty()) scanTrainingSpawns();
+        UnitType ut = pickRandomTrainingUnit();
+        if (ut == null) return;
+
+        float sx, sy;
+        if (!trainSpawnTiles.isEmpty()) {
+            Tile t = trainSpawnTiles.get(Mathf.random(trainSpawnTiles.size() - 1));
+            sx = t.worldx();
+            sy = t.worldy();
+        } else {
+            sx = Vars.world.unitWidth() * 0.78f;
+            sy = Vars.world.unitHeight() * 0.5f;
+        }
+
+        trainWave++;
+        if (Vars.state != null) Vars.state.wave = trainWave;
+
+        Team wt = Vars.state.rules.waveTeam != null ? Vars.state.rules.waveTeam : Team.crux;
+        Unit u = ut.create(wt);
+        u.set(sx, sy);
+        try { u.controller(new NewModePvp.NoAI()); } catch (Throwable ignored) {}
+        u.controlWeapons(false, false);
+        u.add();
+        trainUnit = u;
+        NewModePvp.fx(sx, sy);
+
+        if (!Vars.headless) {
+            Vars.ui.showInfoToast(tr("[accent]Đợt " + trainWave + "/" + trainMaxWaves + ": []", "[accent]Wave " + trainWave + "/" + trainMaxWaves + ": []")
+                + "[white]" + ut.localizedName + "[]", 2.2f);
+        }
+    }
+
+    private static void tickTraining() {
+        if (!isTraining() || Vars.net.client() || Vars.state.gameOver) return;
+        if (trainUnit != null) {
+            if (!trainUnit.isValid() || trainUnit.dead) {
+                Unit dead = trainUnit;
+                onTrainingUnitKilled(dead);
+            } else {
+                // Quái huấn luyện đứng yên trên nền kim loại 4 và KHÔNG tấn công
+                trainUnit.controlWeapons(false, false);
+                trainUnit.vel.setZero();
+            }
+            return;
+        }
+        if (trainFinished) return;
+        trainNextDelay -= Time.delta;
+        if (trainNextDelay <= 0f) {
+            spawnNextTrainingMonster();
+        }
+    }
+
+    public static void onTrainingUnitKilled(Unit u) {
+        if (!isTraining() || Vars.net.client() || trainFinished) return;
+        if (trainUnit != null && u != null && u.id != trainUnit.id) return;
+        trainUnit = null;
+        if (trainWave >= trainMaxWaves) {
+            trainFinished = true;
+            if (!trainPromptShown && !Vars.headless) {
+                trainPromptShown = true;
+                Time.run(25f, () -> {
+                    if (isTraining()) {
+                        openSaveUnitPromptDialog(
+                            tr("Bạn đã hoàn thành huấn luyện " + trainMaxWaves + "/" + trainMaxWaves + " đợt!",
+                               "You completed " + trainMaxWaves + "/" + trainMaxWaves + " training waves!"),
+                            trainMaxWaves);
+                    }
+                });
+            }
+        } else {
+            trainNextDelay = 30f;
+        }
     }
 
     public static void onBegin() {
@@ -984,9 +1175,9 @@ public final class PvpDomination {
     private static void tick() {
         if (Vars.state == null || !Vars.state.isGame() || Vars.state.isPaused()) return;
 
-        // 1) Trong PvP Cày Cấp (không phải Chiếm Cứ): theo dõi điều kiện lưu Unit (10 phút hoặc có item hiếm nhất)
-        if (NewModePvp.isFull() && !isActive()) {
-            tickPvpLevelingSaveTrigger();
+        // 1) Chế độ Huấn Luyện Unit Player (maps/huanluyenunitplayer.msav)
+        if (isTraining()) {
+            tickTraining();
             return;
         }
 
@@ -1468,6 +1659,7 @@ public final class PvpDomination {
                 sb.append(cp.ownerTeamId).append(',').append(cp.capTeamId).append(',')
                   .append(Strings.fixed(cp.progress, 3)).append(',').append(cp.contested ? 1 : 0);
             }
+            sb.append('|').append(Vars.player != null ? Vars.player.id : -1);
             Call.clientPacketReliable(SYNC_DOM_KIND, sb.toString());
         } catch (Throwable ignored) {}
     }
@@ -1480,6 +1672,9 @@ public final class PvpDomination {
             if (parts.length < 4) return;
             matchEnded = "1".equals(parts[0]);
             winnerTeamId = Integer.parseInt(parts[1]);
+            if (parts.length >= 5) {
+                try { hostPid = Integer.parseInt(parts[4]); } catch (Throwable ignored) {}
+            }
             scores.clear();
             if (!parts[2].isEmpty()) {
                 for (String seg : parts[2].split(",")) {
@@ -2007,94 +2202,49 @@ public final class PvpDomination {
             });
             Vars.ui.hudGroup.addChild(swapWrap);
 
-            // 3) Nút [Lưu Unit] khi đã đủ điều kiện lưu (10 phút hoặc có đồ Thần Thoại) và người chơi nhấn "Không (Bảo lưu)" trong PvP Cày Cấp
-            Table saveBox = new Table();
-            saveBox.name = "newex-dom-save-btn";
-            saveBox.top().right();
-            saveBox.setFillParent(true);
-            saveBox.touchable = Touchable.childrenOnly;
-            TextButton saveBtn = new TextButton(tr("[#ffd166]Lưu Unit[]", "[#ffd166]Save Unit[]"), Styles.flatBordert);
-            saveBtn.clicked(() -> openSaveUnitPromptDialog(tr("Lưu Unit theo yêu cầu (từ chế độ bảo lưu)", "Save Unit (from deferred prompt)")));
-            saveBtn.visibility = () -> NewModePvp.isFull() && !isActive()
-                && ("deferred".equals(localPromptState) || "saved".equals(localPromptState))
-                && Vars.state != null && Vars.state.isGame();
-            saveBox.add(saveBtn).size(116f, 36f).top().right().padTop(Vars.mobile ? 110f : 92f).padRight(8f);
-            Vars.ui.hudGroup.addChild(saveBox);
+            // 3) Thanh trạng thái Huấn Luyện Unit Player (Đợt X/Max + nút Lưu Unit khi đã hoàn thành)
+            Table trainBox = new Table();
+            trainBox.name = "newex-train-hud";
+            trainBox.top().right();
+            trainBox.setFillParent(true);
+            trainBox.touchable = Touchable.childrenOnly;
+            Table trainCard = new Table(Styles.black6);
+            trainCard.margin(6f);
+            trainCard.label(() -> "[#38ef7d]" + tr("Huấn luyện: ", "Training: ") + "[white]" + tr("Đợt ", "Wave ") + trainWave + "/" + trainMaxWaves
+                + (trainFinished ? "  [#ffd166](" + tr("Hoàn thành!", "Done!") + ")[]" : "") + "[]").padRight(6f);
+            TextButton trSaveBtn = new TextButton(tr("[#ffd166]Lưu Unit[]", "[#ffd166]Save Unit[]"), Styles.flatBordert);
+            trSaveBtn.clicked(() -> openSaveUnitPromptDialog(
+                tr("Lưu bản sao lưu Unit (" + trainMaxWaves + " đợt huấn luyện)", "Save Unit backup (" + trainMaxWaves + " training waves)"),
+                trainMaxWaves));
+            trSaveBtn.visibility = () -> isTraining() && trainFinished;
+            trainCard.add(trSaveBtn).size(104f, 32f);
+            trainCard.visibility = () -> isTraining() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
+            trainBox.add(trainCard).top().right().padTop(Vars.mobile ? 110f : 92f).padRight(8f);
+            Vars.ui.hudGroup.addChild(trainBox);
         } catch (Throwable err) {
             Log.err("[PvpDomination] addHudElements failed", err);
         }
     }
 
-    // ===== PHẦN 2: THEO DÕI ĐIỀU KIỆN LƯU UNIT TRONG PVP CÀY CẤP (10 PHÚT HOẶC CÓ ĐỒ HIẾM NHẤT) =====
-    private static boolean hasHighestRarityEquipped(NewModePvp.St st) {
-        if (st == null || st.gEq == null) return false;
-        int topRar = GearItems.RARITIES - 1; // 4 = Thần thoại (Mythic)
-        for (int i = 0; i < st.gEq.length; i++) {
-            GearItems.Def d = GearItems.def(st.gEq[i]);
-            if (d != null && d.rarity == topRar) return true;
-        }
-        return false;
-    }
-
-    private static void tickPvpLevelingSaveTrigger() {
-        if (Vars.headless || Vars.player == null || Vars.state.gameOver) return;
-        localPlayTicks += Time.delta;
-        if (!Vars.net.client()) {
-            // Đồng bộ thời gian chơi vào rules.tags định kỳ để khi Save & Resume vẫn nhớ mốc 10 phút
-            StringMap tags = NewModePvp.getTags();
-            if (tags != null && ((int) localPlayTicks) % 180 == 0) {
-                tags.put(TAG_PLAY_TICKS, String.valueOf((int) Math.max(localPlayTicks, NewModePvp.matchT)));
-            }
-        }
-
-        if (savePromptOpen || "deferred".equals(localPromptState) || "saved".equals(localPromptState)) return;
-
-        saveCheckTimer -= Time.delta;
-        if (saveCheckTimer > 0f) return;
-        saveCheckTimer = 60f;
-
-        NewModePvp.St st = NewModePvp.localState();
-        if (st == null) return;
-
-        float elapsed = Math.max(localPlayTicks, NewModePvp.matchT);
-        boolean reached10Min = elapsed >= SAVE_TRIGGER_TICKS;
-        boolean hasMythic = hasHighestRarityEquipped(st);
-
-        if (reached10Min || hasMythic) {
-            String reason = hasMythic
-                ? tr("Bạn đã trang bị vật phẩm cấp hiếm nhất (Thần Thoại)!", "You equipped a Mythic (highest rarity) item!")
-                : tr("Đã đạt mốc 10 phút cày cấp!", "You reached 10 minutes of play!");
-            openSaveUnitPromptDialog(reason);
-        }
-    }
-
-    private static void setPromptState(String state) {
-        localPromptState = state;
-        StringMap tags = NewModePvp.getTags();
-        if (tags != null) {
-            tags.put(TAG_SAVE_PROMPT, state);
-            tags.put(TAG_PLAY_TICKS, String.valueOf((int) Math.max(localPlayTicks, NewModePvp.matchT)));
-        }
-    }
-
+    // ===== PHẦN 2: LƯU BẢN SAO LƯU UNIT SAU KHI HOÀN THÀNH HUẤN LUYỆN =====
     /** Hộp thoại hỏi người chơi có muốn lưu file Unit hiện tại vào 5 ô lưu hay không. */
-    public static void openSaveUnitPromptDialog(final String reason) {
+    public static void openSaveUnitPromptDialog(final String reason, final int maxWaves) {
         if (Vars.headless || Vars.player == null) return;
         final NewModePvp.St st = NewModePvp.localState();
         if (st == null) return;
 
         savePromptOpen = true;
-        final SavedUnit snap = captureFromState(st);
+        final SavedUnit snap = captureFromState(st, maxWaves);
         final ArrayList<SavedUnit> slots = loadSavedUnits();
 
-        final BaseDialog d = new BaseDialog(tr("Lưu File Unit (PvP Chiếm Cứ)", "Save Unit File (PvP Domination)"));
+        final BaseDialog d = new BaseDialog(tr("Lưu Bản Sao Lưu Unit (Kho Unit)", "Save Unit Backup (Unit Vault)"));
         activeSaveDialog = d;
         d.cont.margin(12f);
 
         float w = Math.min(Core.graphics.getWidth() / Scl.scl() - 40f, 520f);
         d.cont.add("[#ffd166]" + reason + "[]").wrap().width(w).labelAlign(Align.center).padBottom(8f).row();
-        d.cont.add("[white]" + tr("Bạn có muốn lưu file unit hiện tại để mang vào chế độ [accent]PvP Chiếm Cứ[] không?\n(Sau khi nhấn Đồng ý, trận đấu vẫn tiếp tục như bình thường!)",
-            "Do you want to save your current unit build for [accent]PvP Domination[]?\n(Clicking Yes will save and let you keep playing normally!)") + "[]")
+        d.cont.add("[white]" + tr("Bạn có muốn lưu bản sao lưu Unit hiện tại (Max " + maxWaves + " đợt) vào [accent]Kho Unit[] không?",
+            "Do you want to save your current Unit build (Max " + maxWaves + " waves) into the [accent]Unit Vault[]?") + "[]")
             .wrap().width(w).labelAlign(Align.center).padBottom(10f).row();
 
         // Thẻ tóm tắt Unit hiện tại
@@ -2103,28 +2253,24 @@ public final class PvpDomination {
         d.cont.add("[lightgray]" + tr("Ô lưu hiện tại: ", "Saved slots: ") + "[accent]" + slots.size() + "/" + MAX_SAVED_SLOTS + "[]").padBottom(8f).row();
 
         Table btns = new Table();
-        btns.button(tr("[green]Đồng ý (Lưu Unit)[]", "[green]Yes (Save Unit)[]"), Styles.flatBordert, () -> {
+        btns.button(tr("[green]Có (Lưu Unit)[]", "[green]Yes (Save Unit)[]"), Styles.flatBordert, () -> {
             if (slots.size() < MAX_SAVED_SLOTS) {
                 slots.add(snap);
                 persistSavedUnits(slots);
-                setPromptState("saved");
                 savePromptOpen = false;
                 d.hide();
-                Vars.ui.showInfoToast(tr("[green]Đã lưu file Unit vào Ô #" + slots.size() + "/" + MAX_SAVED_SLOTS + "! Tiếp tục chơi bình thường.",
-                    "[green]Saved Unit to Slot #" + slots.size() + "/" + MAX_SAVED_SLOTS + "! Continue playing."), 4f);
+                Vars.ui.showInfoToast(tr("[green]Đã lưu bản sao lưu Unit (Max " + maxWaves + " đợt) vào Ô #" + slots.size() + "/" + MAX_SAVED_SLOTS + "!",
+                    "[green]Saved Unit (Max " + maxWaves + " waves) to Slot #" + slots.size() + "/" + MAX_SAVED_SLOTS + "!"), 4f);
             } else {
                 d.hide();
                 openOverwriteSlotDialog(snap, slots);
             }
-        }).size(210f, 48f).pad(6f);
+        }).size(200f, 48f).pad(6f);
 
-        btns.button(tr("[lightgray]Không (Bảo lưu)[]", "[lightgray]No (Keep Deferred)[]"), Styles.flatBordert, () -> {
-            setPromptState("deferred");
+        btns.button(tr("[lightgray]Không[]", "[lightgray]No[]"), Styles.flatBordert, () -> {
             savePromptOpen = false;
             d.hide();
-            Vars.ui.showInfoToast(tr("[accent]Đã bảo lưu lời nhắc! Bạn có thể bấm nút [Lưu Unit] bất kỳ lúc nào cho tới khi xóa save map.",
-                "[accent]Deferred! You can press [Save Unit] anytime before deleting the map save."), 4f);
-        }).size(210f, 48f).pad(6f);
+        }).size(160f, 48f).pad(6f);
 
         d.cont.add(btns).row();
         d.hidden(() -> {
@@ -2146,19 +2292,17 @@ public final class PvpDomination {
             list.add(buildUnitCard(slots.get(i), w - 24f, i, tr("Ghi đè", "Overwrite"), () -> {
                 slots.set(idx, snap);
                 persistSavedUnits(slots);
-                setPromptState("saved");
                 savePromptOpen = false;
                 d.hide();
-                Vars.ui.showInfoToast(tr("[green]Đã ghi đè Unit vào Ô #" + (idx + 1) + "/5! Tiếp tục chơi bình thường.",
-                    "[green]Overwrote Slot #" + (idx + 1) + "/5! Continue playing."), 4f);
+                Vars.ui.showInfoToast(tr("[green]Đã ghi đè Unit vào Ô #" + (idx + 1) + "/5!",
+                    "[green]Overwrote Slot #" + (idx + 1) + "/5!"), 4f);
             })).width(w - 24f).pad(4f).row();
         }
         d.cont.add(new ScrollPane(list)).width(w).maxHeight(Core.graphics.getHeight() / Scl.scl() * 0.65f).row();
-        d.buttons.button(tr("Hủy (Bảo lưu)", "Cancel (Defer)"), () -> {
-            setPromptState("deferred");
+        d.buttons.button(tr("Hủy", "Cancel"), () -> {
             savePromptOpen = false;
             d.hide();
-        }).size(200f, 44f);
+        }).size(160f, 44f);
         d.hidden(() -> {
             savePromptOpen = false;
             if (activeSaveDialog == d) activeSaveDialog = null;
@@ -2187,10 +2331,39 @@ public final class PvpDomination {
         float w = Math.min(Core.graphics.getWidth() / Scl.scl() - 36f, 560f);
 
         d.cont.margin(10f);
+        if (manageOnly) {
+            // Khu vực tạo bản sao lưu Unit mới qua chế độ Huấn Luyện (huanluyenunitplayer.msav)
+            final int[] maxWVal = {getTrainMaxWaves()};
+            Table trCard = new Table(Styles.black6);
+            trCard.margin(8f);
+            trCard.add("[#38ef7d]" + tr("HUẤN LUYỆN TẠO BẢN SAO LƯU UNIT", "UNIT TRAINING BACKUP MODE") + "[]").left().colspan(2).padBottom(4f).row();
+            trCard.add("[lightgray]" + tr("Quái đợt T1-T5 không tấn công, tỉ lệ rơi đồ 100%, giữ nguyên độ hiếm & trang nâng cấp.",
+                "Non-attacking T1-T5 wave dummies, 100% item drop rate (normal rarity), full upgrade menu.") + "[]")
+                .left().wrap().width(w - 28f).colspan(2).padBottom(6f).row();
+
+            Table trRow = new Table();
+            trRow.left();
+            trRow.add("[white]" + tr("Số đợt tối đa:", "Max waves:") + "[]").padRight(6f);
+            final TextField mwField = trRow.field(String.valueOf(maxWVal[0]), txt -> {
+                try { maxWVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), 1, 200); } catch (Throwable ignored) {}
+            }).width(74f).get();
+            mwField.setFilter(TextField.TextFieldFilter.digitsOnly);
+            mwField.setMaxLength(3);
+            trRow.add("[gray](mặc định 15)[]").padLeft(6f).padRight(10f);
+            trRow.button(tr("[#38ef7d]Tạo Bản Sao Lưu Unit[]", "[#38ef7d]Start Unit Training[]"), Styles.flatBordert, () -> {
+                try { maxWVal[0] = Mathf.clamp(Integer.parseInt(mwField.getText().trim()), 1, 200); } catch (Throwable ignored) {}
+                Core.settings.put(KEY_TRAIN_MAX_WAVES, maxWVal[0]);
+                d.hide();
+                NewMode.startTrainingMap(maxWVal[0]);
+            }).height(40f).minWidth(190f);
+            trCard.add(trRow).left().growX().row();
+            d.cont.add(trCard).width(w - 8f).padBottom(8f).row();
+        }
+
         if (slots.isEmpty()) {
             d.cont.add("[#ffd166]" + tr("Chưa có file Unit nào được lưu (0/5)!", "No saved Units yet (0/5)!") + "[]").padBottom(6f).row();
-            d.cont.add("[lightgray]" + tr("Hãy chơi bản đồ [accent]PvP Cày Cấp (Cùng bạn bè)[] đủ 10 phút hoặc trang bị vật phẩm Thần Thoại để lưu Unit, Pilot, Pháo và Trang bị vào đây.\nHiện tại bạn chỉ có thể ra trận bằng [white]Unit Rỗng (Cơ bản)[].",
-                "Play [accent]PvP Leveling[] for 10 minutes or equip a Mythic item to save your Unit, Pilot, Turrets & Gear here.\nFor now you can only deploy with an [white]Empty Unit (Default)[].") + "[]")
+            d.cont.add("[lightgray]" + tr("Hãy nhấn nút [accent]Tạo Bản Sao Lưu Unit[] trong Kho Unit để huấn luyện và lưu Unit, Pilot, Pháo & Trang bị vào đây.\nHiện tại bạn chỉ có thể ra trận bằng [white]Unit Rỗng (Cơ bản)[].",
+                "Press [accent]Start Unit Training[] in the Unit Vault to train & save your Unit, Pilot, Turrets & Gear here.\nFor now you can only deploy with an [white]Empty Unit (Default)[].") + "[]")
                 .wrap().width(w - 20f).labelAlign(Align.center).padBottom(12f).row();
         } else {
             d.cont.add("[accent]" + tr("Chọn 1 trong " + slots.size() + "/" + MAX_SAVED_SLOTS + " Unit đã lưu hoặc dùng Unit Rỗng:",
@@ -2233,11 +2406,11 @@ public final class PvpDomination {
                 } else {
                     Table empty = new Table(Styles.black6);
                     empty.margin(10f);
-                    empty.add("[gray]" + tr("Ô #" + (i + 1) + " — Trống (Cày trong PvP Cày Cấp để lưu)", "Slot #" + (i + 1) + " — Empty (Farm in PvP Leveling to save)") + "[]").left();
+                    empty.add("[gray]" + tr("Ô #" + (i + 1) + " — Trống (Vào Huấn Luyện để tạo bản sao lưu)", "Slot #" + (i + 1) + " — Empty (Run Unit Training to save)") + "[]").left();
                     list.add(empty).width(w - 24f).pad(4f).row();
                 }
             }
-            d.cont.add(new ScrollPane(list)).width(w).maxHeight(Core.graphics.getHeight() / Scl.scl() * 0.56f).padBottom(8f).row();
+            d.cont.add(new ScrollPane(list)).width(w).maxHeight(Core.graphics.getHeight() / Scl.scl() * (manageOnly ? 0.44f : 0.56f)).padBottom(8f).row();
         }
 
         Table bot = new Table();
@@ -2291,7 +2464,8 @@ public final class PvpDomination {
             }
         }
         String slotPrefix = slotIdx >= 0 ? "[#ffd166]#" + (slotIdx + 1) + "[] " : "";
-        String title = slotPrefix + "[accent]" + (ut != null ? ut.localizedName : "Unit") + "[]  [white]Lv." + su.lv + "[]  [lightgray](" + tr("Lực chiến: ", "Power: ") + "[#7cfc00]" + su.power + "[])[]";
+        String mwTag = su.maxWaves > 0 ? ("  [cyan][" + tr("Max ", "Max ") + su.maxWaves + " " + tr("đợt", "w") + "][]") : "";
+        String title = slotPrefix + "[accent]" + (ut != null ? ut.localizedName : "Unit") + "[]  [white]Lv." + su.lv + "[]" + mwTag + "  [lightgray](" + tr("Lực chiến: ", "Power: ") + "[#7cfc00]" + su.power + "[])[]";
         String sub = "[lightgray]Pilot: [white]" + pilotTxt + "[]  •  " + tr("Pháo: ", "Turrets: ") + "[cyan]" + su.d.size() + "[]  •  "
             + tr("Trang bị: ", "Items: ") + "[#ffd166]" + gearCnt + "[]"
             + (mythicCnt > 0 ? "  [#ff4d6d](" + mythicCnt + " " + tr("Thần Thoại", "Mythic") + ")[]" : "");
@@ -2377,6 +2551,7 @@ public final class PvpDomination {
         st.u = 1;
         st.pi = 0;
         st.tm = 0;
+        st.trainWaves = 0;
 
         if (!body.isEmpty() && !"EMPTY".equals(body)) {
             SavedUnit su = decodeSavedUnit(body);
@@ -2385,6 +2560,7 @@ public final class PvpDomination {
                 st.u = Mathf.clamp(su.u, 1, NewModePvp.TIER_MAX);
                 st.tm = Mathf.clamp(su.tm, 0, 2);
                 st.pi = Mathf.clamp(su.pi, 0, NewModePvp.PILOT_COUNT);
+                st.trainWaves = Math.max(0, su.maxWaves);
                 for (int i = 0; i < st.s.length && i < su.s.length; i++) {
                     st.s[i] = Mathf.clamp(su.s[i], 0, 120);
                 }
@@ -2429,9 +2605,10 @@ public final class PvpDomination {
     }
 
     // ===== Chụp & Mã hóa / Giải mã 5 Ô Unit Lưu (Core.settings) =====
-    static SavedUnit captureFromState(NewModePvp.St st) {
+    static SavedUnit captureFromState(NewModePvp.St st, int maxWaves) {
         SavedUnit su = new SavedUnit();
         su.savedAt = System.currentTimeMillis();
+        su.maxWaves = Math.max(0, maxWaves);
         su.lv = st.lv;
         su.u = NewModePvp.activeTier(st);
         su.tm = st.tm;
@@ -2480,7 +2657,7 @@ public final class PvpDomination {
         sb.append("\"nm\":\"").append(su.name.replace("\\", "\\\\").replace("\"", "\\\"")).append("\"");
         sb.append(",\"at\":").append(su.savedAt);
         sb.append(",\"lv\":").append(su.lv).append(",\"u\":").append(su.u).append(",\"tm\":").append(su.tm).append(",\"pi\":").append(su.pi);
-        sb.append(",\"pw\":").append(su.power);
+        sb.append(",\"pw\":").append(su.power).append(",\"mw\":").append(su.maxWaves);
         sb.append(",\"s\":"); NewModePvp.arr(sb, su.s);
         sb.append(",\"plv\":"); NewModePvp.arr(sb, su.plv);
         sb.append(",\"pexp\":"); NewModePvp.arr(sb, su.pexp);
@@ -2524,6 +2701,7 @@ public final class PvpDomination {
         su.gEqBonus = NewModePvp.readInts(o.get("gbn"), GearItems.MAXSLOTS, su.gEqBonus);
         su.ch = o.getString("ch", "");
         su.power = o.getInt("pw", computePower(su));
+        su.maxWaves = o.getInt("mw", 0);
         return su;
     }
 

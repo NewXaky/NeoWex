@@ -168,13 +168,6 @@ public final class NewMode {
         hd.margin(8f);
         hd.add("[accent]CHỌN BẢN ĐỒ NEWMODE[]").left().expandX();
         hd.add("[yellow]Điểm Gacha: " + gachaPts + "[]").right().row();
-        Table quick = new Table();
-        quick.left();
-        quick.button("Kho Unit (" + savedUnits + "/" + PvpDomination.MAX_SAVED_SLOTS + ")", Styles.flatBordert, PvpDomination::openUnitManagerFromMenu)
-            .height(34f).minWidth(narrow ? 120f : 150f).padRight(6f);
-        quick.button("Cài Đặt Chiếm Cứ", Styles.flatBordert, PvpDomination::openSettingsDialog)
-            .height(34f).minWidth(narrow ? 130f : 160f);
-        hd.add(quick).colspan(2).left().padTop(6f).row();
         head.add(hd).width(W).pad(3f).row();
 
         for (String[] mapInfo : MAPS) {
@@ -204,7 +197,7 @@ public final class NewMode {
                 card.add("[lightgray]Tiêu diệt đủ " + survival.killGoal() + " địch để thắng. Địch xuất hiện ngẫu nhiên khắp bản đồ theo từng đợt.[]")
                     .left().wrap().width(descW).padBottom(4f).row();
             } else if (id.equals(PVP_ID)) {
-                card.add("[lightgray]Điều khiển unit riêng, diệt địch wave lấy EXP, nâng cấp & phá lõi địch. Đạt 10 phút hoặc mang đồ Thần Thoại để lưu Unit (tối đa 5 ô) sang PvP Chiếm Cứ.[]")
+                card.add("[lightgray]Điều khiển unit riêng, diệt địch wave lấy EXP, nâng cấp & phá lõi địch cùng bạn bè.[]")
                     .left().wrap().width(descW).padBottom(4f).row();
             } else if (id.equals(DOM_ID)) {
                 card.add("[lightgray]Dùng Unit đã lưu (" + savedUnits + "/" + PvpDomination.MAX_SAVED_SLOTS + " ô) chiếm các nền lõi (cứ điểm)! Lõi bất tử làm nơi spawn; phe nạp đầy thanh tiến độ trước phá hủy lõi địch.[]")
@@ -230,6 +223,10 @@ public final class NewMode {
             if (id.equals(DOM_ID)) {
                 btnRow.button("Cài Đặt", Styles.flatBordert, PvpDomination::openSettingsDialog)
                     .height(bh).minWidth(narrow ? 86f : 105f).padRight(6f);
+                btnRow.button("Kho Unit (" + savedUnits + "/" + PvpDomination.MAX_SAVED_SLOTS + ")", Styles.flatBordert, () -> {
+                    panel.hide();
+                    PvpDomination.openUnitManagerFromMenu();
+                }).height(bh).minWidth(narrow ? 115f : 145f).padRight(6f);
             }
 
             if (hasSave) {
@@ -323,6 +320,33 @@ public final class NewMode {
         activeMapName = null;
         Core.settings.put("newex-is-playing-newmode", false);
         Vars.ui.showInfo("Không tìm thấy file " + mapDisplayPath(mapName) + " trong thư mục mod!");
+    }
+
+    /** Vào chế độ Huấn Luyện Unit Player (maps/huanluyenunitplayer.msav) để tạo bản sao lưu vào Kho Unit. */
+    public static void startTrainingMap(int maxWaves) {
+        isPlayingNewMode = false;
+        guest = false;
+        activeMapName = null;
+        Core.settings.put("newex-is-playing-newmode", false);
+
+        Fi mapFile = getMapFile(PvpDomination.TRAIN_MAP_ID);
+        if (mapFile == null) {
+            Vars.ui.showInfo("Không tìm thấy file maps/" + PvpDomination.TRAIN_MAP_ID + ".msav trong thư mục mod!");
+            return;
+        }
+        Map map;
+        try {
+            map = MapIO.createMap(mapFile, true);
+        } catch (java.io.IOException ex) {
+            Log.err("Lỗi đọc map huấn luyện: " + ex);
+            Vars.ui.showInfo("Không đọc được file maps/" + PvpDomination.TRAIN_MAP_ID + ".msav: " + ex.getMessage());
+            return;
+        }
+        Vars.logic.reset();
+        Vars.world.loadMap(map);
+        Vars.state.rules = map.applyRules(Gamemode.survival);
+        Vars.logic.play();
+        PvpDomination.onBeginTraining(maxWaves);
     }
 
     private static void saveNewModeGame() {

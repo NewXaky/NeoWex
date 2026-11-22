@@ -527,7 +527,7 @@ final class GearItems {
             NewModePvp.changed();
             return;
         }
-        if (Math.random() >= Math.min(0.95f, dropChance(u) + luckBonus(st))) return;
+        if (!PvpDomination.isTraining() && Math.random() >= Math.min(0.95f, dropChance(u) + luckBonus(st))) return;
         if (st.gInv.size() >= INV_CAP) return;
         Def d = rollDef(rollRarity(u.maxHealth));
         int dropBonus = d.kind <= 0 ? rollDropBonus() : 0;
