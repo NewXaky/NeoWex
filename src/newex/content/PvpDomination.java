@@ -843,9 +843,9 @@ public final class PvpDomination {
         // Phím tắt trong PvP Chiếm Cứ: 4 = gọi unit hỗ trợ phe vàng, Shift+4 = gọi unit hỗ trợ phe còn lại, 5 = reset toàn bộ cứ điểm
         if (!Vars.headless && !Core.scene.hasKeyboard() && !Core.scene.hasDialog()) {
             boolean shift = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
-            if (Core.input.keyTap(KeyCode.num4)) {
+            if (Core.input.keyTap(KeyCode.num4) || Core.input.keyTap(KeyCode.numpad4)) {
                 NewModePvp.send(REQ_DOM_SPAWN, shift ? "1" : "0");
-            } else if (!shift && Core.input.keyTap(KeyCode.num5)) {
+            } else if (Core.input.keyTap(KeyCode.num5) || Core.input.keyTap(KeyCode.numpad5)) {
                 NewModePvp.send(REQ_DOM_SPAWN, "R");
             }
         }

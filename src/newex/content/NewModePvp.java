@@ -7116,7 +7116,7 @@ public class NewModePvp {
             if (hudPanel == null) return;
             int w = Core.graphics.getWidth(), h = Core.graphics.getHeight();
             if (w != hudLastW || h != hudLastH) { hudLastW = w; hudLastH = h; hudClamp(); }
-            if (!isActive()) return;
+            if (!isActive() || PvpDomination.isActive()) return;
             try {
                 boolean sh = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
                 if (sh && Core.input.keyTap(KeyCode.num2) && !Core.scene.hasKeyboard()) hudSetVisible(!hudVisible());
@@ -7135,7 +7135,7 @@ public class NewModePvp {
         final KeyCode[] cheatKeys = new KeyCode[26];
         for (int i = 0; i < 26; i++) { try { cheatKeys[i] = KeyCode.valueOf(String.valueOf((char) ('a' + i))); } catch (Throwable err) {} }
         Events.run(Trigger.update, () -> {
-            if (!isActive()) { cheatIdx[0] = 0; return; }
+            if (!isActive() || PvpDomination.isActive()) { cheatIdx[0] = 0; return; }
             try {
                 if (Core.scene.hasKeyboard()) { cheatIdx[0] = 0; return; }
                 if (cheatIdx[0] > 0 && Time.time - cheatT[0] > CHEAT_GAP_TICKS) cheatIdx[0] = 0;
