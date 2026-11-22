@@ -4220,7 +4220,7 @@ public class NewModePvp {
         for (Wave g : WAVES) {
             UnitType type = Vars.content.getByName(ContentType.unit, g.t);
             if (type == null) continue;
-            if (type.flying || type.naval) continue;
+            if (type.flying || !PvpDomination.isValidRandomSpawnUnit(type)) continue;
             int n = waveCount(g, w);
             if (n <= 0) continue;
             prepareWaveType(type);

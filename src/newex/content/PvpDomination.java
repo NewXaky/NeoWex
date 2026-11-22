@@ -115,9 +115,51 @@ public final class PvpDomination {
     public static final int REWARD_POINTS = 35;
 
     static final String REQ_DOM_LOAD = "newex-dom-load";
+    static final String REQ_DOM_SPAWN = "newex-dom-spawn";
     static final String SYNC_DOM_KIND = "newex-dom-sync";
     static final String FX_CAP_KIND = "newex-dom-capfx";
     static final String DEATH_DOM_KIND = "newex-dom-death";
+
+    /** Unit hỗ trợ đi chiếm cứ được gọi bằng phím 4 (phe vàng) / Shift+4 (phe còn lại), di chuyển né tường như PvpBotAI. */
+    static final class SupportUnit {
+        Unit unit;
+        Team team;
+        float pathT = 0f, pathDx = Float.NaN, pathDy = Float.NaN, pathGx = Float.NaN, pathGy = Float.NaN;
+        boolean pathWait = false;
+    }
+    static final ArrayList<SupportUnit> supportUnits = new ArrayList<>();
+    static final Vec2 tmpGoal = new Vec2();
+    static final SupportUnit soloTrack = new SupportUnit();
+    static ArrayList<UnitType> validSpawnPool = null;
+
+    /**
+     * Lọc chuẩn unit spawn ngẫu nhiên cho MỌI chế độ:
+     * né hoàn toàn thủy quân (naval), đạn là unit (MissileUnitType / lifetime ngắn / internal),
+     * và nhóm unit cargo / tether / không có vũ khí.
+     */
+    public static boolean isValidRandomSpawnUnit(UnitType ut) {
+        if (ut == null || ut.naval || ut.internal || ut.hidden || !ut.isCounted) return false;
+        if (ut instanceof mindustry.type.unit.MissileUnitType) return false;
+        if (ut.lifetime > 0f && ut.lifetime < 6000f) return false;
+        if (ut.weapons == null || ut.weapons.isEmpty()) return false;
+        String cn = ut.getClass().getSimpleName().toLowerCase();
+        if (cn.contains("missile") || cn.contains("tether") || cn.contains("cargo")) return false;
+        String nm = ut.name != null ? ut.name.toLowerCase() : "";
+        if (nm.contains("cargo") || nm.contains("missile") || nm.contains("torpedo")
+            || nm.contains("bullet") || nm.contains("projectile") || nm.contains("tether")) return false;
+        return true;
+    }
+
+    private static UnitType pickRandomSupportType() {
+        if (validSpawnPool == null || validSpawnPool.isEmpty()) {
+            validSpawnPool = new ArrayList<>();
+            for (UnitType ut : Vars.content.units()) {
+                if (isValidRandomSpawnUnit(ut)) validSpawnPool.add(ut);
+            }
+        }
+        if (validSpawnPool.isEmpty()) return null;
+        return validSpawnPool.get(Mathf.random(validSpawnPool.size() - 1));
+    }
 
     /** Trạng thái vòng đời Unit của từng player trong trận PvP Chiếm Cứ (hồi sinh / khán giả / hồi chiêu ô bị hạ). */
     static final class DomLife {
@@ -459,7 +501,13 @@ public final class PvpDomination {
     }
 
     static boolean isSoloBot(Unit u) {
-        return u != null && soloBotUnit != null && u.id == soloBotUnit.id;
+        if (u == null) return false;
+        if (soloBotUnit != null && u.id == soloBotUnit.id) return true;
+        for (int i = 0; i < supportUnits.size(); i++) {
+            SupportUnit su = supportUnits.get(i);
+            if (su.unit != null && su.unit.id == u.id) return true;
+        }
+        return false;
     }
 
     // ===== Hook NewMode =====
@@ -475,8 +523,9 @@ public final class PvpDomination {
         initialized = true;
         NewMode.domination = HOOK;
 
-        // Đăng ký gói nhận Unit đã lưu từ Client -> Host
+        // Đăng ký gói nhận Unit đã lưu & lệnh phím tắt (4 / Shift+4 / 5) từ Client -> Host
         NewModePvp.onReq(REQ_DOM_LOAD, 250, PvpDomination::handleLoadUnitReq);
+        NewModePvp.onReq(REQ_DOM_SPAWN, 150, PvpDomination::handleDomSpawnReq);
 
         // Đăng ký gói nhận đồng bộ Cứ Điểm & Điểm từ Host -> Client
         if (!Vars.headless) {
@@ -501,6 +550,7 @@ public final class PvpDomination {
         points.clear();
         scores.clear();
         rateCount.clear();
+        supportUnits.clear();
         lifeByPid.clear();
         localLife.activeSlot = EMPTY_SLOT_IDX;
         localLife.deadMask = 0;
@@ -571,6 +621,7 @@ public final class PvpDomination {
         points.clear();
         scores.clear();
         rateCount.clear();
+        supportUnits.clear();
         lifeByPid.clear();
         localLife.activeSlot = EMPTY_SLOT_IDX;
         localLife.deadMask = 0;
@@ -789,6 +840,16 @@ public final class PvpDomination {
             }
         }
 
+        // Phím tắt trong PvP Chiếm Cứ: 4 = gọi unit hỗ trợ phe vàng, Shift+4 = gọi unit hỗ trợ phe còn lại, 5 = reset toàn bộ cứ điểm
+        if (!Vars.headless && !Core.scene.hasKeyboard() && !Core.scene.hasDialog()) {
+            boolean shift = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
+            if (Core.input.keyTap(KeyCode.num4)) {
+                NewModePvp.send(REQ_DOM_SPAWN, shift ? "1" : "0");
+            } else if (!shift && Core.input.keyTap(KeyCode.num5)) {
+                NewModePvp.send(REQ_DOM_SPAWN, "R");
+            }
+        }
+
         // Giảm hiệu ứng flash trên các cứ điểm
         for (int i = 0; i < points.size(); i++) {
             CapPoint cp = points.get(i);
@@ -797,10 +858,11 @@ public final class PvpDomination {
 
         if (Vars.net.client()) return;
 
-        // Server / Host cập nhật logic chiếm cứ điểm, hồi máu tại lõi, điểm số và bot solo
+        // Server / Host cập nhật logic chiếm cứ điểm, hồi máu tại lõi, điểm số, unit hỗ trợ và bot solo
         if (points.isEmpty()) scanCapturePoints();
         tickCoreFountain();
         tickSoloBot();
+        tickSupportUnits();
         tickCaptureAndScore();
 
         syncTimer -= Time.delta;
@@ -829,6 +891,133 @@ public final class PvpDomination {
                     }
                 }
             });
+        }
+    }
+
+    /** Xử lý phím 4 (phe vàng), Shift+4 (phe còn lại) và phím 5 (reset toàn bộ cứ điểm). */
+    private static void handleDomSpawnReq(Player pl, String payload) {
+        if (!isActive() || Vars.net.client()) return;
+        if ("R".equals(payload)) {
+            for (int i = 0; i < points.size(); i++) {
+                CapPoint cp = points.get(i);
+                cp.ownerTeamId = -1;
+                cp.capTeamId = -1;
+                cp.progress = 0f;
+                cp.contested = false;
+                cp.activeCount = 0;
+                cp.flashT = 25f;
+            }
+            rateCount.clear();
+            broadcastDomState();
+            NewModePvp.toastAll(tr("[accent]Đã reset toàn bộ cứ điểm về chưa phe nào chiếm!",
+                "[accent]All capture points have been reset to neutral!"), 3f);
+            return;
+        }
+
+        Seq<Team> tl = NewModePvp.pvpTeams();
+        if (tl.isEmpty()) return;
+        Team yellow = tl.contains(Team.sharded) ? Team.sharded : tl.get(0);
+        Team other = yellow;
+        for (int i = 0; i < tl.size; i++) {
+            if (tl.get(i) != yellow && tl.get(i).cores().size > 0) { other = tl.get(i); break; }
+        }
+        Team targetTeam = "1".equals(payload) ? other : yellow;
+        CoreBlock.CoreBuild core = targetTeam.core();
+        if (core == null || !core.isValid()) return;
+
+        UnitType ut = pickRandomSupportType();
+        if (ut == null) return;
+        Unit u = ut.create(targetTeam);
+        float ang = Mathf.random(360f);
+        float rad = core.block.size * Vars.tilesize * 0.65f + u.hitSize * 0.6f + 8f;
+        u.set(core.x + Mathf.cosDeg(ang) * rad, core.y + Mathf.sinDeg(ang) * rad);
+        try { u.controller(new NewModePvp.NoAI()); } catch (Throwable ignored) {}
+        u.add();
+        NewModePvp.fx(u.x, u.y);
+
+        SupportUnit su = new SupportUnit();
+        su.unit = u;
+        su.team = targetTeam;
+        supportUnits.add(su);
+
+        NewModePvp.toastAll("[#" + targetTeam.color + "]■ " + targetTeam.localized() + "[] "
+            + tr("gọi hỗ trợ chiếm cứ: ", "deployed capture support: ") + "[accent]" + ut.localizedName + "[]", 2.2f);
+    }
+
+    /** Di chuyển thông minh né tường (dùng PvpBotAI.pathQuery cho bộ binh) hướng đến cứ điểm và chiến đấu. */
+    private static void driveCaptureUnit(SupportUnit trk, Unit u, Team tm) {
+        if (u == null || !u.isValid() || u.dead || points.isEmpty()) return;
+
+        CapPoint target = null;
+        float bestScore = -1e9f;
+        for (int i = 0; i < points.size(); i++) {
+            CapPoint cp = points.get(i);
+            if (cp.ownerTeamId == tm.id && cp.progress >= 0.99f && !cp.contested) continue;
+            float dist = Mathf.dst(u.x, u.y, cp.x, cp.y);
+            float prio = (cp.ownerTeamId == -1 ? 420f : (cp.contested ? 500f : 280f)) - dist * 0.32f;
+            if (prio > bestScore) { bestScore = prio; target = cp; }
+        }
+        if (target == null) target = points.get(Math.abs(u.id) % points.size());
+
+        float dist = Mathf.dst(u.x, u.y, target.x, target.y);
+        if (dist > target.radius * 0.48f) {
+            if (!u.type.flying) {
+                // Bộ binh: dùng thuật toán tìm đường né tường PvpBotAI.pathQuery
+                trk.pathT -= Time.delta;
+                boolean need = trk.pathT <= 0f || Float.isNaN(trk.pathDx)
+                    || Math.abs(target.x - trk.pathGx) > 24f || Math.abs(target.y - trk.pathGy) > 24f;
+                if (need) {
+                    trk.pathT = 6f;
+                    trk.pathGx = target.x; trk.pathGy = target.y;
+                    trk.pathWait = false;
+                    trk.pathDx = target.x; trk.pathDy = target.y;
+                    tmpGoal.set(target.x, target.y);
+                    PvpBotAI.PathRes pr = PvpBotAI.pathQuery(u, tmpGoal);
+                    if (pr != null) {
+                        if (pr.move) { trk.pathDx = pr.dx; trk.pathDy = pr.dy; }
+                        else if (!pr.unreachable) trk.pathWait = true;
+                    }
+                }
+                if (trk.pathWait) {
+                    tmpVec.setZero();
+                    u.movePref(tmpVec);
+                } else {
+                    tmpVec.set(trk.pathDx - u.x, trk.pathDy - u.y);
+                    if (tmpVec.len() > 0.1f) tmpVec.setLength(u.speed());
+                    else tmpVec.setZero();
+                    u.movePref(tmpVec);
+                    if (!u.isShooting() && tmpVec.len2() > 0.01f) u.lookAt(tmpVec.angle());
+                }
+            } else {
+                tmpVec.set(target.x - u.x, target.y - u.y).setLength(u.speed());
+                u.movePref(tmpVec);
+                if (!u.isShooting() && tmpVec.len2() > 0.01f) u.lookAt(tmpVec.angle());
+            }
+        } else {
+            float ang = Time.time * 1.3f + (u.id % 13) * 28f;
+            float tx = target.x + Mathf.cosDeg(ang) * target.radius * 0.34f;
+            float ty = target.y + Mathf.sinDeg(ang) * target.radius * 0.34f;
+            tmpVec.set(tx - u.x, ty - u.y).limit(u.speed() * 0.55f);
+            u.movePref(tmpVec);
+        }
+
+        Unit foe = Units.closestEnemy(tm, u.x, u.y, Math.max(120f, u.range() * 1.15f), e -> e != null && !e.dead);
+        if (foe != null) {
+            u.aimLook(foe.x, foe.y);
+            u.controlWeapons(true, true);
+        } else {
+            u.controlWeapons(false, false);
+        }
+    }
+
+    private static void tickSupportUnits() {
+        for (int i = supportUnits.size() - 1; i >= 0; i--) {
+            SupportUnit su = supportUnits.get(i);
+            if (su.unit == null || !su.unit.isValid() || su.unit.dead) {
+                supportUnits.remove(i);
+                continue;
+            }
+            driveCaptureUnit(su, su.unit, su.team);
         }
     }
 
@@ -885,39 +1074,8 @@ public final class PvpDomination {
             return;
         }
 
-        // Điều khiển bot di chuyển đến cứ điểm chưa thuộc phe địch gần nhất
-        CapPoint target = null;
-        float bestScore = -1e9f;
-        for (int i = 0; i < points.size(); i++) {
-            CapPoint cp = points.get(i);
-            if (cp.ownerTeamId == enemyTeam.id && cp.progress >= 0.99f && !cp.contested) continue;
-            float dist = Mathf.dst(soloBotUnit.x, soloBotUnit.y, cp.x, cp.y);
-            float prio = (cp.ownerTeamId == -1 ? 400f : 250f) - dist * 0.35f;
-            if (prio > bestScore) { bestScore = prio; target = cp; }
-        }
-        if (target == null) target = points.get(0);
-
-        float dist = Mathf.dst(soloBotUnit.x, soloBotUnit.y, target.x, target.y);
-        if (dist > target.radius * 0.45f) {
-            tmpVec.set(target.x - soloBotUnit.x, target.y - soloBotUnit.y).setLength(soloBotUnit.speed());
-            soloBotUnit.movePref(tmpVec);
-        } else {
-            // Di chuyển vòng nhẹ trong cứ điểm
-            float ang = Time.time * 1.4f;
-            float tx = target.x + Mathf.cosDeg(ang) * target.radius * 0.35f;
-            float ty = target.y + Mathf.sinDeg(ang) * target.radius * 0.35f;
-            tmpVec.set(tx - soloBotUnit.x, ty - soloBotUnit.y).limit(soloBotUnit.speed() * 0.6f);
-            soloBotUnit.movePref(tmpVec);
-        }
-
-        // Tự động ngắm bắn địch ở gần
-        Unit foe = Units.closestEnemy(enemyTeam, soloBotUnit.x, soloBotUnit.y, soloBotUnit.range() * 1.15f, u -> u != null && !u.dead);
-        if (foe != null) {
-            soloBotUnit.aimLook(foe.x, foe.y);
-            soloBotUnit.controlWeapons(true, true);
-        } else {
-            soloBotUnit.controlWeapons(false, false);
-        }
+        // Điều khiển bot solo né tường thông minh hướng đến cứ điểm & chiến đấu
+        driveCaptureUnit(soloTrack, soloBotUnit, enemyTeam);
     }
 
     /** Cập nhật tiến độ chiếm các cứ điểm & cộng điểm lên thanh tiến độ trận đấu. */
@@ -951,6 +1109,14 @@ public final class PvpDomination {
             if (soloBotUnit != null && soloBotUnit.isValid() && !soloBotUnit.dead && soloBotTeam != null) {
                 if (Mathf.within(soloBotUnit.x, soloBotUnit.y, cp.x, cp.y, cp.radius)) {
                     teamUnits.merge(soloBotTeam.id, 1, Integer::sum);
+                }
+            }
+            for (int si = 0; si < supportUnits.size(); si++) {
+                SupportUnit su = supportUnits.get(si);
+                if (su.unit != null && su.unit.isValid() && !su.unit.dead && su.team != null) {
+                    if (Mathf.within(su.unit.x, su.unit.y, cp.x, cp.y, cp.radius)) {
+                        teamUnits.merge(su.team.id, 1, Integer::sum);
+                    }
                 }
             }
 

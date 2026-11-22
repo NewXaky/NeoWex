@@ -667,7 +667,7 @@ final class GearItems {
             ArrayList<UnitType> ts = new ArrayList<>();
             for (NewModePvp.Wave g : NewModePvp.WAVES) {
                 UnitType t = Vars.content.getByName(ContentType.unit, g.t);
-                if (t != null && !t.flying && !t.naval) ts.add(t);
+                if (PvpDomination.isValidRandomSpawnUnit(t) && !t.flying) ts.add(t);
             }
             if (ts.isEmpty()) return false;
             ts.sort((a, b) -> Float.compare(a.health, b.health));

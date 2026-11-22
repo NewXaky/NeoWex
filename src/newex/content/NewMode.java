@@ -20,7 +20,7 @@ import mindustry.io.MapIO;
 import mindustry.game.Saves.SaveSlot;
 import mindustry.maps.Map;
 import mindustry.ui.Styles;
-import mindustry.ui.dialogs.BaseDialog;
+import newex.MachineUi;
 
 import java.util.zip.CRC32;
 
@@ -140,83 +140,110 @@ public final class NewMode {
         return null;
     }
 
+    private static int menuTab = 0; // 0 = Tất cả, 1 = PvP & Survival, 2 = Chiến dịch
+
     private static void showNewModeDialog() {
-        BaseDialog dialog = new BaseDialog("NewMode - Chọn Màn Chơi");
-        dialog.setFillParent(true);
+        final MachineUi.Panel panel = MachineUi.panel("NewMode - Chọn Màn Chơi");
+        panel.tabs(new String[]{"Tất cả", "PvP & Survival", "Chiến dịch"}, menuTab, i -> {
+            menuTab = i;
+            panel.rebuild();
+        });
+        panel.onBuild(() -> buildNewModePanel(panel));
+        panel.show();
+    }
 
-        Table content = dialog.cont;
+    private static void buildNewModePanel(final MachineUi.Panel panel) {
+        Table head = panel.header();
+        Table content = panel.content();
+        head.clear();
         content.clear();
-        content.add("[accent]CHỌN BẢN ĐỒ NEWMODE[]").pad(10f).get().setFontScale(1.2f);
-        content.row();
 
-        Table mapTable = new Table();
-        mapTable.top().margin(10f);
+        final float W = panel.innerW();
+        final boolean narrow = W < 460f;
+        int gachaPts = Core.settings.getInt(GACHA_POINTS_KEY, 0);
+        int savedUnits = PvpDomination.loadSavedUnits().size();
+
+        // Header cố định kiểu MachineUi (giống trang Nâng Cấp của NewMode PvP)
+        Table hd = new Table(Styles.black6);
+        hd.margin(8f);
+        hd.add("[accent]CHỌN BẢN ĐỒ NEWMODE[]").left().expandX();
+        hd.add("[yellow]Điểm Gacha: " + gachaPts + "[]").right().row();
+        Table quick = new Table();
+        quick.left();
+        quick.button("Kho Unit (" + savedUnits + "/" + PvpDomination.MAX_SAVED_SLOTS + ")", Styles.flatBordert, PvpDomination::openUnitManagerFromMenu)
+            .height(34f).minWidth(narrow ? 120f : 150f).padRight(6f);
+        quick.button("Cài Đặt Chiếm Cứ", Styles.flatBordert, PvpDomination::openSettingsDialog)
+            .height(34f).minWidth(narrow ? 130f : 160f);
+        hd.add(quick).colspan(2).left().padTop(6f).row();
+        head.add(hd).width(W).pad(3f).row();
 
         for (String[] mapInfo : MAPS) {
             final String id = mapInfo[0], display = mapInfo[1];
+            boolean isSpecial = SURVIVAL_ID.equals(id) || PVP_ID.equals(id) || DOM_ID.equals(id);
+            if (menuTab == 1 && !isSpecial) continue;
+            if (menuTab == 2 && isSpecial) continue;
+
             final SaveSlot slot = getSlot(id);
             final boolean hasSave = isSlotValid(slot);
 
-            Table card = new Table(Tex.button);
-            card.margin(12f);
+            String tagCol = DOM_ID.equals(id) ? "[#38ef7d]● PvP Chiếm Cứ[]"
+                : PVP_ID.equals(id) ? "[#ffd166]● PvP Cày Cấp[]"
+                : SURVIVAL_ID.equals(id) ? "[#ff6b6b]● Survival[]"
+                : "[#6ee7ff]● Chiến dịch[]";
 
-            card.add("[white]Map: " + display + "[]").left().row();
+            Table card = new Table(Styles.black8);
+            card.margin(10f);
+
+            Table top = new Table();
+            top.add("[white]" + display + "[]").left().expandX();
+            top.add(tagCol).right();
+            card.add(top).growX().padBottom(4f).row();
+
+            float descW = Math.max(160f, W - 28f);
             if (id.equals(SURVIVAL_ID) && survival != null) {
-                card.add("[lightgray]Tiêu diệt đủ " + survival.killGoal() + " địch để thắng. Địch xuất hiện ngẫu nhiên khắp bản đồ theo từng đợt.[]").left().padBottom(4f).row();
+                card.add("[lightgray]Tiêu diệt đủ " + survival.killGoal() + " địch để thắng. Địch xuất hiện ngẫu nhiên khắp bản đồ theo từng đợt.[]")
+                    .left().wrap().width(descW).padBottom(4f).row();
+            } else if (id.equals(PVP_ID)) {
+                card.add("[lightgray]Điều khiển unit riêng, diệt địch wave lấy EXP, nâng cấp & phá lõi địch. Đạt 10 phút hoặc mang đồ Thần Thoại để lưu Unit (tối đa 5 ô) sang PvP Chiếm Cứ.[]")
+                    .left().wrap().width(descW).padBottom(4f).row();
+            } else if (id.equals(DOM_ID)) {
+                card.add("[lightgray]Dùng Unit đã lưu (" + savedUnits + "/" + PvpDomination.MAX_SAVED_SLOTS + " ô) chiếm các nền lõi (cứ điểm)! Lõi bất tử làm nơi spawn; phe nạp đầy thanh tiến độ trước phá hủy lõi địch.[]")
+                    .left().wrap().width(descW).padBottom(4f).row();
             }
-            if (id.equals(PVP_ID)) {
-                card.add("[lightgray]Điều khiển unit riêng, diệt địch wave để lấy EXP, về lõi nâng cấp rồi phá lõi đối phương. Chơi đủ 10 phút hoặc mang đồ Thần Thoại để lưu Unit (tối đa 5 ô) cho PvP Chiếm Cứ.[]").left().wrap().width(520f).padBottom(4f).row();
-            }
-            if (id.equals(DOM_ID)) {
-                int savedCnt = PvpDomination.loadSavedUnits().size();
-                card.add("[lightgray]Mang Unit đã lưu từ PvP Cày Cấp (" + savedCnt + "/" + PvpDomination.MAX_SAVED_SLOTS + " ô) ra chiếm các nền lõi (cứ điểm)! Lõi bất tử làm nơi spawn; phe nào nạp đầy thanh tiến độ trước sẽ phá hủy lõi đối phương.[]").left().wrap().width(520f).padBottom(4f).row();
-            }
+
             long[] sg = mapSig(id);
             String pathHint = mapDisplayPath(id);
-            if (sg != null) {
-                card.add("[gray]File: " + pathHint + " • " + (long) Math.ceil(sg[0] / 1024.0) + " KB • #" + Long.toHexString(sg[1]) + "[]").left().padBottom(4f).row();
-            } else {
-                card.add("[scarlet]Không thấy file " + pathHint + " trong mod![]").left().padBottom(4f).row();
-            }
-            if (hasSave) {
-                String titleText = "Save File";
-                try { titleText = slot.getName(); } catch (Throwable ignored) {}
-                card.add("[yellow]Có dữ liệu lưu từ trận trước (" + titleText + ")[]").left().padBottom(6f).row();
-            } else {
-                card.add("[gray]Màn chơi mới (Chưa có Save)[]").left().padBottom(6f).row();
-            }
+            String meta = (sg != null)
+                ? ("[gray]" + pathHint + " • " + (long) Math.ceil(sg[0] / 1024.0) + " KB • #" + Long.toHexString(sg[1]) + "[]")
+                : ("[scarlet]Không thấy file " + pathHint + " trong mod![]");
+            String saveTxt = hasSave ? "[yellow]Có dữ liệu Save trận trước[]" : "[gray]Chưa có Save[]";
+            card.add(meta + "   " + saveTxt).left().wrap().width(descW).padBottom(6f).row();
 
             Table btnRow = new Table();
-            btnRow.button(hasSave ? "Tiếp Tục Chơi" : "Bắt Đầu Chơi", Styles.flatTogglet, () -> {
-                dialog.hide();
+            btnRow.left();
+            float bh = narrow ? 38f : 42f;
+            btnRow.button(hasSave ? "[#7cfc00]Tiếp Tục[]" : "[accent]Bắt Đầu[]", Styles.flatBordert, () -> {
+                panel.hide();
                 startNewModeMap(id);
-            }).size(180f, 45f).pad(4f);
+            }).height(bh).minWidth(narrow ? 115f : 140f).padRight(6f);
 
             if (id.equals(DOM_ID)) {
-                int savedCnt = PvpDomination.loadSavedUnits().size();
-                btnRow.button("Kho Unit (" + savedCnt + "/" + PvpDomination.MAX_SAVED_SLOTS + ")", Styles.flatTogglet, PvpDomination::openUnitManagerFromMenu)
-                    .size(165f, 45f).pad(4f);
-                btnRow.button("Cài Đặt", Styles.flatTogglet, PvpDomination::openSettingsDialog)
-                    .size(120f, 45f).pad(4f);
+                btnRow.button("Cài Đặt", Styles.flatBordert, PvpDomination::openSettingsDialog)
+                    .height(bh).minWidth(narrow ? 86f : 105f).padRight(6f);
             }
 
             if (hasSave) {
-                btnRow.button("Xóa Save & Chơi Mới", Styles.flatTogglet, () -> {
+                btnRow.button("[scarlet]Xóa Save[]", Styles.flatBordert, () -> {
                     slot.delete();
                     if (PVP_ID.equals(id)) PvpDomination.onPvpSaveDeleted();
-                    Vars.ui.showInfo("Đã xóa dữ liệu lưu của " + display + "!");
-                    dialog.hide();
-                    showNewModeDialog();
-                }).size(200f, 45f).pad(4f);
+                    Vars.ui.showInfoToast("Đã xóa dữ liệu lưu của " + display + "!", 2.5f);
+                    panel.rebuild();
+                }).height(bh).minWidth(narrow ? 96f : 120f);
             }
             card.add(btnRow).left().row();
 
-            mapTable.add(card).growX().pad(6f).row();
+            content.add(card).width(W - 6f).pad(4f).row();
         }
-
-        content.add(new ScrollPane(mapTable)).grow().row();
-        dialog.addCloseButton();
-        dialog.show();
     }
 
     private static void startNewModeMap(String mapName) {
