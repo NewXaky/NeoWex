@@ -1204,10 +1204,14 @@ final class GearItems {
 
     static mindustry.ui.dialogs.BaseDialog shopDialog = null;
     static int shopCategory = -1; // -1 = danh sách vai trò, 0..5 = slot trang bị, 100 = vật phẩm cửa hàng, 101 = bán đồ trong túi
-    static void openShop() {
+    static void openShop() { openShop(-1); }
+    static void openShop(int initialCategory) {
         if (Vars.headless || !war()) return;
-        if (shopDialog != null && shopDialog.isShown()) return;
-        shopCategory = -1;
+        if (shopDialog != null && shopDialog.isShown()) {
+            shopCategory = initialCategory;
+            return;
+        }
+        shopCategory = initialCategory;
         final MachineUi.Panel p = MachineUi.panel(tr("Cửa hàng vật phẩm", "Item shop"));
         p.onBuild(() -> buildShop(p));
         final String[] last = {NewModePvp.curVer()};
@@ -1453,8 +1457,14 @@ final class GearItems {
             int tot = 0, used = 0;
             for (int s = role, ns = slots(); s < ns; s += TYPES) { tot++; if (st.gEq[s] >= 0) used++; }
             boolean roleDot = used < tot && hasInvForRole(st, role);
-            box.button((roleOpen[role] ? "^  " : "v  ") + tr(SLOT_VI[role], SLOT_EN[role]) + "  " + used + "/" + tot + (roleDot ? "  [#ff3b3b]●[]" : ""), Styles.flatBordert, () -> { roleOpen[role] = !roleOpen[role]; fill[0].run(); })
-                .width(cw).height(NewModePvp.btnH() * 0.9f).row();
+            float rh = NewModePvp.btnH() * 0.9f;
+            float shopW = Math.min(48f, cw * 0.30f);
+            Table hdr = new Table();
+            hdr.button((roleOpen[role] ? "^ " : "v ") + tr(SLOT_VI[role], SLOT_EN[role]) + " " + used + "/" + tot + (roleDot ? " [#ff3b3b]●[]" : ""), Styles.flatBordert, () -> { roleOpen[role] = !roleOpen[role]; fill[0].run(); })
+                .width(cw - shopW - 3f).height(rh).padRight(3f);
+            hdr.button("[accent]" + tr("Shop", "Shop") + "[]", Styles.flatBordert, () -> openShop(role))
+                .width(shopW).height(rh);
+            box.add(hdr).width(cw).row();
             if (!roleOpen[role]) return;
             final float tw = cw / 2f - 3f;
             Table g = new Table();
@@ -1565,7 +1575,10 @@ final class GearItems {
 
         final int fs = filterSlot;
         if (fs >= 0) {
+            final int role = fs % TYPES;
             c.add("[lightgray]" + tr("Đang chọn ô: ", "Selected slot: ") + "[white]" + slotName(fs) + "[]").left().padLeft(6).padTop(2).row();
+            c.button("[accent]" + tr("Mua đồ vai trò " + SLOT_VI[role] + " (Mở Shop)", "Buy " + SLOT_EN[role] + " items (Open Shop)") + "[]", Styles.flatBordert, () -> openShop(role))
+                .width(W - 8f).height(NewModePvp.btnH() * 0.9f).pad(3).row();
         }
         // đang lắp
         boolean anyEq = false;

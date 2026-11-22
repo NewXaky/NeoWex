@@ -735,6 +735,7 @@ public final class PvpDomination {
 
         if (isActive()) {
             setCoresPassThrough(true);
+            try { if (Vars.state != null && Vars.state.rules != null) NewModePvp.setf(Vars.state.rules, "possessionAllowed", true); } catch (Throwable ignored) {}
             scanCapturePoints();
             restoreStateFromTags();
             if (!Vars.net.client()) {
@@ -772,6 +773,7 @@ public final class PvpDomination {
         r.winWave = 0;
         r.unitCapVariable = false;
         r.unitCap = 999999;
+        NewModePvp.setf(r, "possessionAllowed", true);
         r.spawns = new Seq<>();
 
         points.clear();
@@ -814,6 +816,7 @@ public final class PvpDomination {
         r.tags.put(TAG_DOM, "1");
         r.waves = false;
         r.waveTimer = false;
+        NewModePvp.setf(r, "possessionAllowed", true);
         scanCapturePoints();
         restoreStateFromTags();
         pickerShownThisMatch = false;

@@ -3688,6 +3688,13 @@ public class NewModePvp {
         extPvp.put(pl.id, mode);
         if (!mode || (!isTier && !isCoreUnit)) { swapPending.remove(pl.id); prevUnit.put(pl.id, u); return; }
         UnitType want = tierType(activeTier(st));
+        if (PvpDomination.isActive() && PvpDomination.isSoloBot(u)) {
+            swapPending.remove(pl.id);
+            if (pv != null && pv != u && pv.isValid() && !pv.dead && pv.team == pl.team()) {
+                pl.unit(pv);
+            }
+            return;
+        }
         if (u.type == want && u.team == pl.team()) { swapPending.remove(pl.id); prevUnit.put(pl.id, u); return; }
         Pend pend = swapPending.get(pl.id);
         if (pend != null && pend.want == want) { pend.t -= Time.delta; if (pend.t > 0) return; }
@@ -3753,6 +3760,13 @@ public class NewModePvp {
                     }
                 }
             } catch (Throwable err) {}
+        }
+        if (PvpDomination.isActive() && PvpDomination.isSoloBot(u)) {
+            swapPending.remove(pl.id);
+            if (pv != null && pv != u && pv.isValid() && !pv.dead && pv.team == pl.team()) {
+                pl.unit(pv);
+            }
+            return;
         }
         if (u.type == want && u.team == pl.team()) { swapPending.remove(pl.id); prevUnit.put(pl.id, u); return; }
         boolean isTier = false;
