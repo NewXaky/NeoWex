@@ -10,11 +10,14 @@ import arc.graphics.g2d.TextureRegion;
 import arc.input.KeyCode;
 import arc.math.Angles;
 import arc.math.Mathf;
+import arc.math.geom.Rect;
 import arc.math.geom.Vec2;
 import arc.scene.Element;
+import arc.scene.Group;
 import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
 import arc.scene.event.Touchable;
+import arc.scene.utils.ScissorStack;
 import arc.scene.ui.Image;
 import arc.scene.ui.ScrollPane;
 import arc.scene.ui.TextButton;
@@ -53,6 +56,7 @@ import mindustry.ui.dialogs.BaseDialog;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -230,6 +234,7 @@ public final class PvpDomination {
                 addHudElements();
             });
             Events.run(Trigger.draw, PvpDomination::drawWorldFx);
+            Events.run(Trigger.uiDrawEnd, PvpDomination::drawMinimapOverlays);
         }
 
         Events.run(Trigger.update, PvpDomination::tick);
@@ -972,6 +977,173 @@ public final class PvpDomination {
             }
             Draw.reset();
         });
+    }
+
+    // ===== Hiển thị Cứ Điểm trên Minimap (góc màn hình) & Full Map (phím M) =====
+    private static Element cachedMinimapEl = null;
+    private static Field fPanX, fPanY, fZoom, fBaseSize;
+    private static boolean mmReflectChecked = false;
+    private static final Rect mmScissor = new Rect(), mmBounds = new Rect();
+
+    private static void ensureMinimapReflect() {
+        if (mmReflectChecked) return;
+        mmReflectChecked = true;
+        try {
+            Class<?> c = mindustry.ui.fragments.MinimapFragment.class;
+            fPanX = c.getDeclaredField("panx"); fPanX.setAccessible(true);
+            fPanY = c.getDeclaredField("pany"); fPanY.setAccessible(true);
+            fZoom = c.getDeclaredField("zoom"); fZoom.setAccessible(true);
+            fBaseSize = c.getDeclaredField("baseSize"); fBaseSize.setAccessible(true);
+        } catch (Throwable ignored) {}
+    }
+
+    private static Element findMinimapWidget(Group g) {
+        if (g == null) return null;
+        for (Element el : g.getChildren()) {
+            if ("Minimap".equals(el.getClass().getSimpleName())) return el;
+            if (el instanceof Group) {
+                Element sub = findMinimapWidget((Group) el);
+                if (sub != null) return sub;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isEffectivelyVisible(Element el) {
+        Element cur = el;
+        while (cur != null) {
+            if (!cur.visible) return false;
+            cur = cur.parent;
+        }
+        return true;
+    }
+
+    private static void drawMinimapOverlays() {
+        if (Vars.headless || !isActive() || points.isEmpty() || Vars.world == null || Vars.renderer == null || Vars.renderer.minimap == null) return;
+        if (Vars.state == null || !Vars.state.isGame()) return;
+
+        float worldW = Vars.world.width() * Vars.tilesize;
+        float worldH = Vars.world.height() * Vars.tilesize;
+        if (worldW <= 1f || worldH <= 1f) return;
+
+        // 1) Bản đồ toàn màn hình khi nhấn phím M (Vars.ui.minimapfrag)
+        if (Vars.ui != null && Vars.ui.minimapfrag != null && Vars.ui.minimapfrag.shown()) {
+            ensureMinimapReflect();
+            float panx = 0f, pany = 0f, zoom = 1f, baseSize = Scl.scl(5f);
+            try {
+                if (fPanX != null) panx = fPanX.getFloat(Vars.ui.minimapfrag);
+                if (fPanY != null) pany = fPanY.getFloat(Vars.ui.minimapfrag);
+                if (fZoom != null) zoom = fZoom.getFloat(Vars.ui.minimapfrag);
+                if (fBaseSize != null) baseSize = fBaseSize.getFloat(Vars.ui.minimapfrag);
+            } catch (Throwable ignored) {}
+
+            float sw = Core.graphics.getWidth(), sh = Core.graphics.getHeight();
+            float ratio = (float) Vars.world.height() / Math.max(1, Vars.world.width());
+            float size = baseSize * zoom * Vars.world.width();
+            float rx = sw * 0.5f + panx * zoom - size * 0.5f;
+            float ry = sh * 0.5f + pany * zoom - size * 0.5f * ratio;
+            float rw = size, rh = size * ratio;
+
+            for (int i = 0; i < points.size(); i++) {
+                CapPoint cp = points.get(i);
+                float sx = rx + (cp.x / worldW) * rw;
+                float sy = ry + (cp.y / worldH) * rh;
+                float sr = Math.max(Scl.scl(10f), (cp.radius / worldW) * rw);
+                drawMapPointMarker(cp, sx, sy, sr, true);
+            }
+            Draw.reset();
+            return;
+        }
+
+        // 2) Minimap góc màn hình (mindustry.ui.Minimap trong Vars.ui.hudGroup)
+        if (Vars.ui == null || Vars.ui.hudfrag == null || !Vars.ui.hudfrag.shown || !Core.settings.getBool("minimap", true)) return;
+        if (cachedMinimapEl == null || cachedMinimapEl.parent == null) {
+            cachedMinimapEl = findMinimapWidget(Vars.ui.hudGroup);
+        }
+        if (cachedMinimapEl == null || !isEffectivelyVisible(cachedMinimapEl)) return;
+
+        float mw = cachedMinimapEl.getWidth(), mh = cachedMinimapEl.getHeight();
+        if (mw <= 4f || mh <= 4f) return;
+        Tmp.v1.set(0f, 0f);
+        cachedMinimapEl.localToStageCoordinates(Tmp.v1);
+        float mx = Tmp.v1.x, my = Tmp.v1.y;
+
+        TextureRegion reg = Vars.renderer.minimap.getRegion();
+        if (reg == null) return;
+        float uMin = reg.u, uMax = reg.u2;
+        float yMin = 1f - reg.v2, yMax = 1f - reg.v;
+        if (yMin > yMax) { float tmp = yMin; yMin = yMax; yMax = tmp; }
+        float uSpan = Math.max(0.0001f, uMax - uMin);
+        float ySpan = Math.max(0.0001f, yMax - yMin);
+
+        Draw.flush();
+        boolean scissored = false;
+        try {
+            mmScissor.set(mx, my, mw, mh);
+            scissored = ScissorStack.push(mmScissor);
+        } catch (Throwable ignored) {}
+
+        for (int i = 0; i < points.size(); i++) {
+            CapPoint cp = points.get(i);
+            float nx = cp.x / worldW;
+            float ny = cp.y / worldH;
+            float sx = mx + ((nx - uMin) / uSpan) * mw;
+            float sy = my + ((ny - yMin) / ySpan) * mh;
+            if (!scissored && (sx < mx || sx > mx + mw || sy < my || sy > my + mh)) continue;
+            float sr = Mathf.clamp((cp.radius / worldW / uSpan) * mw, Scl.scl(6.5f), mw * 0.24f);
+            drawMapPointMarker(cp, sx, sy, sr, false);
+        }
+        Draw.flush();
+        if (scissored) {
+            try { ScissorStack.pop(); } catch (Throwable ignored) {}
+        }
+        Draw.reset();
+    }
+
+    private static void drawMapPointMarker(CapPoint cp, float sx, float sy, float sr, boolean fullMap) {
+        Team owner = cp.ownerTeamId >= 0 ? Team.get(cp.ownerTeamId) : null;
+        Team capper = cp.capTeamId >= 0 ? Team.get(cp.capTeamId) : null;
+        Color baseCol = owner != null ? owner.color : Tmp.c1.set(0.76f, 0.90f, 1f, 1f);
+        Color chargeCol = capper != null ? capper.color : baseCol;
+        if (cp.contested) {
+            float blink = 0.5f + 0.5f * Mathf.sin(Time.time * 0.28f);
+            chargeCol = Tmp.c2.set(Color.scarlet).lerp(Color.gold, blink);
+        }
+
+        // Nền vòng tròn cứ điểm
+        Draw.color(baseCol, owner != null ? 0.32f : 0.20f);
+        Fill.circle(sx, sy, sr);
+
+        // Viền ngoài cứ điểm
+        Lines.stroke(Scl.scl(fullMap ? 2.0f : 1.5f));
+        Draw.color(cp.contested ? chargeCol : baseCol, 0.95f);
+        Lines.circle(sx, sy, sr);
+
+        // Vòng tròn đang nạp trên minimap / map M
+        if (cp.progress > 0.01f && cp.progress < 0.995f) {
+            Lines.stroke(Scl.scl(fullMap ? 2.8f : 2.0f));
+            Draw.color(chargeCol, 1f);
+            Lines.arc(sx, sy, sr + Scl.scl(fullMap ? 2.5f : 1.6f), cp.progress, 90f);
+        }
+
+        // Nhãn A, B, C... rõ nét
+        float fs = Scl.scl(fullMap ? 0.72f : 0.52f);
+        Fonts.outline.getData().setScale(fs);
+        Fonts.outline.setColor(owner != null ? owner.color : Color.white);
+        Fonts.outline.draw(cp.label, sx, sy + (fullMap ? Scl.scl(6f) : Scl.scl(4.5f)), Align.center);
+
+        if (fullMap && cp.contested) {
+            Fonts.outline.getData().setScale(Scl.scl(0.48f));
+            Fonts.outline.setColor(Color.gold);
+            Fonts.outline.draw("!", sx, sy - Scl.scl(7f), Align.center);
+        } else if (fullMap && cp.progress > 0.01f && cp.progress < 0.995f) {
+            Fonts.outline.getData().setScale(Scl.scl(0.45f));
+            Fonts.outline.setColor(chargeCol);
+            Fonts.outline.draw(Math.round(cp.progress * 100f) + "%", sx, sy - Scl.scl(7f), Align.center);
+        }
+
+        Fonts.outline.setColor(Color.white);
+        Fonts.outline.getData().setScale(1f);
     }
 
     // ===== UI Thanh Tiến Độ Đường Thẳng (tự do kéo thả) & Nút Đổi Unit (tự do kéo thả) =====
