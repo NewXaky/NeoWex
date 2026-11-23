@@ -48,6 +48,7 @@ import mindustry.gen.Building;
 import mindustry.gen.Groups;
 import mindustry.gen.Icon;
 import mindustry.gen.Player;
+import newex.MachineUi;
 import mindustry.gen.Tex;
 import mindustry.gen.Unit;
 import mindustry.graphics.Layer;
@@ -1090,14 +1091,13 @@ public final class LoadoutSelection {
         return c;
     }
 
-    // ---- Hộp thoại cài đặt ----
+    // ---- Hộp thoại cài đặt (dùng MachineUi) ----
     static void showConfigDialog() {
         if (turretList.isEmpty()) loadTurretsFromFolder();
 
-        final BaseDialog dialog = new BaseDialog(isEn() ? "Newex Mod Settings" : "Cài Đặt Mod Newex");
-        dialog.cont.clear();
-
-        Table content = new Table();
+        final MachineUi.Panel panel = MachineUi.panel(isEn() ? "Newex Mod Settings" : "Cài Đặt Mod Newex");
+        final Table content = panel.content();
+        content.clear();
         content.top().margin(10f);
 
         content.add(isEn() ? "[accent]-- GACHA SYSTEM --[]" : "[accent]-- CƠ CHẾ GACHA --[]").row();
@@ -1246,7 +1246,10 @@ public final class LoadoutSelection {
         content.add(isEn() ? "[accent]-- DETAILED INFORMATION --[]" : "[accent]-- THÔNG TIN CHI TIẾT --[]").padTop(10f).row();
         content.button(isEn() ? "View README / Update Log" : "Xem README / Update Log", Icon.info, LoadoutSelection::showReadmeDialog).size(240f, 48f).pad(5f).row();
 
-        content.button(isEn() ? "Save Settings" : "Lưu Cài Đặt", () -> {
+        Table ft = panel.footer();
+        ft.clear();
+        ft.margin(4f);
+        ft.button(isEn() ? "[#38ef7d]Save Settings[]" : "[#38ef7d]Lưu Cài Đặt[]", Styles.flatBordert, () -> {
             Core.settings.put("newex-gacha-enabled", btnGacha.isChecked());
             Core.settings.put("newex-allow-client-actions", btnAllow.isChecked());
 
@@ -1288,15 +1291,15 @@ public final class LoadoutSelection {
 
             reloadCachedSettings();
             applyTurretVisibility(null);
-            Vars.ui.showInfo(isEn() ? "Newex settings saved successfully!" : "Đã lưu cài đặt Newex thành công!");
-            dialog.hide();
-        }).size(170f, 45f).padTop(12f);
+            Vars.ui.showInfoToast(isEn() ? "[green]Newex settings saved![]" : "[green]Đã lưu cài đặt Newex thành công![]", 2.5f);
+            panel.hide();
+        }).height(44f).minWidth(180f).pad(4f);
+        ft.button(isEn() ? "Close" : "Đóng", Styles.flatBordert, panel::hide).height(44f).minWidth(120f).pad(4f);
+        panel.show();
+    }
 
-        ScrollPane pane = new ScrollPane(content);
-        pane.setFadeScrollBars(false);
-        dialog.cont.add(pane).grow().row();
-        dialog.addCloseButton();
-        dialog.show();
+    public static void centerWaveButtonIfPresent() {
+        if (customWaveContainer != null) centerWaveButton();
     }
 
     // ---- Buff địch theo wave & sự kiện ----
@@ -1365,7 +1368,7 @@ public final class LoadoutSelection {
                     if (hotkeyTapped(HK_MEGA)) triggerSpawnMega(hudButtons.get("mega"));
                 }
 
-                if (showWaveBtnSetting) {
+                if (showWaveBtnSetting && NewModePvp.mapUiEnabled()) {
                     if (!waveBtnAdded) injectWaveButtonToHUD();
                     if (customWaveContainer != null) customWaveContainer.visible = true;
                 } else if (customWaveContainer != null) {

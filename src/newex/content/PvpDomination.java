@@ -62,6 +62,7 @@ import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock;
+import newex.MachineUi;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -88,6 +89,9 @@ public final class PvpDomination {
     public static final String TAG_DOM = "newex-pvp-dom";
     public static final String TAG_TRAIN = "newex-pvp-train";
     public static final String TAG_TRAIN_MAXW = "newex-train-maxw";
+    public static final String TAG_TRAIN_MULTI = "newex-train-multi";
+    public static final String TAG_TRAIN_TMODE = "newex-train-tmode";
+    public static final String TAG_TRAIN_MULTISAVE = "newex-train-multisave";
     public static final String TAG_DOM_SCORES = "newex-dom-scores";
     public static final String TAG_DOM_PTS = "newex-dom-pts";
     public static final String TAG_SAVE_PROMPT = "newex-pvp-saveprompt";
@@ -95,6 +99,9 @@ public final class PvpDomination {
 
     public static final String KEY_SAVED_UNITS = "newex-pvp-saved-units-v1";
     public static final String KEY_TRAIN_MAX_WAVES = "newex-train-max-waves";
+    public static final String KEY_TRAIN_DUP_TURRET = "newex-train-dup-turret";
+    public static final String KEY_TRAIN_TMODE = "newex-train-tmode";
+    public static final String KEY_TRAIN_MULTI_SAVE = "newex-train-multi-save";
     public static final int DEFAULT_TRAIN_MAX_WAVES = 15;
     private static final String KEY_BAR_X = "newex-dom-bar-x";
     private static final String KEY_BAR_Y = "newex-dom-bar-y";
@@ -228,79 +235,89 @@ public final class PvpDomination {
         r.tags.put(TAG_CFG_CD_SEC, String.valueOf(Mathf.clamp(Core.settings.getInt(KEY_CFG_CD_SEC, 60), 5, 600)));
     }
 
-    /** Trang cài đặt riêng cho bản đồ PvP Chiếm Cứ. */
+    /** Trang cài đặt riêng cho bản đồ PvP Chiếm Cứ (dùng MachineUi). */
     public static void openSettingsDialog() {
         if (Vars.headless) return;
-        final BaseDialog d = new BaseDialog(tr("Cài Đặt — PvP Chiếm Cứ", "Settings — PvP Domination"));
-        float w = Math.min(Core.graphics.getWidth() / Scl.scl() - 36f, 520f);
-        Table c = d.cont;
-        c.margin(12f).left().defaults().left();
-
+        final MachineUi.Panel panel = MachineUi.panel(tr("Cài Đặt — PvP Chiếm Cứ", "Settings — PvP Domination"));
         final int[] rateVal = {Mathf.clamp(Core.settings.getInt(KEY_CFG_RATE, 100), 10, 1000)};
         final boolean[] respawnVal = {Core.settings.getBool(KEY_CFG_RESPAWN, true)};
         final boolean[] cdOnVal = {Core.settings.getBool(KEY_CFG_CD_ON, false)};
         final int[] cdSecVal = {Mathf.clamp(Core.settings.getInt(KEY_CFG_CD_SEC, 60), 5, 600)};
+        final TextField[] rateRef = new TextField[1];
+        final TextField[] cdRef = new TextField[1];
 
-        c.add("[accent]" + tr("-- TÙY CHỈNH CHẾ ĐỘ PVP CHIẾM CỨ --", "-- PVP DOMINATION SETTINGS --") + "[]").padBottom(8f).row();
+        panel.onBuild(() -> {
+            Table c = panel.content();
+            c.clear();
+            c.margin(10f).top().left().defaults().left();
+            float w = panel.innerW();
 
-        // 1) Tốc độ tăng điểm mốc
-        final Label ratePreview = new Label("");
-        final Runnable updateRateLbl = () -> ratePreview.setText("[lightgray]" + tr("Tốc độ thực tế: ", "Actual rate: ")
-            + "[#7cfc00]+" + Strings.fixed(PTS_PER_POINT_SEC * (rateVal[0] / 100f), 1) + tr(" điểm/giây mỗi cứ điểm", " pts/sec per point") + "[]");
-        c.add(tr("Tốc độ tăng điểm mốc (%):", "Capture score speed (%):")).padTop(4f).row();
-        Table rateRow = new Table();
-        final TextField rateField = rateRow.field(String.valueOf(rateVal[0]), txt -> {
-            try {
-                int v = Integer.parseInt(txt.trim());
-                rateVal[0] = Mathf.clamp(v, 10, 1000);
-            } catch (Throwable ignored) {}
+            c.add("[accent]" + tr("-- TÙY CHỈNH CHẾ ĐỘ PVP CHIẾM CỨ --", "-- PVP DOMINATION SETTINGS --") + "[]").padBottom(8f).row();
+
+            // 1) Tốc độ tăng điểm mốc
+            final Label ratePreview = new Label("");
+            final Runnable updateRateLbl = () -> ratePreview.setText("[lightgray]" + tr("Tốc độ thực tế: ", "Actual rate: ")
+                + "[#7cfc00]+" + Strings.fixed(PTS_PER_POINT_SEC * (rateVal[0] / 100f), 1) + tr(" điểm/giây mỗi cứ điểm", " pts/sec per point") + "[]");
+            c.add(tr("Tốc độ tăng điểm mốc (%):", "Capture score speed (%):")).padTop(4f).row();
+            Table rateRow = new Table();
+            final TextField rateField = rateRow.field(String.valueOf(rateVal[0]), txt -> {
+                try {
+                    int v = Integer.parseInt(txt.trim());
+                    rateVal[0] = Mathf.clamp(v, 10, 1000);
+                } catch (Throwable ignored) {}
+                updateRateLbl.run();
+            }).width(110f).get();
+            rateField.setFilter(TextField.TextFieldFilter.digitsOnly);
+            rateField.setMaxLength(4);
+            rateRef[0] = rateField;
+            rateRow.add("[lightgray]% (10 - 1000, mặc định 100%)[]").padLeft(8f);
+            c.add(rateRow).padTop(2f).row();
             updateRateLbl.run();
-        }).width(110f).get();
-        rateField.setFilter(TextField.TextFieldFilter.digitsOnly);
-        rateField.setMaxLength(4);
-        rateRow.add("[lightgray]% (10 - 1000, mặc định 100%)[]").padLeft(8f);
-        c.add(rateRow).padTop(2f).row();
-        updateRateLbl.run();
-        c.add(ratePreview).padBottom(10f).row();
+            c.add(ratePreview).padBottom(10f).row();
 
-        // 2) Bật/tắt cho phép hồi sinh & dùng unit khác (tắt = hết unit thành khán giả)
-        c.check(tr("Cho phép Unit player hồi sinh & dùng lại (Tắt: mỗi Unit 1 mạng, hết Unit -> Khán giả)",
-            "Allow player Unit respawn & reuse (Off: 1 life per Unit, out of Units -> Spectator)"),
-            respawnVal[0], (Boolc) b -> respawnVal[0] = b).width(w - 20f).left().padBottom(8f).get().getLabel().setWrap(true);
-        c.row();
+            // 2) Bật/tắt cho phép hồi sinh & dùng unit khác
+            c.check(tr("Cho phép Unit player hồi sinh & dùng lại (Tắt: mỗi Unit 1 mạng, hết Unit -> Khán giả)",
+                "Allow player Unit respawn & reuse (Off: 1 life per Unit, out of Units -> Spectator)"),
+                respawnVal[0], (Boolc) b -> respawnVal[0] = b).width(Math.max(160f, w - 20f)).left().padBottom(8f).get().getLabel().setWrap(true);
+            c.row();
 
-        // 3) Bật/tắt thời gian hồi chiêu chọn lại Unit mới bị hạ + tùy chỉnh giây
-        c.check(tr("Bật thời gian hồi chiêu khi chọn lại Unit mới bị hạ",
-            "Enable cooldown before re-selecting a recently killed Unit"),
-            cdOnVal[0], (Boolc) b -> cdOnVal[0] = b).width(w - 20f).left().padBottom(4f).get().getLabel().setWrap(true);
-        c.row();
+            // 3) Bật/tắt thời gian hồi chiêu chọn lại Unit mới bị hạ + tùy chỉnh giây
+            c.check(tr("Bật thời gian hồi chiêu khi chọn lại Unit mới bị hạ",
+                "Enable cooldown before re-selecting a recently killed Unit"),
+                cdOnVal[0], (Boolc) b -> cdOnVal[0] = b).width(Math.max(160f, w - 20f)).left().padBottom(4f).get().getLabel().setWrap(true);
+            c.row();
 
-        c.add(tr("Thời gian hồi chiêu chọn lại Unit bị hạ (giây):", "Dead Unit re-select cooldown (seconds):")).padTop(4f).row();
-        Table cdRow = new Table();
-        final TextField cdField = cdRow.field(String.valueOf(cdSecVal[0]), txt -> {
-            try { cdSecVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), 5, 600); } catch (Throwable ignored) {}
-        }).width(110f).get();
-        cdField.setFilter(TextField.TextFieldFilter.digitsOnly);
-        cdField.setMaxLength(3);
-        cdRow.add("[lightgray]" + tr("giây (5 - 600, mặc định 60s)", "sec (5 - 600, default 60s)") + "[]").padLeft(8f);
-        c.add(cdRow).padBottom(12f).row();
+            c.add(tr("Thời gian hồi chiêu chọn lại Unit bị hạ (giây):", "Dead Unit re-select cooldown (seconds):")).padTop(4f).row();
+            Table cdRow = new Table();
+            final TextField cdField = cdRow.field(String.valueOf(cdSecVal[0]), txt -> {
+                try { cdSecVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), 5, 600); } catch (Throwable ignored) {}
+            }).width(110f).get();
+            cdField.setFilter(TextField.TextFieldFilter.digitsOnly);
+            cdField.setMaxLength(3);
+            cdRef[0] = cdField;
+            cdRow.add("[lightgray]" + tr("giây (5 - 600, mặc định 60s)", "sec (5 - 600, default 60s)") + "[]").padLeft(8f);
+            c.add(cdRow).padBottom(12f).row();
 
-        c.add("[gray]" + tr("Lưu ý: Cài đặt áp dụng khi tạo trận PvP Chiếm Cứ mới (Host chia sẻ cho cả phòng).",
-            "Note: Settings apply when starting a new PvP Domination match (Host syncs to all players).") + "[]")
-            .wrap().width(w - 20f).row();
+            c.add("[gray]" + tr("Lưu ý: Cài đặt áp dụng khi tạo trận PvP Chiếm Cứ mới (Host chia sẻ cho cả phòng).",
+                "Note: Settings apply when starting a new PvP Domination match (Host syncs to all players).") + "[]")
+                .wrap().width(Math.max(160f, w - 20f)).row();
 
-        d.buttons.button(tr("Lưu Cài Đặt", "Save Settings"), Styles.flatBordert, () -> {
-            try { rateVal[0] = Mathf.clamp(Integer.parseInt(rateField.getText().trim()), 10, 1000); } catch (Throwable ignored) {}
-            try { cdSecVal[0] = Mathf.clamp(Integer.parseInt(cdField.getText().trim()), 5, 600); } catch (Throwable ignored) {}
-            Core.settings.put(KEY_CFG_RATE, rateVal[0]);
-            Core.settings.put(KEY_CFG_RESPAWN, respawnVal[0]);
-            Core.settings.put(KEY_CFG_CD_ON, cdOnVal[0]);
-            Core.settings.put(KEY_CFG_CD_SEC, cdSecVal[0]);
-            Vars.ui.showInfoToast(tr("[green]Đã lưu cài đặt PvP Chiếm Cứ![]", "[green]Saved PvP Domination settings![]"), 2.5f);
-            d.hide();
-        }).size(170f, 44f).pad(4f);
-        d.buttons.button(tr("Đóng", "Close"), Styles.flatBordert, d::hide).size(130f, 44f).pad(4f);
-        d.show();
+            Table ft = panel.footer();
+            ft.clear();
+            ft.margin(4f);
+            ft.button(tr("[#38ef7d]Lưu Cài Đặt[]", "[#38ef7d]Save Settings[]"), Styles.flatBordert, () -> {
+                try { if (rateRef[0] != null) rateVal[0] = Mathf.clamp(Integer.parseInt(rateRef[0].getText().trim()), 10, 1000); } catch (Throwable ignored) {}
+                try { if (cdRef[0] != null) cdSecVal[0] = Mathf.clamp(Integer.parseInt(cdRef[0].getText().trim()), 5, 600); } catch (Throwable ignored) {}
+                Core.settings.put(KEY_CFG_RATE, rateVal[0]);
+                Core.settings.put(KEY_CFG_RESPAWN, respawnVal[0]);
+                Core.settings.put(KEY_CFG_CD_ON, cdOnVal[0]);
+                Core.settings.put(KEY_CFG_CD_SEC, cdSecVal[0]);
+                Vars.ui.showInfoToast(tr("[green]Đã lưu cài đặt PvP Chiếm Cứ![]", "[green]Saved PvP Domination settings![]"), 2.5f);
+                panel.hide();
+            }).height(44f).minWidth(170f).pad(4f);
+            ft.button(tr("Đóng", "Close"), Styles.flatBordert, panel::hide).height(44f).minWidth(120f).pad(4f);
+        });
+        panel.show();
     }
 
     /** Server: kiểm tra player đang ở trạng thái Khán giả hoặc chờ chọn unit mới -> giữ không cho spawn unit. */
@@ -591,8 +608,10 @@ public final class PvpDomination {
     static float botAiTimer = 0f;
     static boolean pickerShownThisMatch = false;
     static float pickerDelay = 0f;
-    static BaseDialog activePickerDialog = null;
+    static MachineUi.Panel activePickerPanel = null;
     static BaseDialog activeSaveDialog = null;
+    static Element domBarEl = null;
+    static Table domSwapWrap = null;
 
     // ===== Trạng thái chế độ Huấn Luyện Unit Player (huanluyenunitplayer.msav) =====
     static final ArrayList<Tile> trainSpawnTiles = new ArrayList<>();
@@ -663,6 +682,22 @@ public final class PvpDomination {
 
     public static int getTrainMaxWaves() {
         return Mathf.clamp(Core.settings.getInt(KEY_TRAIN_MAX_WAVES, DEFAULT_TRAIN_MAX_WAVES), 1, 200);
+    }
+
+    public static boolean trainDupTurretOn() {
+        return Core.settings.getBool(KEY_TRAIN_DUP_TURRET, true);
+    }
+
+    public static int trainTurretMode() {
+        return Core.settings.getInt(KEY_TRAIN_TMODE, 0) == 1 ? 1 : 0;
+    }
+
+    public static boolean trainMultiSaveOn() {
+        StringMap tg = NewModePvp.getTags();
+        if (isTraining() && tg != null && tg.containsKey(TAG_TRAIN_MULTISAVE)) {
+            return "1".equals(tg.get(TAG_TRAIN_MULTISAVE, "0"));
+        }
+        return Core.settings.getBool(KEY_TRAIN_MULTI_SAVE, false);
     }
 
     public static int hostPlayerId() {
@@ -762,7 +797,7 @@ public final class PvpDomination {
         soloBotRespawn = 0f;
         pickerShownThisMatch = false;
         pickerDelay = 35f;
-        if (activePickerDialog != null) { try { activePickerDialog.hide(); } catch (Throwable ignored) {} activePickerDialog = null; }
+        if (activePickerPanel != null) { try { activePickerPanel.hide(); } catch (Throwable ignored) {} activePickerPanel = null; }
         if (activeSaveDialog != null) { try { activeSaveDialog.hide(); } catch (Throwable ignored) {} activeSaveDialog = null; }
         savePromptOpen = false;
 
@@ -838,14 +873,21 @@ public final class PvpDomination {
         return trainPoolCache.get(Mathf.random(trainPoolCache.size() - 1));
     }
 
-    public static void onBeginTraining(int maxWaves) {
+    public static void onBeginTraining(int maxWaves, boolean dupTurret, int turretMode, boolean multiSave) {
         int clamped = Mathf.clamp(maxWaves, 1, 200);
+        int tm = turretMode == 1 ? 1 : 0;
         Core.settings.put(KEY_TRAIN_MAX_WAVES, clamped);
+        Core.settings.put(KEY_TRAIN_DUP_TURRET, dupTurret);
+        Core.settings.put(KEY_TRAIN_TMODE, tm);
+        Core.settings.put(KEY_TRAIN_MULTI_SAVE, multiSave);
         NewModePvp.onBegin();
         Rules r = Vars.state.rules;
         r.tags.put(TAG_DOM, "0");
         r.tags.put(TAG_TRAIN, "1");
         r.tags.put(TAG_TRAIN_MAXW, String.valueOf(clamped));
+        r.tags.put(TAG_TRAIN_MULTI, dupTurret ? "1" : "0");
+        r.tags.put(TAG_TRAIN_TMODE, String.valueOf(tm));
+        r.tags.put(TAG_TRAIN_MULTISAVE, multiSave ? "1" : "0");
         r.tags.put(ChaosMode.TAG, "0");
         r.tags.put(GearItems.TAG_SLOTS, String.valueOf(GearItems.MAXSLOTS));
         r.waves = false;
@@ -1243,12 +1285,12 @@ public final class PvpDomination {
         }
     }
 
-    /** Hồi máu nhanh cho unit đồng minh đứng gần Lõi spawn bất tử. */
+    /** Hồi máu cho unit đồng minh đứng gần Lõi spawn bất tử (mỗi giây hồi 1 lần để tránh lag host). */
     private static void tickCoreFountain() {
         healTimer -= Time.delta;
         if (healTimer > 0f) return;
-        healTimer = 15f;
-        float dtSec = 15f / 60f;
+        healTimer = 60f;
+        float dtSec = 1f;
         Seq<Team> tl = NewModePvp.pvpTeams();
         for (int i = 0; i < tl.size; i++) {
             Team tm = tl.get(i);
@@ -2128,9 +2170,10 @@ public final class PvpDomination {
                 }
             };
             barEl.name = "newex-dom-progress-bar";
+            domBarEl = barEl;
             barEl.setSize(barW, barH);
             barEl.touchable = Touchable.enabled;
-            barEl.visibility = () -> isActive() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
+            barEl.visibility = () -> isActive() && NewModePvp.mapUiEnabled() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
             if (Core.settings.has(KEY_BAR_X) && Core.settings.has(KEY_BAR_Y)) {
                 barEl.setPosition(Core.settings.getFloat(KEY_BAR_X, 0f), Core.settings.getFloat(KEY_BAR_Y, 0f));
                 clampPos(barEl, null, null);
@@ -2154,13 +2197,14 @@ public final class PvpDomination {
             // 2) Thanh nút [Đổi Unit] — tự do kéo thả mọi vị trí (nhấn nhẹ = mở chọn Unit, kéo >= 6px = di chuyển)
             final Table swapWrap = new Table(Styles.black6);
             swapWrap.name = "newex-dom-swap-unit";
+            domSwapWrap = swapWrap;
             swapWrap.margin(4f);
             swapWrap.touchable = Touchable.enabled;
             final TextButton swapBtn = new TextButton(tr("Đổi Unit", "Switch Unit"), Styles.flatBordert);
             swapBtn.touchable = Touchable.disabled; // để swapWrap xử lý cả kéo thả lẫn bấm không xung đột!
             swapWrap.add(swapBtn).size(118f, 36f);
             swapWrap.pack();
-            swapWrap.visibility = () -> isActive() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
+            swapWrap.visibility = () -> isActive() && NewModePvp.mapUiEnabled() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
             if (Core.settings.has(KEY_SWAP_X) && Core.settings.has(KEY_SWAP_Y)) {
                 swapWrap.setPosition(Core.settings.getFloat(KEY_SWAP_X, 0f), Core.settings.getFloat(KEY_SWAP_Y, 0f));
                 clampPos(swapWrap, null, null);
@@ -2218,11 +2262,25 @@ public final class PvpDomination {
                 trainMaxWaves));
             trSaveBtn.visibility = () -> isTraining() && trainFinished;
             trainCard.add(trSaveBtn).size(104f, 32f);
-            trainCard.visibility = () -> isTraining() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
+            trainCard.visibility = () -> isTraining() && NewModePvp.mapUiEnabled() && Vars.state != null && Vars.state.isGame() && (Vars.ui.hudfrag == null || Vars.ui.hudfrag.shown);
             trainBox.add(trainCard).top().right().padTop(Vars.mobile ? 110f : 92f).padRight(8f);
             Vars.ui.hudGroup.addChild(trainBox);
         } catch (Throwable err) {
             Log.err("[PvpDomination] addHudElements failed", err);
+        }
+    }
+
+    /** Đưa toàn bộ nút UI kéo thả của PvP Chiếm Cứ về giữa màn hình khi bật lại nút hiện UI trong Cài đặt > Trò chơi. */
+    public static void centerAllDomHud() {
+        float sw = Core.scene != null ? Core.scene.getWidth() : Core.graphics.getWidth();
+        float sh = Core.scene != null ? Core.scene.getHeight() : Core.graphics.getHeight();
+        if (domBarEl != null) {
+            domBarEl.setPosition((sw - domBarEl.getWidth()) * 0.5f, sh * 0.5f + 46f);
+            clampPos(domBarEl, KEY_BAR_X, KEY_BAR_Y);
+        }
+        if (domSwapWrap != null) {
+            domSwapWrap.setPosition((sw - domSwapWrap.getWidth()) * 0.5f, sh * 0.5f - domSwapWrap.getHeight() - 10f);
+            clampPos(domSwapWrap, KEY_SWAP_X, KEY_SWAP_Y);
         }
     }
 
@@ -2236,6 +2294,8 @@ public final class PvpDomination {
         savePromptOpen = true;
         final SavedUnit snap = captureFromState(st, maxWaves);
         final ArrayList<SavedUnit> slots = loadSavedUnits();
+        final boolean multiSave = trainMultiSaveOn();
+        final int[] copyCnt = {1};
 
         final BaseDialog d = new BaseDialog(tr("Lưu Bản Sao Lưu Unit (Kho Unit)", "Save Unit Backup (Unit Vault)"));
         activeSaveDialog = d;
@@ -2250,20 +2310,60 @@ public final class PvpDomination {
         // Thẻ tóm tắt Unit hiện tại
         d.cont.add(buildUnitCard(snap, w - 16f, -1, null, null)).width(w - 16f).padBottom(10f).row();
 
-        d.cont.add("[lightgray]" + tr("Ô lưu hiện tại: ", "Saved slots: ") + "[accent]" + slots.size() + "/" + MAX_SAVED_SLOTS + "[]").padBottom(8f).row();
+        d.cont.add("[lightgray]" + tr("Ô lưu hiện tại: ", "Saved slots: ") + "[accent]" + slots.size() + "/" + MAX_SAVED_SLOTS + "[]").padBottom(6f).row();
+
+        if (multiSave) {
+            Table cpRow = new Table(Styles.black6);
+            cpRow.margin(6f);
+            cpRow.add("[#38ef7d]" + tr("Số bản sao lưu cùng lúc:", "Copies to save at once:") + "[]").padRight(8f);
+            final TextButton[] cpBtns = new TextButton[MAX_SAVED_SLOTS];
+            for (int k = 1; k <= MAX_SAVED_SLOTS; k++) {
+                final int cnt = k;
+                cpBtns[k - 1] = cpRow.button(String.valueOf(cnt), Styles.flatBordert, () -> {
+                    copyCnt[0] = cnt;
+                    for (int j = 0; j < MAX_SAVED_SLOTS; j++) {
+                        cpBtns[j].setText((j + 1 == copyCnt[0] ? "[#38ef7d]" : "[white]") + (j + 1) + "[]");
+                    }
+                }).size(42f, 36f).pad(2f).get();
+            }
+            cpBtns[0].setText("[#38ef7d]1[]");
+            d.cont.add(cpRow).padBottom(8f).row();
+        }
 
         Table btns = new Table();
         btns.button(tr("[green]Có (Lưu Unit)[]", "[green]Yes (Save Unit)[]"), Styles.flatBordert, () -> {
-            if (slots.size() < MAX_SAVED_SLOTS) {
-                slots.add(snap);
+            int want = multiSave ? Mathf.clamp(copyCnt[0], 1, MAX_SAVED_SLOTS) : 1;
+            if (want == 1) {
+                if (slots.size() < MAX_SAVED_SLOTS) {
+                    slots.add(snap);
+                    persistSavedUnits(slots);
+                    savePromptOpen = false;
+                    d.hide();
+                    Vars.ui.showInfoToast(tr("[green]Đã lưu bản sao lưu Unit (Max " + maxWaves + " đợt) vào Ô #" + slots.size() + "/" + MAX_SAVED_SLOTS + "!",
+                        "[green]Saved Unit (Max " + maxWaves + " waves) to Slot #" + slots.size() + "/" + MAX_SAVED_SLOTS + "!"), 4f);
+                } else {
+                    d.hide();
+                    openOverwriteSlotDialog(snap, slots);
+                }
+            } else {
+                // Lưu nhiều bản sao cùng lúc: điền vào các ô trống trước, nếu vượt quá 5 ô thì ghi đè lần lượt từ ô đầu
+                int saved = 0, owIdx = 0;
+                while (saved < want) {
+                    SavedUnit copy = decodeSavedUnit(encodeSavedUnit(snap));
+                    if (copy == null) copy = snap;
+                    if (slots.size() < MAX_SAVED_SLOTS) {
+                        slots.add(copy);
+                    } else {
+                        slots.set(owIdx % MAX_SAVED_SLOTS, copy);
+                        owIdx++;
+                    }
+                    saved++;
+                }
                 persistSavedUnits(slots);
                 savePromptOpen = false;
                 d.hide();
-                Vars.ui.showInfoToast(tr("[green]Đã lưu bản sao lưu Unit (Max " + maxWaves + " đợt) vào Ô #" + slots.size() + "/" + MAX_SAVED_SLOTS + "!",
-                    "[green]Saved Unit (Max " + maxWaves + " waves) to Slot #" + slots.size() + "/" + MAX_SAVED_SLOTS + "!"), 4f);
-            } else {
-                d.hide();
-                openOverwriteSlotDialog(snap, slots);
+                Vars.ui.showInfoToast(tr("[green]Đã sao lưu " + saved + " bản Unit cùng lúc vào Kho Unit (" + slots.size() + "/" + MAX_SAVED_SLOTS + " ô)!",
+                    "[green]Saved " + saved + " Unit copies at once into Unit Vault (" + slots.size() + "/" + MAX_SAVED_SLOTS + " slots)!"), 4f);
             }
         }).size(200f, 48f).pad(6f);
 
@@ -2310,7 +2410,108 @@ public final class PvpDomination {
         d.show();
     }
 
-    // ===== PHẦN 3: CHỌN UNIT ĐÃ LƯU KHI VÀO PVP CHIẾM CỨ (VÀ QUẢN LÝ 5 Ô TỪ NEWMODE) =====
+    // ===== PHẦN 3: CÀI ĐẶT HUẤN LUYỆN TẠO BẢN SAO UNIT & KHO UNIT / CHỌN UNIT (MachineUi) =====
+    /** Trang cài đặt trước khi vào map Huấn Luyện Unit Player (dùng MachineUi). */
+    public static void openTrainingSetupDialog() {
+        if (Vars.headless) return;
+        final MachineUi.Panel panel = MachineUi.panel(tr("Cài Đặt — Tạo Bản Sao Lưu Unit", "Setup — Unit Training Backup"));
+        final boolean[] dupVal = {trainDupTurretOn()};
+        final int[] tmVal = {trainTurretMode()};
+        final int[] maxWVal = {getTrainMaxWaves()};
+        final boolean[] multiSaveVal = {trainMultiSaveOn()};
+        final TextField[] mwRef = new TextField[1];
+
+        panel.onBuild(() -> {
+            Table c = panel.content();
+            c.clear();
+            c.margin(10f).top().left().defaults().left();
+            float w = panel.innerW();
+            float wrapW = Math.max(160f, w - 28f);
+
+            c.add("[#38ef7d]" + tr("-- CÀI ĐẶT CHẾ ĐỘ HUẤN LUYỆN UNIT PLAYER --", "-- UNIT TRAINING SETUP --") + "[]").padBottom(6f).row();
+            c.add("[lightgray]" + tr("Map: huanluyenunitplayer.msav • Quái T1-T5 không tấn công • Rơi đồ 100% (độ hiếm giữ nguyên).",
+                "Map: huanluyenunitplayer.msav • Non-attacking T1-T5 dummies • 100% drop rate (normal rarity).") + "[]")
+                .wrap().width(wrapW).padBottom(10f).row();
+
+            // 1) Bật/tắt cho phép trang bị nhiều pháo cùng 1 loại -> khi bật mở 2 lựa chọn chế độ mới
+            Table dupCard = new Table(Styles.black6);
+            dupCard.margin(8f).left().defaults().left();
+            dupCard.check(tr("Cho phép trang bị nhiều pháo cùng 1 loại", "Allow equipping multiple turrets of the same type"),
+                dupVal[0], (Boolc) b -> {
+                    dupVal[0] = b;
+                    panel.rebuild();
+                }).width(wrapW - 12f).left().get().getLabel().setWrap(true);
+            dupCard.row();
+
+            if (dupVal[0]) {
+                dupCard.add("[accent]" + tr("Chọn cơ chế khi trang bị nhiều pháo cùng loại:", "Choose duplicate turret mechanic:") + "[]")
+                    .padTop(6f).padBottom(4f).row();
+
+                Table opt1 = new Table(tmVal[0] == 0 ? Styles.black8 : Styles.black5);
+                opt1.margin(8f).left();
+                opt1.touchable = Touchable.enabled;
+                opt1.add((tmVal[0] == 0 ? "[#38ef7d]● " : "[gray]○ ") + "[white]" + tr("1. Dồn lực (Tăng sát thương)[]", "1. Focus (Boost damage)[]")
+                    + "\n[lightgray]" + tr("Trang bị từ 2 pháo cùng loại trở lên KHÔNG bắn thêm đạn mà tăng +25% sát thương gây ra cho chính pháo đó.",
+                        "2+ of the same turret does NOT fire extra bullets; boosts that turret's damage by +25% per copy.") + "[]")
+                    .left().wrap().width(wrapW - 28f);
+                opt1.clicked(() -> { tmVal[0] = 0; panel.rebuild(); });
+                dupCard.add(opt1).width(wrapW - 12f).padBottom(4f).row();
+
+                Table opt2 = new Table(tmVal[0] == 1 ? Styles.black8 : Styles.black5);
+                opt2.margin(8f).left();
+                opt2.touchable = Touchable.enabled;
+                opt2.add((tmVal[0] == 1 ? "[#38ef7d]● " : "[gray]○ ") + "[white]" + tr("2. Đa đạn (-10% tốc độ di chuyển)[]", "2. Multi-shot (-10% move speed)[]")
+                    + "\n[lightgray]" + tr("Trang bị nhiều pháo cùng loại vẫn bắn thêm nhiều đạn hơn nhưng giảm 10% tốc độ di chuyển cho mỗi pháo cùng loại.",
+                        "Equipping duplicate turrets fires extra shots, but reduces movement speed by 10% per extra duplicate turret.") + "[]")
+                    .left().wrap().width(wrapW - 28f);
+                opt2.clicked(() -> { tmVal[0] = 1; panel.rebuild(); });
+                dupCard.add(opt2).width(wrapW - 12f).row();
+            }
+            c.add(dupCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
+
+            // 2) Tùy chỉnh số đợt tối đa
+            Table mwCard = new Table(Styles.black6);
+            mwCard.margin(8f).left().defaults().left();
+            mwCard.add("[white]" + tr("Tùy chỉnh số đợt tối đa:", "Max training waves:") + "[]").padBottom(4f).row();
+            Table mwRow = new Table();
+            final TextField mwField = mwRow.field(String.valueOf(maxWVal[0]), txt -> {
+                try { maxWVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), 1, 200); } catch (Throwable ignored) {}
+            }).width(100f).get();
+            mwField.setFilter(TextField.TextFieldFilter.digitsOnly);
+            mwField.setMaxLength(3);
+            mwRef[0] = mwField;
+            mwRow.add("[lightgray]" + tr("đợt (1 - 200, mặc định 15)", "waves (1 - 200, default 15)") + "[]").padLeft(8f);
+            mwCard.add(mwRow).row();
+            c.add(mwCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
+
+            // 3) Bật/tắt cho phép sao lưu 1 unit nhiều bản cùng 1 lúc
+            Table msCard = new Table(Styles.black6);
+            msCard.margin(8f).left();
+            msCard.check(tr("Cho phép sao lưu 1 Unit thành nhiều bản cùng 1 lúc (1–5 ô)",
+                "Allow saving multiple copies of 1 Unit at once (1–5 slots)"),
+                multiSaveVal[0], (Boolc) b -> multiSaveVal[0] = b).width(wrapW - 12f).left().get().getLabel().setWrap(true);
+            c.add(msCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
+
+            Table ft = panel.footer();
+            ft.clear();
+            ft.margin(4f);
+            ft.button(tr("[#38ef7d]Bắt Đầu Huấn Luyện[]", "[#38ef7d]Start Training[]"), Styles.flatBordert, () -> {
+                try { if (mwRef[0] != null) maxWVal[0] = Mathf.clamp(Integer.parseInt(mwRef[0].getText().trim()), 1, 200); } catch (Throwable ignored) {}
+                Core.settings.put(KEY_TRAIN_MAX_WAVES, maxWVal[0]);
+                Core.settings.put(KEY_TRAIN_DUP_TURRET, dupVal[0]);
+                Core.settings.put(KEY_TRAIN_TMODE, tmVal[0]);
+                Core.settings.put(KEY_TRAIN_MULTI_SAVE, multiSaveVal[0]);
+                panel.hide();
+                NewMode.startTrainingMap(maxWVal[0], dupVal[0], tmVal[0], multiSaveVal[0]);
+            }).height(44f).minWidth(190f).pad(4f);
+            ft.button(tr("Quay Lại", "Back"), Styles.flatBordert, () -> {
+                panel.hide();
+                openUnitManagerFromMenu();
+            }).height(44f).minWidth(110f).pad(4f);
+        });
+        panel.show();
+    }
+
     public static void openUnitManagerFromMenu() {
         openUnitPickerDialog(false, true);
     }
@@ -2321,126 +2522,115 @@ public final class PvpDomination {
 
     private static void openUnitPickerDialog(final boolean allowClose, final boolean manageOnly) {
         if (Vars.headless) return;
-        if (activePickerDialog != null && activePickerDialog.isShown()) return;
+        if (activePickerPanel != null && activePickerPanel.dialog.isShown()) return;
 
-        final ArrayList<SavedUnit> slots = loadSavedUnits();
-        final BaseDialog d = new BaseDialog(manageOnly
+        final MachineUi.Panel panel = MachineUi.panel(manageOnly
             ? tr("Kho Unit Đã Lưu (Tối đa 5 ô)", "Saved Unit Vault (Max 5 Slots)")
             : tr("PvP Chiếm Cứ — Chọn Unit Ra Trận", "PvP Domination — Choose Your Unit"));
-        activePickerDialog = d;
-        float w = Math.min(Core.graphics.getWidth() / Scl.scl() - 36f, 560f);
+        activePickerPanel = panel;
 
-        d.cont.margin(10f);
-        if (manageOnly) {
-            // Khu vực tạo bản sao lưu Unit mới qua chế độ Huấn Luyện (huanluyenunitplayer.msav)
-            final int[] maxWVal = {getTrainMaxWaves()};
-            Table trCard = new Table(Styles.black6);
-            trCard.margin(8f);
-            trCard.add("[#38ef7d]" + tr("HUẤN LUYỆN TẠO BẢN SAO LƯU UNIT", "UNIT TRAINING BACKUP MODE") + "[]").left().colspan(2).padBottom(4f).row();
-            trCard.add("[lightgray]" + tr("Quái đợt T1-T5 không tấn công, tỉ lệ rơi đồ 100%, giữ nguyên độ hiếm & trang nâng cấp.",
-                "Non-attacking T1-T5 wave dummies, 100% item drop rate (normal rarity), full upgrade menu.") + "[]")
-                .left().wrap().width(w - 28f).colspan(2).padBottom(6f).row();
+        panel.onBuild(() -> {
+            final ArrayList<SavedUnit> slots = loadSavedUnits();
+            float w = panel.innerW();
 
-            Table trRow = new Table();
-            trRow.left();
-            trRow.add("[white]" + tr("Số đợt tối đa:", "Max waves:") + "[]").padRight(6f);
-            final TextField mwField = trRow.field(String.valueOf(maxWVal[0]), txt -> {
-                try { maxWVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), 1, 200); } catch (Throwable ignored) {}
-            }).width(74f).get();
-            mwField.setFilter(TextField.TextFieldFilter.digitsOnly);
-            mwField.setMaxLength(3);
-            trRow.add("[gray](mặc định 15)[]").padLeft(6f).padRight(10f);
-            trRow.button(tr("[#38ef7d]Tạo Bản Sao Lưu Unit[]", "[#38ef7d]Start Unit Training[]"), Styles.flatBordert, () -> {
-                try { maxWVal[0] = Mathf.clamp(Integer.parseInt(mwField.getText().trim()), 1, 200); } catch (Throwable ignored) {}
-                Core.settings.put(KEY_TRAIN_MAX_WAVES, maxWVal[0]);
-                d.hide();
-                NewMode.startTrainingMap(maxWVal[0]);
-            }).height(40f).minWidth(190f);
-            trCard.add(trRow).left().growX().row();
-            d.cont.add(trCard).width(w - 8f).padBottom(8f).row();
-        }
+            Table hd = panel.header();
+            hd.clear();
+            if (manageOnly) {
+                Table topBar = new Table(Styles.black6);
+                topBar.margin(8f);
+                topBar.add("[accent]" + tr("Ô đã lưu: ", "Saved slots: ") + slots.size() + "/" + MAX_SAVED_SLOTS + "[]").left().expandX();
+                topBar.button(tr("[#38ef7d]+ Tạo Bản Sao Lưu Unit[]", "[#38ef7d]+ Create Unit Backup[]"), Styles.flatBordert, () -> {
+                    panel.hide();
+                    openTrainingSetupDialog();
+                }).height(38f).minWidth(205f).right();
+                hd.add(topBar).width(w).pad(3f).row();
+            } else {
+                Table topBar = new Table(Styles.black6);
+                topBar.margin(6f);
+                topBar.add("[accent]" + tr("Chọn 1 trong " + slots.size() + "/" + MAX_SAVED_SLOTS + " Unit đã lưu hoặc dùng Unit Rỗng:",
+                    "Pick 1 of " + slots.size() + "/" + MAX_SAVED_SLOTS + " saved Units or deploy Empty:") + "[]").left().wrap().width(Math.max(160f, w - 20f));
+                hd.add(topBar).width(w).pad(3f).row();
+            }
 
-        if (slots.isEmpty()) {
-            d.cont.add("[#ffd166]" + tr("Chưa có file Unit nào được lưu (0/5)!", "No saved Units yet (0/5)!") + "[]").padBottom(6f).row();
-            d.cont.add("[lightgray]" + tr("Hãy nhấn nút [accent]Tạo Bản Sao Lưu Unit[] trong Kho Unit để huấn luyện và lưu Unit, Pilot, Pháo & Trang bị vào đây.\nHiện tại bạn chỉ có thể ra trận bằng [white]Unit Rỗng (Cơ bản)[].",
-                "Press [accent]Start Unit Training[] in the Unit Vault to train & save your Unit, Pilot, Turrets & Gear here.\nFor now you can only deploy with an [white]Empty Unit (Default)[].") + "[]")
-                .wrap().width(w - 20f).labelAlign(Align.center).padBottom(12f).row();
-        } else {
-            d.cont.add("[accent]" + tr("Chọn 1 trong " + slots.size() + "/" + MAX_SAVED_SLOTS + " Unit đã lưu hoặc dùng Unit Rỗng:",
-                "Pick 1 of " + slots.size() + "/" + MAX_SAVED_SLOTS + " saved Units or deploy Empty:") + "[]").padBottom(8f).row();
-
-            Table list = new Table();
-            list.top();
-            for (int i = 0; i < MAX_SAVED_SLOTS; i++) {
-                if (i < slots.size()) {
-                    final int idx = i;
-                    final SavedUnit su = slots.get(i);
-                    boolean dead = !manageOnly && localSlotDead(idx);
-                    float cdLeft = !manageOnly && slotCooldownOn() ? localSlotCdLeft(idx) : 0f;
-                    String actLbl = manageOnly ? null
-                        : dead ? tr("[scarlet]Đã hạ[]", "[scarlet]Dead[]")
-                        : cdLeft > 0.5f ? ("[yellow]" + (int) Math.ceil(cdLeft) + "s[]")
-                        : tr("Ra Trận", "Deploy");
-                    Runnable actRun = manageOnly ? null : () -> {
-                        if (localSlotDead(idx)) {
-                            Vars.ui.showInfoToast(tr("[scarlet]Unit này đã bị hạ trong trận!", "[scarlet]This Unit is eliminated!"), 2f);
-                            return;
-                        }
-                        float rem = slotCooldownOn() ? localSlotCdLeft(idx) : 0f;
-                        if (rem > 0.5f) {
-                            Vars.ui.showInfoToast(tr("[yellow]Unit này đang hồi chiêu: còn " + (int) Math.ceil(rem) + "s!", "[yellow]Unit on cooldown: " + (int) Math.ceil(rem) + "s left!"), 2f);
-                            return;
-                        }
-                        applySavedUnitSelection(idx, su);
-                        d.hide();
-                    };
-                    Table card = buildUnitCard(su, w - 24f, i, actLbl, actRun,
-                        manageOnly ? tr("Xóa", "Delete") : null,
-                        manageOnly ? () -> {
-                            slots.remove(idx);
-                            persistSavedUnits(slots);
-                            d.hide();
-                            openUnitPickerDialog(allowClose, manageOnly);
-                        } : null);
-                    list.add(card).width(w - 24f).pad(4f).row();
-                } else {
-                    Table empty = new Table(Styles.black6);
-                    empty.margin(10f);
-                    empty.add("[gray]" + tr("Ô #" + (i + 1) + " — Trống (Vào Huấn Luyện để tạo bản sao lưu)", "Slot #" + (i + 1) + " — Empty (Run Unit Training to save)") + "[]").left();
-                    list.add(empty).width(w - 24f).pad(4f).row();
+            Table list = panel.content();
+            list.clear();
+            list.top().margin(4f);
+            if (slots.isEmpty()) {
+                list.add("[#ffd166]" + tr("Chưa có file Unit nào được lưu (0/5)!", "No saved Units yet (0/5)!") + "[]").padTop(10f).padBottom(6f).row();
+                list.add("[lightgray]" + tr("Hãy nhấn nút [accent]+ Tạo Bản Sao Lưu Unit[] trong Kho Unit để cài đặt và huấn luyện Unit, Pilot, Pháo & Trang bị.\nHiện tại bạn chỉ có thể ra trận bằng [white]Unit Rỗng (Cơ bản)[].",
+                    "Press [accent]+ Create Unit Backup[] in the Unit Vault to configure & train your Unit, Pilot, Turrets & Gear.\nFor now you can only deploy with an [white]Empty Unit (Default)[].") + "[]")
+                    .wrap().width(Math.max(160f, w - 24f)).labelAlign(Align.center).padBottom(12f).row();
+            } else {
+                for (int i = 0; i < MAX_SAVED_SLOTS; i++) {
+                    if (i < slots.size()) {
+                        final int idx = i;
+                        final SavedUnit su = slots.get(i);
+                        boolean dead = !manageOnly && localSlotDead(idx);
+                        float cdLeft = !manageOnly && slotCooldownOn() ? localSlotCdLeft(idx) : 0f;
+                        String actLbl = manageOnly ? null
+                            : dead ? tr("[scarlet]Đã hạ[]", "[scarlet]Dead[]")
+                            : cdLeft > 0.5f ? ("[yellow]" + (int) Math.ceil(cdLeft) + "s[]")
+                            : tr("Ra Trận", "Deploy");
+                        Runnable actRun = manageOnly ? null : () -> {
+                            if (localSlotDead(idx)) {
+                                Vars.ui.showInfoToast(tr("[scarlet]Unit này đã bị hạ trong trận!", "[scarlet]This Unit is eliminated!"), 2f);
+                                return;
+                            }
+                            float rem = slotCooldownOn() ? localSlotCdLeft(idx) : 0f;
+                            if (rem > 0.5f) {
+                                Vars.ui.showInfoToast(tr("[yellow]Unit này đang hồi chiêu: còn " + (int) Math.ceil(rem) + "s!", "[yellow]Unit on cooldown: " + (int) Math.ceil(rem) + "s left!"), 2f);
+                                return;
+                            }
+                            applySavedUnitSelection(idx, su);
+                            panel.hide();
+                        };
+                        Table card = buildUnitCard(su, Math.max(180f, w - 12f), i, actLbl, actRun,
+                            manageOnly ? tr("Xóa", "Delete") : null,
+                            manageOnly ? () -> {
+                                slots.remove(idx);
+                                persistSavedUnits(slots);
+                                panel.rebuild();
+                            } : null);
+                        list.add(card).width(Math.max(180f, w - 12f)).pad(4f).row();
+                    } else {
+                        Table empty = new Table(Styles.black6);
+                        empty.margin(10f);
+                        empty.add("[gray]" + tr("Ô #" + (i + 1) + " — Trống (Nhấn + Tạo Bản Sao Lưu Unit để huấn luyện)", "Slot #" + (i + 1) + " — Empty (Press + Create Unit Backup to train)") + "[]").left().wrap().width(Math.max(150f, w - 34f));
+                        list.add(empty).width(Math.max(180f, w - 12f)).pad(4f).row();
+                    }
                 }
             }
-            d.cont.add(new ScrollPane(list)).width(w).maxHeight(Core.graphics.getHeight() / Scl.scl() * (manageOnly ? 0.44f : 0.56f)).padBottom(8f).row();
-        }
 
-        Table bot = new Table();
-        if (!manageOnly) {
-            boolean emptyDead = localSlotDead(EMPTY_SLOT_IDX);
-            float emptyCd = slotCooldownOn() ? localSlotCdLeft(EMPTY_SLOT_IDX) : 0f;
-            String emptyLbl = emptyDead ? tr("[scarlet]Unit Rỗng (Đã hạ)[]", "[scarlet]Empty Unit (Dead)[]")
-                : emptyCd > 0.5f ? tr("[yellow]Unit Rỗng (" + (int) Math.ceil(emptyCd) + "s)[]", "[yellow]Empty (" + (int) Math.ceil(emptyCd) + "s)[]")
-                : tr("Dùng Unit Rỗng (Cơ bản)", "Use Empty Unit (Default)");
-            bot.button(emptyLbl, Styles.flatBordert, () -> {
-                if (localSlotDead(EMPTY_SLOT_IDX)) {
-                    Vars.ui.showInfoToast(tr("[scarlet]Unit Rỗng đã bị hạ trong trận!", "[scarlet]Empty Unit is eliminated!"), 2f);
-                    return;
-                }
-                float rem = slotCooldownOn() ? localSlotCdLeft(EMPTY_SLOT_IDX) : 0f;
-                if (rem > 0.5f) {
-                    Vars.ui.showInfoToast(tr("[yellow]Unit Rỗng đang hồi chiêu: còn " + (int) Math.ceil(rem) + "s!", "[yellow]Empty Unit on cooldown: " + (int) Math.ceil(rem) + "s left!"), 2f);
-                    return;
-                }
-                applySavedUnitSelection(EMPTY_SLOT_IDX, null);
-                d.hide();
-            }).size(240f, 46f).pad(5f);
-        }
-        if (allowClose || manageOnly) {
-            bot.button(tr("Đóng", "Close"), Styles.flatBordert, d::hide).size(140f, 46f).pad(5f);
-        }
-        d.cont.add(bot).row();
+            Table ft = panel.footer();
+            ft.clear();
+            ft.margin(4f);
+            if (!manageOnly) {
+                boolean emptyDead = localSlotDead(EMPTY_SLOT_IDX);
+                float emptyCd = slotCooldownOn() ? localSlotCdLeft(EMPTY_SLOT_IDX) : 0f;
+                String emptyLbl = emptyDead ? tr("[scarlet]Unit Rỗng (Đã hạ)[]", "[scarlet]Empty Unit (Dead)[]")
+                    : emptyCd > 0.5f ? tr("[yellow]Unit Rỗng (" + (int) Math.ceil(emptyCd) + "s)[]", "[yellow]Empty (" + (int) Math.ceil(emptyCd) + "s)[]")
+                    : tr("Dùng Unit Rỗng (Cơ bản)", "Use Empty Unit (Default)");
+                ft.button(emptyLbl, Styles.flatBordert, () -> {
+                    if (localSlotDead(EMPTY_SLOT_IDX)) {
+                        Vars.ui.showInfoToast(tr("[scarlet]Unit Rỗng đã bị hạ trong trận!", "[scarlet]Empty Unit is eliminated!"), 2f);
+                        return;
+                    }
+                    float rem = slotCooldownOn() ? localSlotCdLeft(EMPTY_SLOT_IDX) : 0f;
+                    if (rem > 0.5f) {
+                        Vars.ui.showInfoToast(tr("[yellow]Unit Rỗng đang hồi chiêu: còn " + (int) Math.ceil(rem) + "s!", "[yellow]Empty Unit on cooldown: " + (int) Math.ceil(rem) + "s left!"), 2f);
+                        return;
+                    }
+                    applySavedUnitSelection(EMPTY_SLOT_IDX, null);
+                    panel.hide();
+                }).height(44f).minWidth(210f).pad(4f);
+            }
+            if (allowClose || manageOnly) {
+                ft.button(tr("Đóng", "Close"), Styles.flatBordert, panel::hide).height(44f).minWidth(120f).pad(4f);
+            }
+        });
 
-        d.hidden(() -> { if (activePickerDialog == d) activePickerDialog = null; });
-        d.show();
+        panel.dialog.hidden(() -> { if (activePickerPanel == panel) activePickerPanel = null; });
+        panel.show();
     }
 
     private static Table buildUnitCard(SavedUnit su, float w, int slotIdx, String b1, Runnable r1) {

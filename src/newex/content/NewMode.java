@@ -323,7 +323,7 @@ public final class NewMode {
     }
 
     /** Vào chế độ Huấn Luyện Unit Player (maps/huanluyenunitplayer.msav) để tạo bản sao lưu vào Kho Unit. */
-    public static void startTrainingMap(int maxWaves) {
+    public static void startTrainingMap(int maxWaves, boolean dupTurret, int turretMode, boolean multiSave) {
         isPlayingNewMode = false;
         guest = false;
         activeMapName = null;
@@ -346,7 +346,7 @@ public final class NewMode {
         Vars.world.loadMap(map);
         Vars.state.rules = map.applyRules(Gamemode.survival);
         Vars.logic.play();
-        PvpDomination.onBeginTraining(maxWaves);
+        PvpDomination.onBeginTraining(maxWaves, dupTurret, turretMode, multiSave);
     }
 
     private static void saveNewModeGame() {

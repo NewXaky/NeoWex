@@ -223,19 +223,18 @@ public class NewModePvp {
     static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : t == 11 ? BULVASYR_MIN_LEVEL : 0; }
     static boolean isWarTier(int t) { return t >= 9; }
 
-    // ===== Chế độ lắp nhiều pháo (St.tm: 0 = chế độ 1, 1 = chế độ 2, 2 = chế độ 3) =====
-    static final float TM_ATK1_PCT = 18f, TM_ATK3_PCT = 12f, TM_SPREAD = 6f;
+    // ===== Chế độ lắp nhiều pháo cùng loại (St.tm: 0 = Dồn lực tăng ST, 1 = Đa đạn giảm 10% tốc độ/pháo cùng loại) =====
+    static final float TM_ATK1_PCT = 25f, TM_SPREAD = 6f, TM_DUP_SPD_PENALTY = 0.10f;
     static final int TM_MULTI_MAX = 4;
     static String tmName(int m) {
-        return m == 0 ? tr("1. Dồn lực", "1. Focus") : m == 1 ? tr("2. Đa đạn", "2. Multi-shot") : tr("3. Hiệp đồng", "3. Synergy");
+        return m == 1 ? tr("2. Đa đạn (-10% tốc độ)", "2. Multi-shot (-10% speed)") : tr("1. Dồn lực (Tăng sát thương)", "1. Focus (Boost damage)");
     }
     static String tmDesc(int m) {
-        return m == 0 ? tr("[scarlet]Dồn lực[]: càng nhiều nòng, mỗi nòng càng dữ. Từ pháo thứ 2: [scarlet]+" + (int) TM_ATK1_PCT + "%[] tấn công cho [accent]chính nòng đó[].",
-                "[scarlet]Focus[]: more barrels, fiercer barrels. From the 2nd turret: [scarlet]+" + (int) TM_ATK1_PCT + "%[] attack to [accent]that turret[].")
-            : m == 1 ? tr("[gold]Đa đạn[]: mỗi pháo thêm vào là một loạt đạn dày hơn, tối đa [gold]" + TM_MULTI_MAX + "[] viên mỗi lượt.",
-                "[gold]Multi-shot[]: every extra turret thickens the volley, up to [gold]" + TM_MULTI_MAX + "[] bullets a shot.")
-            : tr("[sky]Hiệp đồng[]: các nòng tiếp sức nhau. Từ pháo thứ 2: [scarlet]+" + (int) TM_ATK3_PCT + "%[] tấn công cho [accent]chính nòng đó[].",
-                "[sky]Synergy[]: barrels feed each other. From the 2nd turret: [scarlet]+" + (int) TM_ATK3_PCT + "%[] attack to [accent]that turret[].");
+        return m == 1
+            ? tr("[gold]Đa đạn[]: trang bị nhiều pháo cùng loại vẫn bắn thêm nhiều đạn hơn, nhưng [scarlet]giảm 10% tốc độ di chuyển[] cho mỗi pháo cùng loại lắp thêm.",
+                "[gold]Multi-shot[]: equipping duplicate turrets still fires extra shots, but [scarlet]-10% movement speed[] per duplicate turret.")
+            : tr("[scarlet]Dồn lực[]: trang bị từ 2 pháo cùng loại trở lên [accent]không bắn thêm đạn[] mà tăng [scarlet]+" + (int) TM_ATK1_PCT + "% sát thương[] cho chính pháo đó mỗi pháo cùng loại thêm vào.",
+                "[scarlet]Focus[]: equipping 2+ of the same turret [accent]does not fire extra shots[], instead boosting that turret's damage by [scarlet]+" + (int) TM_ATK1_PCT + "%[] per extra copy.");
     }
     static arc.scene.ui.layout.Cell<arc.scene.ui.TextButton> bigBtn(Table t, String text, arc.graphics.Color col, Runnable r, float h, float minW) {
         arc.scene.ui.layout.Cell<arc.scene.ui.TextButton> c = t.button(text, r).height(h).minWidth(minW);
@@ -644,11 +643,23 @@ public class NewModePvp {
         if (!(v >= 0)) v = DEFAULT_BUILT;
         return Math.min(LIMIT_BUILT, v);
     }
-    static boolean multiTurretOn() { return setBool(KEY_MULTI, true); }
-    /** Chế độ lắp nhiều pháo hiện tại theo Cài đặt Newex (0..2). */
+    static boolean multiTurretOn() {
+        if (PvpDomination.isTraining()) {
+            arc.struct.StringMap tg = getTags();
+            if (tg != null && tg.containsKey(PvpDomination.TAG_TRAIN_MULTI)) return "1".equals(tg.get(PvpDomination.TAG_TRAIN_MULTI, "1"));
+        }
+        return setBool(KEY_MULTI, true);
+    }
+    /** Chế độ lắp nhiều pháo hiện tại (0 = Dồn lực tăng ST, 1 = Đa đạn giảm 10% tốc độ/pháo cùng loại). */
     static int tmodeCfg() {
+        if (PvpDomination.isTraining()) {
+            arc.struct.StringMap tg = getTags();
+            if (tg != null && tg.containsKey(PvpDomination.TAG_TRAIN_TMODE)) {
+                try { return Integer.parseInt(tg.get(PvpDomination.TAG_TRAIN_TMODE, "0")) == 1 ? 1 : 0; } catch (Throwable ignored) {}
+            }
+        }
         int v = getIntCached(KEY_TMODE, 0);
-        return (v >= 0 && v < 3) ? v : 0;
+        return v == 1 ? 1 : 0;
     }
     static int shieldMinutes() {
         int v = getIntCached(KEY_SHIELD, DEFAULT_SHIELD_MIN);
@@ -1474,15 +1485,16 @@ public class NewModePvp {
     static final class Rc { int atk, brl, def; }
     static final Rc EMPTY_RC = new Rc();
     static final class EquipSum {
-        int ver; boolean multi, defsReady, malign, lightSpd, hasTherdum, hasEq;
+        int ver, tm, dupExtra; boolean multi, defsReady, malign, lightSpd, hasTherdum, hasEq;
         Rc rc; HashMap<String, Integer> counts; int nLu, nSm; ArrayList<Def> eqList;
     }
     static int cnt(HashMap<String, Integer> m, String k) { Integer v = m.get(k); return v == null ? 0 : v; }
     static EquipSum equipSummary(St st) {
         if (st == null || st.p.size() != st.d.size()) return null;
         boolean multi = multiTurretOn();
+        int tm = tmodeCfg();
         EquipSum c = (EquipSum) st.eqC;
-        if (c != null && c.ver == stVer && c.multi == multi) return c;
+        if (c != null && c.ver == stVer && c.multi == multi && c.tm == tm) return c;
         Rc rc = new Rc();
         HashMap<String, Integer> counts = new HashMap<>();
         ArrayList<Def> eqList = new ArrayList<>();
@@ -1499,12 +1511,17 @@ public class NewModePvp {
                 Def def = defs.map.get(id);
                 if (def != null && def.equip && def.mount) {
                     hasEq = true;
-                    if (!((!multi || id.equals(SMITE_ID) || id.equals(LUSTRE_ID)) && seen.get(id) != null)) { seen.put(id, true); eqList.add(def); }
+                    // Chế độ 0 (Dồn lực): pháo cùng loại không bắn thêm đạn -> chỉ giữ 1 nòng đại diện và tăng sát thương!
+                    // Chế độ 1 (Đa đạn): giữ toàn bộ bản sao để bắn thêm nhiều đạn (nhưng giảm 10% tốc độ/pháo cùng loại).
+                    boolean dedup = !multi || tm == 0 || id.equals(SMITE_ID) || id.equals(LUSTRE_ID);
+                    if (!(dedup && seen.get(id) != null)) { seen.put(id, true); eqList.add(def); }
                 }
             }
         }
+        int dupExtra = 0;
+        for (Integer v : counts.values()) if (v != null && v > 1) dupExtra += (v - 1);
         c = new EquipSum();
-        c.ver = stVer; c.multi = multi; c.defsReady = defs != null; c.rc = rc; c.counts = counts;
+        c.ver = stVer; c.multi = multi; c.tm = tm; c.dupExtra = dupExtra; c.defsReady = defs != null; c.rc = rc; c.counts = counts;
         c.malign = cnt(counts, MALIGN_ID) > 0; c.nLu = cnt(counts, LUSTRE_ID); c.nSm = cnt(counts, SMITE_ID);
         c.lightSpd = cnt(counts, "duo") > 0 || cnt(counts, "breach") > 0; c.hasTherdum = cnt(counts, THERDUM_ID) > 0;
         c.eqList = eqList; c.hasEq = hasEq;
@@ -2023,10 +2040,10 @@ public class NewModePvp {
             MState stt = mstate(key, u);
             stt.k = k; stt.n = n;
             stt.f = 1f; stt.rep = 1;
-            if (n > 1 && tm >= 0) {
-                if (tm == 0) stt.f = 1f + (n - 1) * TM_ATK1_PCT / 100f;
-                else if (tm == 2) stt.f = 1f + (n - 1) * TM_ATK3_PCT / 100f;
-                else stt.rep = Math.min(n, TM_MULTI_MAX);
+            if (own != null && tm == 0) {
+                // Dồn lực: pháo cùng loại không bắn thêm đạn mà tăng sát thương cho chính pháo đó
+                int sameCnt = equippedCount(own, def.id);
+                if (sameCnt > 1) stt.f = 1f + (sameCnt - 1) * TM_ATK1_PCT / 100f;
             }
             float dmSave = u.damageMultiplier;
             boolean beamKind = def.kind.equals("tractor") || def.kind.equals("point") || def.kind.equals("laser") || def.kind.equals("cont");
@@ -3279,19 +3296,28 @@ public class NewModePvp {
         }
         unit.reloadMultiplier *= Math.max(0.2f, 1 + s[4] * statK * 0.06f);
         if (pLv > 0) unit.reloadMultiplier *= 1 + pilotRldPct(pi, pLv) / 100f * pK;
-        if (histOn) {
-            unit.reloadMultiplier *= 1 + HIST_STAT_PCT;
-            if (isServer && unit.health > 0) {
-                if (unit.health < unit.maxHealth) unit.health = Math.min(unit.maxHealth, unit.health + unit.maxHealth * HIST_REGEN_PCT / 100f * Time.delta / 60f);
-                float shCap = unit.maxHealth * HIST_SHIELD_PCT;
-                if (unit.shield < shCap) unit.shield = Math.min(shCap, unit.shield + shCap * 0.1f * Time.delta / 60f);
+        if (histOn) unit.reloadMultiplier *= 1 + HIST_STAT_PCT;
+        // Chế độ hồi máu mỗi giây 1 lần (60 ticks/lần) thay vì hồi liên tục mỗi khung hình -> giảm lag & lỗi khi host
+        if (isServer && unit.health > 0 && (s[8] > 0 || histOn)) {
+            float acc = regenAcc.getOrDefault(unit.id, 0f) + Time.delta;
+            if (acc >= 60f) {
+                int secs = (int) (acc / 60f);
+                acc -= secs * 60f;
+                if (histOn) {
+                    if (HIST_REGEN_PCT > 0 && unit.health < unit.maxHealth) {
+                        unit.heal(unit.maxHealth * HIST_REGEN_PCT / 100f * secs);
+                    }
+                    float shCap = unit.maxHealth * HIST_SHIELD_PCT;
+                    if (unit.shield < shCap) unit.shield = Math.min(shCap, unit.shield + shCap * 0.1f * secs);
+                }
+                if (s[8] > 0) {
+                    float regenAmt = unit.maxHealth * s[8] * statK * REGEN_PCT / 100f * secs;
+                    VanhauField vhF = vanhauOn ? vanhauField.get(pl.id) : null;
+                    if (vhF != null && vhF.hp > 0 && vhF.hp < vhF.max) vhF.hp = Math.min(vhF.max, vhF.hp + regenAmt);
+                    else if (unit.health < unit.maxHealth * REGEN_THRESHOLD) unit.heal(regenAmt);
+                }
             }
-        }
-        if (s[8] > 0 && isServer && unit.health > 0) {
-            float regenAmt = unit.maxHealth * s[8] * statK * REGEN_PCT / 100f * Time.delta / 60f;
-            VanhauField vhF = vanhauOn ? vanhauField.get(pl.id) : null;
-            if (vhF != null && vhF.hp > 0 && vhF.hp < vhF.max) vhF.hp = Math.min(vhF.max, vhF.hp + regenAmt);
-            else if (unit.health < unit.maxHealth * REGEN_THRESHOLD) unit.health = Math.min(unit.maxHealth, unit.health + regenAmt);
+            regenAcc.put(unit.id, acc);
         }
         if (s[10] > 0) unit.damageMultiplier *= 1 + s[10] * statK * DMG_PER_ARMOR * unit.armor;
         if (eqc != null) {
@@ -3299,6 +3325,10 @@ public class NewModePvp {
                 unit.speedMultiplier *= MALIGN_SPEED_MUL;
                 unit.damageMultiplier *= 1 + MALIGN_ATK_PCT / 100f;
                 unit.reloadMultiplier *= MALIGN_RELOAD_MUL;
+            }
+            if (isPl && eqc.tm == 1 && eqc.dupExtra > 0) {
+                // Đa đạn: giảm 10% tốc độ di chuyển cho mỗi pháo cùng loại lắp thêm
+                unit.speedMultiplier *= Math.max(0.15f, 1f - TM_DUP_SPD_PENALTY * eqc.dupExtra);
             }
             if (eqc.nLu > 1) unit.damageMultiplier *= 1 + (eqc.nLu - 1) * LUSTRE_ATK_PCT / 100f;
             if (eqc.nSm > 0) unit.reloadMultiplier *= SMITE_RELOAD_MUL;
@@ -3815,6 +3845,12 @@ public class NewModePvp {
                 r0.blockHealthMultiplier = 1f; r0.blockDamageMultiplier = 1f;
             } catch (Throwable err) {}
         }
+        coreHealAcc += dt;
+        int healSecs = 0;
+        if (coreHealAcc >= 60f) {
+            healSecs = (int) (coreHealAcc / 60f);
+            coreHealAcc -= healSecs * 60f;
+        }
         for (Map.Entry<Integer, int[]> e : best.entrySet()) {
             try {
                 Team team = Team.get(e.getKey());
@@ -3823,13 +3859,13 @@ public class NewModePvp {
                 float hpMul = (1 + sv[0] * HP_PCT / 100f) / (1 - armorCut(sv[1]) / 100f);
                 rule.blockHealthMultiplier = hpMul;
                 rule.blockDamageMultiplier = 1 + sv[2] * ATK_PCT / 100f;
-                if (sv[8] > 0) {
+                if (sv[8] > 0 && healSecs > 0) {
                     Seq<CoreBlock.CoreBuild> cores = team.cores();
                     for (int i = 0; i < cores.size; i++) {
                         CoreBlock.CoreBuild cb = cores.get(i);
                         if (cb == null || !cb.isValid()) continue;
                         float mh = cb.maxHealth();
-                        if (cb.health < mh * REGEN_THRESHOLD) cb.heal(mh * sv[8] * REGEN_PCT / 100f * dt / 60f);
+                        if (cb.health < mh * REGEN_THRESHOLD) cb.heal(mh * sv[8] * REGEN_PCT / 100f * healSecs);
                     }
                 }
             } catch (Throwable err) { logOnce("corestats", "core stats failed: " + err, false); }
@@ -4629,9 +4665,13 @@ public class NewModePvp {
         }
     }
 
+    static final HashMap<Integer, Float> regenAcc = new HashMap<>();
+    static float coreHealAcc = 0f;
+
     static void worldLoad() {
         byId = new HashMap<>(); teamsCache = null; assignCache = null; coreZoneFloor = null; coreZoneChecked = false;
         ecCache.clear(); seenPl.clear(); defsCache = null; equipAng.clear(); equipBeam.clear(); hostOwner.clear();
+        regenAcc.clear(); coreHealAcc = 0f;
         if (!Vars.headless) stopBuild();
         bonusWaveT = 0; matchT = 0; lateExpAnnounced = false; shieldMinT = 0; coreShield.clear(); shieldRecs.clear(); shieldEnded = false; shieldSyncT = 0;
         shieldView = new ShieldView(); shieldFlash.clear(); shieldSeenHit.clear();
@@ -4762,7 +4802,7 @@ public class NewModePvp {
             St st = reqState(player, true);
             if (st == null) return;
             Integer k = leadInt(payload);
-            int nm = (k != null && k >= 0 && k < 3) ? k : (st.tm + 1) % 3;
+            int nm = (k != null && (k == 0 || k == 1)) ? k : ((st.tm + 1) % 2);
             if (st.tm == nm) return;
             st.tm = nm;
             toast(player, tr("[accent]Chế độ pháo: ", "[accent]Turret mode: ") + tmName(nm));
@@ -5139,13 +5179,13 @@ public class NewModePvp {
         final String[] en = {"Allow multiple turrets of the same type (PvP)", "Build owned turrets only on core-zone floor", "Must stand on core-zone to return to core", "Open upgrade page without being near core", "Wave enemies spawn randomly across the map (off = center only)"};
         for (int i = 0; i < 4; i++) { final int k = i; content.check(tr(vi[k], en[k]), v[k], (Boolc) b -> v[k] = b).pad(5).left().row(); }
         content.check(tr(vi[4], en[4]), v[4], (Boolc) b -> v[4] = b).pad(5).left().row();
-        // Chế độ lắp nhiều pháo: bấm để đổi 1 -> 2 -> 3 -> 1 (lưu khi bấm Lưu)
+        // Chế độ lắp nhiều pháo cùng loại: bấm để đổi 1 (Dồn lực) <-> 2 (Đa đạn)
         final int[] tmSel = {tmodeCfg()};
         final TextButton[] tmBtn = new TextButton[1];
         final Label tmDescLbl = new Label("");
-        content.add(tr("Chế độ lắp nhiều pháo:", "Multi-turret mode:")).padTop(6).left().row();
+        content.add(tr("Chế độ lắp nhiều pháo cùng loại:", "Duplicate turret mode:")).padTop(6).left().row();
         tmBtn[0] = content.button("", Styles.flatBordert, () -> {
-            tmSel[0] = (tmSel[0] + 1) % 3;
+            tmSel[0] = (tmSel[0] + 1) % 2;
             tmBtn[0].setText(tmName(tmSel[0]));
             tmDescLbl.setText(tmDesc(tmSel[0]));
         }).width(300).height(48).pad(6).get();
@@ -6128,24 +6168,33 @@ public class NewModePvp {
         p.add(list).width(w).pad(4).row();
     }
 
+    static String pctStr(float v) { return Strings.fixed(v, 2); }
+    static String statLvTag(St st, int idx) {
+        if (st == null || st.s == null || idx < 0 || idx >= st.s.length) return "";
+        int raw = st.s[idx];
+        int eff = (st.gAny && st.gEff != null && idx < st.gEff.length) ? st.gEff[idx] : raw;
+        String base = tr("cấp ", "Lv ") + raw + "/" + statMaxLabel(idx);
+        if (eff != raw) base += " -> " + eff;
+        return "  [lightgray](" + base + ")[]";
+    }
     static ArrayList<String[]> scanLines(St st) { Unit u = null; try { u = Vars.player.unit(); } catch (Throwable err) {} return scanLines(st, u, true); }
     static ArrayList<String[]> scanLines(St st, Unit u) { return scanLines(st, u, false); }
     static ArrayList<String[]> scanLines(St st, Unit u, boolean local) {
         if (u == null || !u.isValid()) return null;
         ArrayList<String[]> out = new ArrayList<>();
         UnitType ut = u.type;
-        int[] s = st.s;
-        out.add(new String[]{"[#ffd166]◆ " + tr("Unit đang điều khiển", "Controlled unit") + "[]", "[#ffdf6b]" + ut.localizedName + "[]  [lightgray]" + tr("(cấp ", "(tier ") + activeTier(st) + ")[]"});
+        int[] s = GearItems.war() ? GearItems.eff(st) : st.s;
+        out.add(new String[]{"[#ffd166]◆ " + tr("Unit đang điều khiển", "Controlled unit") + "[]", "[#ffdf6b]" + ut.localizedName + "[]  [lightgray]" + tr("(bậc ", "(tier ") + activeTier(st) + ")[]"});
         out.add(new String[]{"[#c792ea]★ " + tr("Pilot đang chiêu mộ", "Recruited pilot") + "[]", "[#e0b3ff]" + ChaosMode.pilotName(st.pi) + "[]" + (ChaosMode.on() ? "  [lightgray]" + ChaosMode.equippedText(st, st.pi) + "[]" : "")});
         if (ChaosMode.on()) out.add(new String[]{"[#ff6b81]✦ " + tr("Thẻ Hỗn loạn đang hoạt động", "Active Chaos cards") + "[]", ChaosMode.activeText()});
-        out.add(new String[]{"[#6bff8e]♥ " + tr("Máu", "Health") + "[]", "[#7dff9c]" + Math.round(u.health) + "[] [lightgray]/[] [#4cd137]" + Math.round(u.maxHealth) + "[]  [lightgray]" + tr("(gốc ", "(base ") + Math.round(ut.health) + ")[]"});
+        out.add(new String[]{"[#6bff8e]♥ " + tr("Máu", "Health") + "[]" + statLvTag(st, 0), "[#7dff9c]" + Math.round(u.health) + "[] [lightgray]/[] [#4cd137]" + Math.round(u.maxHealth) + "[]  [lightgray]" + tr("(gốc ", "(base ") + Math.round(ut.health) + ")[]"});
         if (st.pi == PILOT_VANHAU) {
             Player vp = null;
             try { vp = ownerPl(u); } catch (Throwable err) {}
             int vid = vp != null ? vp.id : (local ? Vars.player.id : -1);
             VanhauField vf = vanhauField.get(vid);
             String vTxt;
-            if (vf != null && vf.hp > 0) vTxt = "[cyan]" + Math.round(vf.hp) + " / " + Math.round(vf.max) + "[]  [lightgray]" + Math.round(vf.hp / Math.max(1f, vf.max) * 100) + "%[]";
+            if (vf != null && vf.hp > 0) vTxt = "[cyan]" + Math.round(vf.hp) + " / " + Math.round(vf.max) + "[]  [lightgray]" + pctStr(vf.hp / Math.max(1f, vf.max) * 100f) + "%[]";
             else {
                 Float at = vanhauCdAt.get(vid);
                 int left = at == null ? 0 : (int) Math.ceil((VANHAU_CD - (Time.time - at)) / 60);
@@ -6154,18 +6203,18 @@ public class NewModePvp {
             out.add(new String[]{"[#48dbfb]◈ " + tr("Khiên VanHau (độ bền)", "VanHau shield (durability)") + "[]", vTxt});
         }
         float hm = u.healthMultiplier > 0 ? u.healthMultiplier : 1f;
-        out.add(new String[]{"[#5ec8ff]■ " + tr("Giáp", "Armor") + "[]", "[#70d6ff]" + numStr(u.armor) + "[]  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.armor) + ")[]  [#a4e8ff]" + tr("giảm ST ", "dmg cut ") + numStr((1 - 1 / hm) * 100) + "%[]"});
-        out.add(new String[]{"[#ff6b6b]⚔ " + tr("Tấn công", "Attack") + "[]", "[#ff7b7b]" + numStr((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + "[]" + tr(" ST/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(baseAttack(ut)) + ")[]  [#ff9f43]x" + numStr(u.damageMultiplier) + "[]"});
-        out.add(new String[]{"[#4ef2d2]» " + tr("Tốc độ di chuyển", "Move speed") + "[]", "[#55efc4]" + Strings.fixed(ut.speed * u.speedMultiplier * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s") + "[]  [lightgray]" + tr("(gốc ", "(base ") + Strings.fixed(ut.speed * TILES_PER_SPEED, 2) + ")[]  [#81ecec]x" + numStr(u.speedMultiplier) + "[]"});
-        out.add(new String[]{"[#ffd166]⚡ " + tr("Tốc độ bắn", "Fire rate") + "[]", "[#ffeaa7]x" + numStr(u.reloadMultiplier) + "[]"});
-        out.add(new String[]{"[#ff9f43]✦ " + tr("Tỉ lệ bạo kích", "Crit chance") + "[]", "[#ffb142]" + numStr(ChaosMode.critChanceShown(s[5])) + "%[]"});
-        out.add(new String[]{"[#ff4757]✹ " + tr("Sát thương bạo kích", "Crit damage") + "[]", "[#ff6b81]" + numStr(ChaosMode.critDmgShown(s[5], s[6])) + "%[]"});
-        out.add(new String[]{"[#c792ea]◈ " + tr("Xuyên giáp", "Armor pierce") + "[]", "[#d6a2e8]" + (s[7] * 5) + "%[]"});
-        out.add(new String[]{"[#7bed9f]✚ " + tr("Hồi máu", "Regeneration") + "[]", "[#7bed9f]" + numStr(u.maxHealth * s[8] * REGEN_PCT / 100) + "[]" + tr(" máu/giây (khi dưới 99%)", " HP/s (below 99%)")});
-        out.add(new String[]{"[#ff6b81]☠ " + tr("Sát thương % máu tối đa", "Max HP % damage") + "[]", "[#ff7979]+" + numStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + "%[]" + tr(" máu tối đa mục tiêu/lần trúng", " target max HP per hit")});
-        out.add(new String[]{"[#70a1ff]⬡ " + tr("Sát thương theo giáp", "Armor-based damage") + "[]", "[#74b9ff]+" + numStr(s[10] * DMG_PER_ARMOR * u.armor * 100) + "%[]"});
-        out.add(new String[]{"[#eccc68]⇤ " + tr("Đẩy lùi", "Knockback") + "[]", "[#f6e58d]+" + numStr(s[11] * KNOCK_PER) + "[]"});
-        if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{"[#ff7f50]✖ " + tr("Giảm hồi máu", "Heal reduction") + "[]", "[#ff9f7f]" + Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT) + "%[]"});
+        out.add(new String[]{"[#5ec8ff]■ " + tr("Giáp", "Armor") + "[]" + statLvTag(st, 1), "[#70d6ff]" + numStr(u.armor) + "[]  [lightgray]" + tr("(gốc ", "(base ") + numStr(ut.armor) + ")[]  [#a4e8ff]" + tr("giảm ST ", "dmg cut ") + pctStr((1f - 1f / hm) * 100f) + "%[]"});
+        out.add(new String[]{"[#ff6b6b]⚔ " + tr("Tấn công", "Attack") + "[]" + statLvTag(st, 2), "[#ff7b7b]" + numStr((baseAttack(ut) + s[2] * ATK_FLAT) * u.damageMultiplier) + "[]" + tr(" ST/phát", " dmg/hit") + "  [lightgray]" + tr("(gốc ", "(base ") + numStr(baseAttack(ut)) + ")[]  [#ff9f43]x" + numStr(u.damageMultiplier) + "[]"});
+        out.add(new String[]{"[#4ef2d2]» " + tr("Tốc độ di chuyển", "Move speed") + "[]" + statLvTag(st, 3), "[#55efc4]" + Strings.fixed(ut.speed * u.speedMultiplier * TILES_PER_SPEED, 2) + " " + tr("ô/s", "tiles/s") + "[]  [lightgray]" + tr("(gốc ", "(base ") + Strings.fixed(ut.speed * TILES_PER_SPEED, 2) + ")[]  [#81ecec]x" + numStr(u.speedMultiplier) + "[]"});
+        out.add(new String[]{"[#ffd166]⚡ " + tr("Tốc độ bắn", "Fire rate") + "[]" + statLvTag(st, 4), "[#ffeaa7]x" + numStr(u.reloadMultiplier) + "[]"});
+        out.add(new String[]{"[#ff9f43]✦ " + tr("Tỉ lệ bạo kích", "Crit chance") + "[]" + statLvTag(st, 5), "[#ffb142]" + pctStr(ChaosMode.critChanceShown(s[5])) + "%[]"});
+        out.add(new String[]{"[#ff4757]✹ " + tr("Sát thương bạo kích", "Crit damage") + "[]" + statLvTag(st, 6), "[#ff6b81]" + pctStr(ChaosMode.critDmgShown(s[5], s[6])) + "%[]"});
+        out.add(new String[]{"[#c792ea]◈ " + tr("Xuyên giáp", "Armor pierce") + "[]" + statLvTag(st, 7), "[#d6a2e8]" + pctStr(s[7] * 5f) + "%[]"});
+        out.add(new String[]{"[#7bed9f]✚ " + tr("Hồi máu", "Regeneration") + "[]" + statLvTag(st, 8), "[#7bed9f]" + numStr(u.maxHealth * s[8] * REGEN_PCT / 100f) + "[]" + tr(" máu/giây (", " HP/s (") + pctStr(s[8] * REGEN_PCT) + "%, " + tr("mỗi giây 1 lần", "1x/sec") + ")"});
+        out.add(new String[]{"[#ff6b81]☠ " + tr("Sát thương % máu tối đa", "Max HP % damage") + "[]" + statLvTag(st, 9), "[#ff7979]+" + pctStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + "%[]" + tr(" máu tối đa mục tiêu/lần trúng", " target max HP per hit")});
+        out.add(new String[]{"[#70a1ff]⬡ " + tr("Sát thương theo giáp", "Armor-based damage") + "[]" + statLvTag(st, 10), "[#74b9ff]+" + pctStr(s[10] * DMG_PER_ARMOR * u.armor * 100f) + "%[]"});
+        out.add(new String[]{"[#eccc68]⇤ " + tr("Đẩy lùi", "Knockback") + "[]" + statLvTag(st, 11), "[#f6e58d]+" + numStr(s[11] * KNOCK_PER) + "[]"});
+        if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{"[#ff7f50]✖ " + tr("Giảm hồi máu", "Heal reduction") + "[]" + statLvTag(st, STAT_HEAL), "[#ff9f7f]" + pctStr(Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT)) + "%[]"});
         out.add(new String[]{"[#f9ca24]❖ " + tr("Pháo gắn", "Mounted turrets") + "[]", "[#ffd166]unit " + equipCount(st) + "/" + equipSlots(st) + "[]  [cyan]" + tr("lõi ", "core ") + coreMountCount(st) + "/" + coreMountCap(st) + "[]  [lightgray]" + tr("xây ", "built ") + builtCount(st) + "/" + maxBuilt() + "[]"});
         return out;
     }
@@ -6235,19 +6284,26 @@ public class NewModePvp {
                     ir.add("[lightgray]" + GearItems.slotName(i) + "[]  " + GearItems.col(gd.rarity) + GearItems.name(gd) + "[]  [lightgray](" + GearItems.rarName(gd.rarity) + ")[]  " + srcTag).left().wrap().growX();
                     p.add(ir).growX().padBottom(2f).row();
                 }
-            } else {
-                p.add("[#ffd166]◆ " + tr("Chỉ số đã nâng", "Upgraded stats") + "[]").left().padTop(8).padBottom(3).row();
-                int idx = 0;
-                for (int i = 0; i < STATS.length; i++) {
-                    if (!(st.s[i] > 0)) continue;
-                    any = true;
-                    Table sr = new Table(idx++ % 2 == 0 ? Styles.black5 : Styles.black3);
-                    sr.margin(4f, 8f, 4f, 8f).left();
-                    sr.add("[#70d6ff]" + tr(STATS[i].vi, STATS[i].en) + "[]  [#7dff9c]" + st.s[i] + "[][lightgray]/" + statMaxLabel(i) + "[]").left().wrap().growX();
-                    p.add(sr).growX().padBottom(2f).row();
-                }
+                if (!any) p.add("[lightgray]-[]").left().row();
             }
-            if (!any) p.add("[lightgray]-[]").left().row();
+            // Luôn hiện bảng cấp chỉ số (cấp X/20) để xem đầy đủ chi tiết unit player / host
+            p.add("[#ffd166]◆ " + tr("Cấp chỉ số (cấp / tối đa)", "Stat levels (lv / max)") + "[]").left().padTop(8).padBottom(3).row();
+            int[] effS = GearItems.war() ? GearItems.eff(st) : st.s;
+            int sidx = 0;
+            boolean anyStat = false;
+            for (int i = 0; i < STATS.length; i++) {
+                if (!statVisible(i)) continue;
+                int raw = i < st.s.length ? st.s[i] : 0;
+                int eff = i < effS.length ? effS[i] : raw;
+                if (raw == 0 && eff == 0) continue;
+                anyStat = true;
+                Table sr = new Table(sidx++ % 2 == 0 ? Styles.black5 : Styles.black3);
+                sr.margin(4f, 8f, 4f, 8f).left();
+                String effTxt = eff != raw ? ("  [accent](" + tr("hiệu lực ", "eff ") + eff + ")[]") : "";
+                sr.add("[#70d6ff]" + tr(STATS[i].vi, STATS[i].en) + "[]  [#7dff9c]" + tr("cấp ", "Lv ") + raw + "[][lightgray]/" + statMaxLabel(i) + "[]" + effTxt).left().wrap().growX();
+                p.add(sr).growX().padBottom(2f).row();
+            }
+            if (!anyStat) p.add("[lightgray]" + tr("Chưa nâng chỉ số nào (0/20)", "No stats upgraded (0/20)") + "[]").left().row();
             p.add("[#ffd166]❖ " + tr("Pháo lắp trên unit ", "Turrets mounted ") + equipCount(st) + "/" + equipSlots(st) + "[]").left().padTop(8).row();
             Defs defs = droneDefs();
             if (st.p.size() == st.d.size()) {
@@ -6359,7 +6415,7 @@ public class NewModePvp {
                 t.touchable = Touchable.enabled;
                 t.image(Icon.players).size(Vars.mobile ? 26 : 22).padRight(6);
                 t.add(tr("Unit", "Units")).get().setFontScale(0.9f);
-                t.visibility = () -> isActive() && Vars.ui.hudfrag.shown && ulistOn();
+                t.visibility = () -> isActive() && mapUiEnabled() && Vars.ui.hudfrag.shown && ulistOn();
                 t.pack();
                 if (Core.settings.has(KEY_ULIST + "-x") && Core.settings.has(KEY_ULIST + "-y")) t.setPosition(Core.settings.getFloat(KEY_ULIST + "-x", 0f), Core.settings.getFloat(KEY_ULIST + "-y", 0f));
                 else t.setPosition(4, (screenH() - t.getHeight()) / 2);
@@ -7046,10 +7102,33 @@ public class NewModePvp {
         hudPanel.setPosition(Mathf.clamp(hudPanel.x, 0f, mx), Mathf.clamp(hudPanel.y, 0f, my));
         hudSavePos();
     }
+    public static final String KEY_MAP_UI_SHOW = "newex-map-ui-show";
+    public static boolean mapUiEnabled() { return setBool(KEY_MAP_UI_SHOW, true); }
+    public static void onMapUiToggle(boolean show) {
+        try { Core.settings.put(KEY_MAP_UI_SHOW, show); } catch (Throwable ignored) {}
+        cfgBool.put(KEY_MAP_UI_SHOW, show);
+        cfgBoolAt.put(KEY_MAP_UI_SHOW, Time.time);
+        if (show) {
+            float sw = screenW(), sh = screenH();
+            if (hudPanel != null) {
+                hudPanel.setPosition((sw - hudPanel.getWidth()) * 0.5f, sh * 0.5f + 24f);
+                hudClamp();
+            }
+            if (ulistPanel != null) {
+                ulistPanel.setPosition((sw - ulistPanel.getWidth()) * 0.5f, sh * 0.5f - ulistPanel.getHeight() - 24f);
+                ulistClamp();
+            }
+            PvpDomination.centerAllDomHud();
+            LoadoutSelection.centerWaveButtonIfPresent();
+        }
+    }
+
     static void initHudPanel() {
         if (Vars.headless) return;
         Events.on(ClientLoadEvent.class, e -> {
             try {
+                Core.bundle.getProperties().put("setting." + KEY_MAP_UI_SHOW + ".name", tr("Hiện nút UI trên màn hình của map (Bật lại sẽ căn giữa)", "Show map UI buttons on screen (Re-enabling centers them)"));
+                Vars.ui.settings.game.checkPref(KEY_MAP_UI_SHOW, true, NewModePvp::onMapUiToggle);
                 Core.bundle.getProperties().put("setting." + KEY_HUD + ".name", tr("Hiện UI EXP PvP (Shift+2)", "Show PvP EXP UI (Shift+2)"));
                 Vars.ui.settings.game.checkPref(KEY_HUD, true);
             } catch (Throwable err) { Log.err("[NexPvp] cannot add HUD setting: " + err); }
@@ -7072,7 +7151,7 @@ public class NewModePvp {
             t.row();
             TextButton ub = t.button(tr("Nâng cấp", "Upgrade"), Icon.up, () -> openUpgrade()).size(W, Vars.mobile ? 36 : 28).padTop(5).get();
             ub.getLabel().setFontScale(0.8f);
-            t.visibility = () -> isActive() && !PvpDomination.isActive() && Vars.ui.hudfrag.shown && hudVisible();
+            t.visibility = () -> isActive() && !PvpDomination.isActive() && mapUiEnabled() && Vars.ui.hudfrag.shown && hudVisible();
             t.pack();
             if (Core.settings.has(KEY_HUD_X) && Core.settings.has(KEY_HUD_Y)) { t.setPosition(Core.settings.getFloat(KEY_HUD_X, 0f), Core.settings.getFloat(KEY_HUD_Y, 0f)); hudClamp(); }
             else hudCenter();
