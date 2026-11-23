@@ -644,20 +644,12 @@ public class NewModePvp {
         return Math.min(LIMIT_BUILT, v);
     }
     static boolean multiTurretOn() {
-        if (PvpDomination.isTraining()) {
-            arc.struct.StringMap tg = getTags();
-            if (tg != null && tg.containsKey(PvpDomination.TAG_TRAIN_MULTI)) return "1".equals(tg.get(PvpDomination.TAG_TRAIN_MULTI, "1"));
-        }
+        if (PvpDomination.isTraining()) return PvpDomination.trainMultiCache;
         return setBool(KEY_MULTI, true);
     }
     /** Chế độ lắp nhiều pháo hiện tại (0 = Dồn lực tăng ST, 1 = Đa đạn giảm 10% tốc độ/pháo cùng loại). */
     static int tmodeCfg() {
-        if (PvpDomination.isTraining()) {
-            arc.struct.StringMap tg = getTags();
-            if (tg != null && tg.containsKey(PvpDomination.TAG_TRAIN_TMODE)) {
-                try { return Integer.parseInt(tg.get(PvpDomination.TAG_TRAIN_TMODE, "0")) == 1 ? 1 : 0; } catch (Throwable ignored) {}
-            }
-        }
+        if (PvpDomination.isTraining()) return PvpDomination.trainTmodeCache;
         int v = getIntCached(KEY_TMODE, 0);
         return v == 1 ? 1 : 0;
     }
@@ -1486,7 +1478,7 @@ public class NewModePvp {
     static final class Rc { int atk, brl, def; }
     static final Rc EMPTY_RC = new Rc();
     static final class EquipSum {
-        int ver, tm, dupExtra; boolean multi, defsReady, malign, lightSpd, hasTherdum, hasEq;
+        int ver, tm, dupExtra, eqWeight; boolean multi, defsReady, malign, lightSpd, hasTherdum, hasEq;
         Rc rc; HashMap<String, Integer> counts; int nLu, nSm; ArrayList<Def> eqList;
     }
     static int cnt(HashMap<String, Integer> m, String k) { Integer v = m.get(k); return v == null ? 0 : v; }
@@ -1501,6 +1493,7 @@ public class NewModePvp {
         ArrayList<Def> eqList = new ArrayList<>();
         HashMap<String, Boolean> seen = new HashMap<>();
         boolean hasEq = false;
+        int eqWeight = 0;
         Defs defs = defsCache;
         for (int i = 0; i < st.d.size(); i++) {
             if (st.p.get(i) != EQUIPPED) continue;
@@ -1512,6 +1505,7 @@ public class NewModePvp {
                 Def def = defs.map.get(id);
                 if (def != null && def.equip && def.mount) {
                     hasEq = true;
+                    eqWeight += turretWeight(def);
                     // Chế độ 0 (Dồn lực): pháo cùng loại không bắn thêm đạn -> chỉ giữ 1 nòng đại diện và tăng sát thương!
                     // Chế độ 1 (Đa đạn): giữ toàn bộ bản sao để bắn thêm nhiều đạn (nhưng giảm 10% tốc độ/pháo cùng loại).
                     boolean dedup = !multi || tm == 0 || id.equals(SMITE_ID) || id.equals(LUSTRE_ID);
@@ -1522,7 +1516,7 @@ public class NewModePvp {
         int dupExtra = 0;
         for (Integer v : counts.values()) if (v != null && v > 1) dupExtra += (v - 1);
         c = new EquipSum();
-        c.ver = stVer; c.multi = multi; c.tm = tm; c.dupExtra = dupExtra; c.defsReady = defs != null; c.rc = rc; c.counts = counts;
+        c.ver = stVer; c.multi = multi; c.tm = tm; c.dupExtra = dupExtra; c.eqWeight = eqWeight; c.defsReady = defs != null; c.rc = rc; c.counts = counts;
         c.malign = cnt(counts, MALIGN_ID) > 0; c.nLu = cnt(counts, LUSTRE_ID); c.nSm = cnt(counts, SMITE_ID);
         c.lightSpd = cnt(counts, "duo") > 0 || cnt(counts, "breach") > 0; c.hasTherdum = cnt(counts, THERDUM_ID) > 0;
         c.eqList = eqList; c.hasEq = hasEq;
@@ -3331,10 +3325,17 @@ public class NewModePvp {
                 // Đa đạn: giảm 10% tốc độ di chuyển cho mỗi pháo cùng loại lắp thêm
                 unit.speedMultiplier *= Math.max(0.15f, 1f - TM_DUP_SPD_PENALTY * eqc.dupExtra);
             }
-            if (isPl && stOwn != null) {
-                // Trọng lượng pháo so với độ chịu nặng của Unit player (<=60%: không phạt; 60-100%: giảm nhẹ; >100%: quá tải giảm mạnh)
-                float wm = weightSpeedMul(stOwn);
-                if (wm < 0.999f) unit.speedMultiplier *= wm;
+            if (isPl && stOwn != null && eqc.eqWeight > 0) {
+                // O(1) không lặp mỗi frame: dùng eqc.eqWeight đã cache + chỉ số s[0], s[1] có sẵn!
+                int tier = Mathf.clamp(activeTier(stOwn), 1, TIER_LOAD_BASE.length);
+                int cap = TIER_LOAD_BASE[tier - 1] + Math.max(0, stOwn.lv - 1) * 2
+                    + Math.max(0, s[0]) * 3 + Math.max(0, s[1]) * 4;
+                float ratio = eqc.eqWeight / (float) Math.max(1, cap);
+                if (ratio > 0.60f) {
+                    float wm = ratio <= 1.00f ? (1f - (ratio - 0.60f) * 0.45f)
+                        : Math.max(0.45f, 0.82f - (ratio - 1.00f) * 1.08f);
+                    unit.speedMultiplier *= wm;
+                }
             }
             if (eqc.nLu > 1) unit.damageMultiplier *= 1 + (eqc.nLu - 1) * LUSTRE_ATK_PCT / 100f;
             if (eqc.nSm > 0) unit.reloadMultiplier *= SMITE_RELOAD_MUL;
@@ -4758,6 +4759,8 @@ public class NewModePvp {
     /** Tổng trọng lượng tất cả pháo đang gắn trực tiếp lên Unit Player. */
     static int equippedWeight(St st) {
         if (st == null || st.p.size() != st.d.size()) return 0;
+        EquipSum c = equipSummary(st);
+        if (c != null && c.defsReady) return c.eqWeight;
         Defs defs = droneDefs();
         int sum = 0;
         for (int i = 0; i < st.d.size(); i++) {
@@ -5703,11 +5706,18 @@ public class NewModePvp {
         viewBag = new ArrayList<>(bagRecent);
         p.onBuild(() -> buildBag(p));
         final String[] lastVer = {curVer()};
+        final long[] lastRebuildAt = {0L};
         p.onTick(() -> {
             if (!nearOwnCore()) { p.hide(); return; }
+            long now = Time.millis();
+            if (now - lastRebuildAt[0] < 180L) return;
             String cv = curVer();
             // Đang chạm/kéo thì hoãn dựng lại đến khi thả tay (dựng lại giữa lúc kéo làm trang giật và mất cú vuốt)
-            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; p.rebuild(); }
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) {
+                lastVer[0] = cv;
+                lastRebuildAt[0] = now;
+                p.rebuild();
+            }
         });
         bagDialog = p.dialog;
         p.show();
@@ -6178,11 +6188,18 @@ public class NewModePvp {
         viewPilot = new ArrayList<>(pilotRecent);
         p.onBuild(() -> buildPilot(p));
         final String[] lastVer = {curVer()};
+        final long[] lastRebuildAt = {0L};
         p.onTick(() -> {
             if (!nearOwnCore()) { p.hide(); return; }
+            long now = Time.millis();
+            if (now - lastRebuildAt[0] < 180L) return;
             String cv = curVer();
             // Đang chạm/kéo thì hoãn dựng lại đến khi thả tay (dựng lại giữa lúc kéo làm trang giật và mất cú vuốt)
-            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; p.rebuild(); }
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) {
+                lastVer[0] = cv;
+                lastRebuildAt[0] = now;
+                p.rebuild();
+            }
         });
         p.show();
     }
@@ -6645,11 +6662,18 @@ public class NewModePvp {
             ix -> { St s = localState(); if (ix != 1 || s == null) return ""; if (warUi) return s.gInv.size() > 0 ? "[accent]" + s.gInv.size() + "[]" : ""; return s.pts > 0 ? "[scarlet]+" + s.pts + "[]" : ""; });
         p.onBuild(() -> buildDialog(p));
         final String[] lastVer = {curVer()};
+        final long[] lastRebuildAt = {0L};
         p.onTick(() -> {
             if (!nearOwnCore()) { p.hide(); return; }
+            long now = Time.millis();
+            if (now - lastRebuildAt[0] < 180L) return;
             String cv = curVer();
             // Đang chạm/kéo thì hoãn dựng lại đến khi thả tay (dựng lại giữa lúc kéo làm trang giật và mất cú vuốt)
-            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) { lastVer[0] = cv; p.rebuild(); }
+            if (!cv.equals(lastVer[0]) && !Core.input.isTouched()) {
+                lastVer[0] = cv;
+                lastRebuildAt[0] = now;
+                p.rebuild();
+            }
         });
         upDialog = p.dialog;
         upPanel = p;

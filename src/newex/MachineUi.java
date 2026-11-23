@@ -98,23 +98,31 @@ public final class MachineUi {
     private static final String[] THEME_VI = {"Hổ phách", "Xanh Cyan", "Xanh Ngọc", "Đỏ Neon", "Tím Điện", "Vàng Kim", "Xanh Dương", "Trắng Bạc"};
     private static final String[] THEME_EN = {"Amber", "Cyan", "Emerald", "Neon Red", "Violet", "Gold", "Azure", "Silver"};
     private static final Color accentTmp = new Color(AMBER);
+    private static long cfgRefreshAt = -1L;
+    private static int cScale = 100, cWidth = 100, cHeight = 100, cBlur = 45, cBloom = 55, cAlpha = 88, cTheme = 0, cHash = 0;
 
-    public static Color accentColor() {
-        int idx = Mathf.clamp(Core.settings.getInt(KEY_THEME, 0), 0, THEME_COLORS.length - 1);
-        return accentTmp.set(THEME_COLORS[idx]);
+    private static void refreshCfg() {
+        long now = Time.millis();
+        if (cfgRefreshAt >= 0L && now - cfgRefreshAt < 250L) return;
+        cfgRefreshAt = now;
+        cScale = Mathf.clamp(Core.settings.getInt(KEY_SCALE, 100), 60, 150);
+        cWidth = Mathf.clamp(Core.settings.getInt(KEY_WIDTH, 100), 60, 150);
+        cHeight = Mathf.clamp(Core.settings.getInt(KEY_HEIGHT, 100), 60, 150);
+        cBlur = Mathf.clamp(Core.settings.getInt(KEY_BLUR, 45), 0, 100);
+        cBloom = Mathf.clamp(Core.settings.getInt(KEY_BLOOM, 55), 0, 100);
+        cAlpha = Mathf.clamp(Core.settings.getInt(KEY_ALPHA, 88), 15, 100);
+        cTheme = Mathf.clamp(Core.settings.getInt(KEY_THEME, 0), 0, THEME_COLORS.length - 1);
+        cHash = cScale * 31 + cWidth * 131 + cHeight * 521 + cTheme * 17;
     }
-    public static float scaleMul() { return Mathf.clamp(Core.settings.getInt(KEY_SCALE, 100), 60, 150) / 100f; }
-    public static float widthMul() { return Mathf.clamp(Core.settings.getInt(KEY_WIDTH, 100), 60, 150) / 100f; }
-    public static float heightMul() { return Mathf.clamp(Core.settings.getInt(KEY_HEIGHT, 100), 60, 150) / 100f; }
-    public static float blurAmt() { return Mathf.clamp(Core.settings.getInt(KEY_BLUR, 45), 0, 100) / 100f; }
-    public static float bloomAmt() { return Mathf.clamp(Core.settings.getInt(KEY_BLOOM, 55), 0, 100) / 100f; }
-    public static float bgAlpha() { return Mathf.clamp(Core.settings.getInt(KEY_ALPHA, 88), 15, 100) / 100f; }
-    private static int cfgHash() {
-        return Core.settings.getInt(KEY_SCALE, 100) * 31
-            + Core.settings.getInt(KEY_WIDTH, 100) * 131
-            + Core.settings.getInt(KEY_HEIGHT, 100) * 521
-            + Core.settings.getInt(KEY_THEME, 0) * 17;
-    }
+
+    public static Color accentColor() { refreshCfg(); return accentTmp.set(THEME_COLORS[cTheme]); }
+    public static float scaleMul() { refreshCfg(); return cScale / 100f; }
+    public static float widthMul() { refreshCfg(); return cWidth / 100f; }
+    public static float heightMul() { refreshCfg(); return cHeight / 100f; }
+    public static float blurAmt() { refreshCfg(); return cBlur / 100f; }
+    public static float bloomAmt() { refreshCfg(); return cBloom / 100f; }
+    public static float bgAlpha() { refreshCfg(); return cAlpha / 100f; }
+    private static int cfgHash() { refreshCfg(); return cHash; }
 
     /** Chiều cao chuẩn (mobile ngang) / chiều rộng chuẩn (mobile dọc) của bố cục; nhỏ hơn -> chữ to hơn. */
     private static final float REF_H = 520f, REF_W = 400f;
@@ -1112,7 +1120,7 @@ public final class MachineUi {
         if (el == null || maxW <= 40f) return;
         if (el instanceof Label) {
             Label l = (Label) el;
-            if (l.getPrefWidth() > maxW - 8f) {
+            if (l.getText().length > 16 && l.getPrefWidth() > maxW - 8f) {
                 l.setWrap(true);
             }
             return;
@@ -1120,7 +1128,7 @@ public final class MachineUi {
         if (el instanceof TextButton) {
             TextButton tb = (TextButton) el;
             Label l = tb.getLabel();
-            if (l != null) {
+            if (l != null && l.getText().length > 16) {
                 float limit = tb.getWidth() > 20f ? Math.min(maxW, tb.getWidth()) : maxW;
                 if (l.getPrefWidth() > limit - 8f) l.setWrap(true);
             }
@@ -1134,7 +1142,7 @@ public final class MachineUi {
                 float cw = maxW - 8f;
                 if (ch instanceof Label) {
                     Label l = (Label) ch;
-                    if (l.getPrefWidth() > cw) {
+                    if (l.getText().length > 16 && l.getPrefWidth() > cw) {
                         l.setWrap(true);
                         cell.maxWidth(Math.max(80f, cw));
                     }
@@ -1154,7 +1162,7 @@ public final class MachineUi {
     /**
      * Khung chính MachineUi:
      * - Nền mờ (Blur/dim) + nền bán trong suốt tùy chỉnh (%)
-     * - Viền khung đổi màu theo tông màu + hiệu ứng phát sáng Bloom nhiều lớp (additive)
+     * - Viền khung đổi màu theo tông màu + hiệu ứng phát sáng Bloom nhẹ không flush GPU (chạy mượt 60 FPS kể cả OpenGL 2 Intel!)
      * - Animation mở UI: từ chấm tâm -> vẽ 2 đường thẳng lên/xuống cùng lúc -> tách sang 2 bên trái/phải mở khung UI!
      */
     private static final class ShellFrame extends Fixed {
@@ -1168,38 +1176,30 @@ public final class MachineUi {
 
         private void drawBackdropBlur(float blur) {
             if (blur <= 0.01f) return;
-            // Phủ lớp mờ nhẹ quanh khung + bóng tỏa mềm mô phỏng độ mờ kính phía sau
-            float pad = 14f + 28f * blur;
+            float pad = 12f + 24f * blur;
             Draw.color(0.02f, 0.03f, 0.05f, blur * 0.42f);
             Fill.crect(x - pad, y - pad, width + pad * 2f, height + pad * 2f);
-            Draw.color(0.03f, 0.05f, 0.08f, blur * 0.28f);
-            Fill.crect(x - pad * 0.55f, y - pad * 0.55f, width + pad * 1.1f, height + pad * 1.1f);
             Draw.reset();
         }
 
         private void drawBorderAndBloom(float rx, float ry, float rw, float rh, Color ac, float bloom) {
+            // Dùng alpha-blend ngay trong cùng SpriteBatch (KHÔNG Draw.flush / đổi blend state mỗi frame -> hết lag OpenGL 2!)
             if (bloom > 0.01f) {
-                Draw.flush();
-                Draw.blend(Blending.additive);
-                for (int i = 1; i <= 3; i++) {
+                for (int i = 1; i <= 2; i++) {
                     float exp = i * (2.5f + 2.5f * bloom);
-                    float a = bloom * (0.26f / i);
-                    Lines.stroke(1.8f + i * 2.2f);
+                    float a = bloom * (0.28f / i);
+                    Lines.stroke(2.0f + i * 2.4f);
                     Draw.color(ac, a);
                     Lines.rect(rx - exp, ry - exp, rw + exp * 2f, rh + exp * 2f);
                 }
-                Draw.flush();
-                Draw.blend(Blending.normal);
-                Blending.normal.apply();
             }
             // Viền khung sắc nét + 4 góc đậm kiểu máy móc
             Lines.stroke(2.0f);
-            Draw.color(ac, 0.88f);
+            Draw.color(ac, 0.90f);
             Lines.rect(rx, ry, rw, rh);
             float cl = Math.min(18f, Math.min(rw, rh) * 0.22f);
-            Lines.stroke(3.2f);
+            Lines.stroke(3.0f);
             Draw.color(Color.white, 0.55f);
-            // 4 góc
             Lines.line(rx, ry + rh, rx + cl, ry + rh);
             Lines.line(rx, ry + rh, rx, ry + rh - cl);
             Lines.line(rx + rw, ry + rh, rx + rw - cl, ry + rh);
@@ -1230,16 +1230,11 @@ public final class MachineUi {
                     float halfH = height * 0.5f * ease;
 
                     if (bloom > 0.01f) {
-                        Draw.flush();
-                        Draw.blend(Blending.additive);
                         Lines.stroke(6f + 6f * bloom);
-                        Draw.color(ac, 0.35f * bloom);
+                        Draw.color(ac, 0.32f * bloom);
                         Lines.line(cx, cy, cx, cy + halfH);
                         Lines.line(cx, cy, cx, cy - halfH);
-                        Fill.circle(cx, cy, 7f + 5f * bloom);
-                        Draw.flush();
-                        Draw.blend(Blending.normal);
-                        Blending.normal.apply();
+                        Fill.circle(cx, cy, 7f + 4f * bloom);
                     }
                     Lines.stroke(2.6f);
                     Draw.color(ac, 0.98f);
@@ -1248,7 +1243,6 @@ public final class MachineUi {
                     Lines.stroke(1.2f);
                     Draw.color(Color.white, 0.95f);
                     Lines.line(cx, cy - halfH, cx, cy + halfH);
-                    // Chấm tâm & 2 đầu tia
                     Draw.color(Color.white, 1f);
                     Fill.circle(cx, cy, 3.6f * (1f - 0.35f * t));
                     Fill.circle(cx, cy + halfH, 2.8f);
@@ -1265,12 +1259,10 @@ public final class MachineUi {
 
                     drawBackdropBlur(blur * ease);
 
-                    // Nền bán trong suốt theo độ mở hiện tại
                     Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha);
                     Fill.crect(rx, y, rw, height);
                     Draw.reset();
 
-                    // Xén nội dung con nằm gọn giữa 2 đường thẳng đang mở sang 2 bên
                     if (rw > 4f && Core.scene != null) {
                         vBl.set(rx, y);
                         vTr.set(rx + rw, y + height);
@@ -1290,7 +1282,6 @@ public final class MachineUi {
                         Gl.disable(GL20.GL_SCISSOR_TEST);
                     }
 
-                    // Vẽ 2 đường thẳng dọc sáng rực đang mở sang 2 bên + viền nối trên/dưới
                     drawBorderAndBloom(rx, y, rw, height, ac, Math.max(0.45f, bloom));
                     Lines.stroke(2.8f);
                     Draw.color(Color.white, 0.85f * (1f - t * 0.45f));
@@ -1303,7 +1294,6 @@ public final class MachineUi {
                 }
             }
 
-            // Trạng thái mở hoàn chỉnh: nền blur + nền bán trong suốt + nội dung + viền & bloom
             drawBackdropBlur(blur);
             Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha);
             Fill.crect(x, y, width, height);

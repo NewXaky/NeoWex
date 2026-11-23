@@ -621,6 +621,9 @@ public final class PvpDomination {
     static float trainNextDelay = 0f;
     static boolean trainFinished = false;
     static boolean trainPromptShown = false;
+    static boolean trainActiveCache = false;
+    static boolean trainMultiCache = true;
+    static int trainTmodeCache = 0;
     static ArrayList<UnitType> trainPoolCache = null;
 
     // Trạng thái chung
@@ -667,8 +670,12 @@ public final class PvpDomination {
         return false;
     }
 
-    /** Kiểm tra hiện có đang ở chế độ Huấn Luyện Unit Player (huanluyenunitplayer.msav) không. */
+    /** Kiểm tra hiện có đang ở chế độ Huấn Luyện Unit Player (huanluyenunitplayer.msav) không (O(1) cached). */
     public static boolean isTraining() {
+        return trainActiveCache && Vars.state != null && Vars.state.isGame();
+    }
+
+    private static boolean detectTrainingMap() {
         if (Vars.state == null || !Vars.state.isGame()) return false;
         StringMap tags = NewModePvp.getTags();
         if (tags != null && "1".equals(tags.get(TAG_TRAIN, "0"))) return true;
@@ -788,6 +795,7 @@ public final class PvpDomination {
         trainNextDelay = 0f;
         trainFinished = false;
         trainPromptShown = false;
+        trainActiveCache = false;
         setCoresPassThrough(true);
         syncTimer = 0f;
         healTimer = 0f;
@@ -815,14 +823,20 @@ public final class PvpDomination {
                     }
                 });
             }
-        } else if (isTraining()) {
+        } else if (detectTrainingMap()) {
+            trainActiveCache = true;
             setCoresPassThrough(false);
             scanTrainingSpawns();
             StringMap tg = NewModePvp.getTags();
-            if (tg != null && tg.containsKey(TAG_TRAIN_MAXW)) {
-                try { trainMaxWaves = Mathf.clamp(Integer.parseInt(tg.get(TAG_TRAIN_MAXW, String.valueOf(DEFAULT_TRAIN_MAX_WAVES))), 1, 200); } catch (Throwable ignored) {}
+            if (tg != null) {
+                if (tg.containsKey(TAG_TRAIN_MAXW)) {
+                    try { trainMaxWaves = Mathf.clamp(Integer.parseInt(tg.get(TAG_TRAIN_MAXW, String.valueOf(DEFAULT_TRAIN_MAX_WAVES))), 1, 200); } catch (Throwable ignored) {}
+                }
+                trainMultiCache = "1".equals(tg.get(TAG_TRAIN_MULTI, trainDupTurretOn() ? "1" : "0"));
+                try { trainTmodeCache = Integer.parseInt(tg.get(TAG_TRAIN_TMODE, String.valueOf(trainTurretMode()))) == 1 ? 1 : 0; } catch (Throwable ignored) { trainTmodeCache = 0; }
             }
         } else {
+            trainActiveCache = false;
             setCoresPassThrough(false);
         }
     }
@@ -902,6 +916,9 @@ public final class PvpDomination {
         r.spawns = new Seq<>();
 
         setCoresPassThrough(false);
+        trainActiveCache = true;
+        trainMultiCache = dupTurret;
+        trainTmodeCache = tm;
         trainMaxWaves = clamped;
         trainWave = 0;
         trainUnit = null;
