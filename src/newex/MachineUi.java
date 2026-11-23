@@ -423,16 +423,13 @@ public final class MachineUi {
          */
         private void restoreScroll(float y) {
             if (scroll == null || y <= 0.5f) return;
-            // Hủy đà vuốt (fling) còn sót từ lần chạm trước: nếu không, sau khi trả scroll về chỗ cũ đà này kéo trang trôi đi -> giật lên xuống.
+            // Hủy đà vuốt (fling) còn sót từ lần chạm trước
             stopFling();
-            // Label wrap cần 2-3 lượt bố cục mới ra chiều cao thật; validate 1 lần thì scrollY bị kẹp theo chiều cao thấp hơn.
-            for (int i = 0; i < 3; i++) {
-                try { content.invalidateHierarchy(); scroll.validate(); } catch (Throwable ignored) {}
-            }
+            try { scroll.validate(); } catch (Throwable ignored) {}
             scroll.setScrollY(y);
             snapScroll();
             restoreY = y;
-            restoreN = 8;
+            restoreN = 4;
         }
 
         private static java.lang.reflect.Field[] flingFields;
@@ -528,8 +525,22 @@ public final class MachineUi {
 
         // ---- vòng đời mỗi khung hình
 
+        /** Kiểm tra hộp thoại này có đang bị 1 BaseDialog khác mở đè lên trên không (tránh vẽ & tick chồng 2-3 trang). */
+        boolean isCoveredByDialog() {
+            if (Core.scene == null || Core.scene.root == null) return false;
+            Seq<Element> kids = Core.scene.root.getChildren();
+            boolean seenSelf = false;
+            for (int i = 0; i < kids.size; i++) {
+                Element e = kids.get(i);
+                if (e == dialog) { seenSelf = true; continue; }
+                if (seenSelf && e instanceof BaseDialog && e.visible) return true;
+            }
+            return false;
+        }
+
         private void tick() {
             if (Core.scene == null || shell == null) return;
+            if (isCoveredByDialog()) return;
             float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
             int ch = cfgHash();
             if (sw != lastSw || sh != lastSh || ch != lastCfg) {
@@ -1213,6 +1224,7 @@ public final class MachineUi {
 
         @Override
         public void draw() {
+            if (panel.isCoveredByDialog()) return;
             Color ac = accentColor();
             float alpha = bgAlpha();
             float blur = blurAmt();

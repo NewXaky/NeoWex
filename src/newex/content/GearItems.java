@@ -254,9 +254,14 @@ final class GearItems {
         d.reg = r;
         return r;
     }
+    static final TextureRegion[] slotIconCache = new TextureRegion[TYPES];
     static TextureRegion slotIcon(int s) {
+        if (s < 0 || s >= TYPES) return Core.atlas.find("error");
+        if (slotIconCache[s] != null) return slotIconCache[s];
         UnlockableContent u = find(SLOT_ICON[s]);
-        return u != null ? u.uiIcon : Core.atlas.find("error");
+        TextureRegion r = u != null ? u.uiIcon : Core.atlas.find("error");
+        slotIconCache[s] = r;
+        return r;
     }
 
     // ------------------------------------------------------------------ chỉ số vượt trội cho vật phẩm nhặt (cao hơn hẳn đồ mua cửa hàng)
@@ -477,7 +482,7 @@ final class GearItems {
             }
         } catch (Throwable ignored) {}
     }
-    static String sig(NewModePvp.St st) { return st == null ? "" : st.gInv + "|" + st.gInvSrc + "|" + Arrays.toString(st.gEq) + "|" + Arrays.toString(st.gEqBonus) + "|" + st.gEqSrc + "|" + st.gMoveAtk + "|" + st.gSkillAtk; }
+    static String sig(NewModePvp.St st) { return st == null ? "" : st.gInv + "|" + st.gInvSrc + "|" + Arrays.toString(st.gEq) + "|" + Arrays.toString(st.gEqBonus) + "|" + st.gEqSrc + "|" + st.gSkillAtk; }
 
     // ------------------------------------------------------------------ rơi vật phẩm
     static Player playerById(int pid) {
@@ -712,47 +717,72 @@ final class GearItems {
         if (d < w) { PT[0] = x + w - d; PT[1] = y + h; return; } d -= w;
         PT[0] = x; PT[1] = y + h - d;
     }
-    /** Hiếm: thở nhẹ · Sử thi: +quầng sáng, 1 tia chạy · Huyền thoại: 2 tia + lấp lánh · Thần thoại: đổi màu cầu vồng, 3 tia, nhiều sao. */
+    /** Hiếm: thở nhẹ · Sử thi: +quầng sáng, 1 tia chạy · Huyền thoại: 2 tia + lấp lánh · Thần thoại: đổi màu cầu vồng, 3 tia, sao.
+     *  Tối ưu GPU (Intel OpenGL 2): dùng Fill.rect thay Fill.circle (giảm ~95% đỉnh tam giác) & bỏ qua nếu nằm ngoài màn hình! */
+    static final arc.math.geom.Vec2 rarTmpBl = new arc.math.geom.Vec2(), rarTmpTr = new arc.math.geom.Vec2();
     static void drawRarity(float x, float y, float w, float h, int r, float seed) {
-        if (r <= 0) return;
+        if (r <= 0 || w <= 2f || h <= 2f) return;
         int q = r == R_SHOP ? 2 : r;
         float t = Time.time + seed * 37f;
         Color c = TC;
         if (q >= 4) c.fromHsv((t * 1.1f) % 360f, 0.6f, 1f); else c.set(colorOf(r));
         TW.set(c).lerp(Color.white, 0.65f);
         float pulse = 0.5f + 0.5f * Mathf.sin(t / (q >= 3 ? 16f : 26f));
-        if (q >= 2) { Lines.stroke(5f); Draw.color(c, 0.08f + 0.12f * pulse); Lines.rect(x - 1.5f, y - 1.5f, w + 3f, h + 3f); }
-        Lines.stroke(q >= 3 ? 2.2f : 1.6f);
-        Draw.color(c, 0.4f + 0.45f * pulse);
+        if (q >= 2) { Lines.stroke(4f); Draw.color(c, 0.10f + 0.12f * pulse); Lines.rect(x - 1f, y - 1f, w + 2f, h + 2f); }
+        Lines.stroke(q >= 3 ? 2.0f : 1.5f);
+        Draw.color(c, 0.45f + 0.45f * pulse);
         Lines.rect(x + 1f, y + 1f, w - 2f, h - 2f);
         int runners = q >= 4 ? 3 : q >= 3 ? 2 : q >= 2 ? 1 : 0;
         for (int j = 0; j < runners; j++) {
             float head = t / (q >= 3 ? 140f : 210f) + j / (float) runners;
-            for (int k = 0; k < 10; k++) {
-                per(x + 1f, y + 1f, w - 2f, h - 2f, head - k * 0.006f);
-                float f = 1f - k / 10f;
+            for (int k = 0; k < 4; k++) {
+                per(x + 1f, y + 1f, w - 2f, h - 2f, head - k * 0.012f);
+                float f = 1f - k * 0.24f;
+                float sz = (2.6f * f + 0.6f) * 1.7f;
                 Draw.color(TW, f * 0.9f);
-                Fill.circle(PT[0], PT[1], 2.4f * f + 0.4f);
+                Fill.rect(PT[0], PT[1], sz, sz);
             }
         }
-        int sp = q >= 4 ? 6 : q >= 3 ? 3 : 0;
+        int sp = q >= 4 ? 3 : q >= 3 ? 2 : 0;
         for (int i = 0; i < sp; i++) {
             float ph = t / 70f + i * 0.317f + seed;
-            float a = Mathf.sin((ph % 1f) * Mathf.pi), s = 3.5f * a;
+            float a = Mathf.sin((ph % 1f) * Mathf.pi);
+            if (a < 0.08f) continue;
+            float s = 3.4f * a;
             per(x, y, w, h, (i * 0.173f + (float) Math.floor(ph) * 0.37f) % 1f);
-            Lines.stroke(1f);
+            Lines.stroke(1.1f);
             Draw.color(Color.white, a);
             Lines.line(PT[0] - s, PT[1], PT[0] + s, PT[1]);
             Lines.line(PT[0], PT[1] - s, PT[0], PT[1] + s);
-            Draw.color(c, a * 0.8f);
-            Fill.circle(PT[0], PT[1], 1.3f * a);
         }
         Draw.reset();
     }
+    static final java.util.HashMap<Integer, arc.scene.style.Drawable> tintCache = new java.util.HashMap<>();
+    static arc.scene.style.Drawable cachedTint(int r, float a) {
+        int key = (r + 10) * 1000 + Math.round(a * 100f);
+        arc.scene.style.Drawable dr = tintCache.get(key);
+        if (dr == null) {
+            Color base = r < 0 ? Color.valueOf("5b6070") : colorOf(r);
+            dr = tinted(base.cpy().a(a));
+            tintCache.put(key, dr);
+        }
+        return dr;
+    }
     static final class RarBorder extends Table {
         final int r; final float seed = (float) Math.random() * 100f;
-        RarBorder(int r, float a) { super(tinted(colorOf(r).cpy().a(a))); this.r = r; }
-        @Override public void draw() { super.draw(); drawRarity(x, y, width, height, r, seed); }
+        RarBorder(int r, float a) { super(cachedTint(r, a)); this.r = r; }
+        @Override public void draw() {
+            super.draw();
+            if (r <= 0 || Core.scene == null) return;
+            // Culling ngoài màn hình (khi nằm ngoài khung cuộn ScrollPane -> bỏ vẽ hiệu ứng viền)
+            rarTmpBl.set(0f, 0f);
+            rarTmpTr.set(width, height);
+            localToStageCoordinates(rarTmpBl);
+            localToStageCoordinates(rarTmpTr);
+            float sw = Core.scene.getWidth(), sh = Core.scene.getHeight();
+            if (rarTmpTr.x < 0f || rarTmpBl.x > sw || rarTmpTr.y < 0f || rarTmpBl.y > sh) return;
+            drawRarity(x, y, width, height, r, seed);
+        }
     }
 
 
@@ -1215,10 +1245,17 @@ final class GearItems {
         final MachineUi.Panel p = MachineUi.panel(tr("Cửa hàng vật phẩm", "Item shop"));
         p.onBuild(() -> buildShop(p));
         final String[] last = {NewModePvp.curVer()};
+        final long[] lastRebuildAt = {0L};
         p.onTick(() -> {
             if (!NewModePvp.nearOwnCore()) { p.hide(); return; }
+            long now = Time.millis();
+            if (now - lastRebuildAt[0] < 220L) return;
             String cv = NewModePvp.curVer();
-            if (!cv.equals(last[0]) && !Core.input.isTouched()) { last[0] = cv; p.rebuild(); }
+            if (!cv.equals(last[0]) && !Core.input.isTouched()) {
+                last[0] = cv;
+                lastRebuildAt[0] = now;
+                p.rebuild();
+            }
         });
         shopDialog = p.dialog;
         p.show();
@@ -1482,8 +1519,7 @@ final class GearItems {
     static Table slotTile(NewModePvp.St st, final int slot, float w) {
         Def d = def(st.gEq[slot]);
         boolean showDot = (d == null) && hasInvForRole(st, slot % TYPES);
-        Color c = d != null ? colorOf(d.rarity) : Color.valueOf("5b6070");
-        Table border = d != null ? new RarBorder(d.rarity, 0.95f) : new Table(tinted(c.cpy().a(0.5f)));
+        Table border = d != null ? new RarBorder(d.rarity, 0.95f) : new Table(cachedTint(-1, 0.5f));
         border.margin(2f);
         Table in = new Table(Styles.black8);
         in.margin(6);
