@@ -1230,9 +1230,42 @@ public final class PvpDomination {
         }
     }
 
+    private static long lastPerfLogAt = 0L;
+    private static void logLowFpsDiagnostic() {
+        if (Vars.headless || Core.graphics == null) return;
+        int fps = Core.graphics.getFramesPerSecond();
+        if (fps <= 0 || fps >= 28) return;
+        long now = Time.millis();
+        if (now - lastPerfLogAt < 4000L) return;
+        lastPerfLogAt = now;
+        try {
+            Runtime rt = Runtime.getRuntime();
+            long usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024L * 1024L);
+            long maxMb = rt.maxMemory() / (1024L * 1024L);
+            int dlgCnt = 0;
+            StringBuilder dlgs = new StringBuilder();
+            if (Core.scene != null && Core.scene.root != null) {
+                Seq<Element> kids = Core.scene.root.getChildren();
+                for (int i = 0; i < kids.size; i++) {
+                    Element e = kids.get(i);
+                    if (e instanceof BaseDialog && e.visible) {
+                        if (dlgCnt > 0) dlgs.append(',');
+                        dlgs.append(e.getClass().getSimpleName());
+                        dlgCnt++;
+                    }
+                }
+            }
+            Log.info("[NexPerf] fps=" + fps + " ram=" + usedMb + "/" + maxMb + "MB"
+                + " units=" + Groups.unit.size() + " bullets=" + Groups.bullet.size() + " all=" + Groups.all.size()
+                + " dlgs=" + dlgCnt + "[" + dlgs + "] tab=" + NewModePvp.upTab
+                + " train=" + isTraining() + "(" + trainWave + "/" + trainMaxWaves + ")");
+        } catch (Throwable ignored) {}
+    }
+
     // ===== Vòng lặp chính =====
     private static void tick() {
         if (Vars.state == null || !Vars.state.isGame() || Vars.state.isPaused()) return;
+        logLowFpsDiagnostic();
 
         // 1) Chế độ Huấn Luyện Unit Player (maps/huanluyenunitplayer.msav)
         if (isTraining()) {

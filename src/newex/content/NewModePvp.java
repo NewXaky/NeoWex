@@ -2484,7 +2484,7 @@ public class NewModePvp {
     }
     static void shieldBefore() {
         shieldRecs.clear();
-        if (Vars.net.client() || !isFull() || Vars.state.gameOver) return;
+        if (Vars.net.client() || !isFull() || Vars.state.gameOver || PvpDomination.isTraining()) return;
         matchT += Time.delta; shieldMinT -= Time.delta; shieldStamp++;
         float left = invulTicksLeft();
         boolean inv = left > 0;
@@ -4476,20 +4476,20 @@ public class NewModePvp {
                 if (full && !noPvpLoop && botT <= 0) { botT = 60; try { botManage(); } catch (Throwable err) { logOnce("botmanage", "bot manage failed: " + err, false); } }
                 if (full && !noPvpLoop) botTick();
                 if (full && !noPvpLoop) lateExpCheck();
-                if (full && !dom) eachPl(NewModePvp::eachBarracks);
-                if (full && !dom) eachPl(NewModePvp::eachSoldierAI);
+                if (full && !noPvpLoop) eachPl(NewModePvp::eachBarracks);
+                if (full && !noPvpLoop) eachPl(NewModePvp::eachSoldierAI);
                 soldSyncT -= Time.delta;
-                if (full && !dom && soldSyncT <= 0) { soldSyncT = 60; soldierSync(); }
+                if (full && !noPvpLoop && soldSyncT <= 0) { soldSyncT = 60; soldierSync(); }
                 bulletStatT -= Time.delta;
                 if (bulletStatT <= 0) { bulletStatT = 30; bulletStatOn = anyBulletStat(); }
                 if (bulletStatOn && !Groups.bullet.isEmpty()) Groups.bullet.each(NewModePvp::eachBullet);
                 wallT -= Time.delta;
-                if (full && !dom && wallT <= 0) { wallT = 30; eachPl(NewModePvp::eachWall); }
+                if (full && !noPvpLoop && wallT <= 0) { wallT = 30; eachPl(NewModePvp::eachWall); }
                 syncT -= Time.delta;
-                if (dirty && syncT <= 0) { dirty = false; syncT = 20; broadcast(); persistStore(); }
-                else if (syncT < -300) { syncT = 20; broadcast(); persistStore(); }
+                if (dirty && syncT <= 0) { dirty = false; syncT = 20; broadcast(); if (!trn) persistStore(); }
+                else if (syncT < -300) { syncT = 20; broadcast(); if (!trn) persistStore(); }
                 coreT -= Time.delta;
-                if (full && !dom && coreT <= 0) { coreT = 30; coreStatsTick(30f); }
+                if (full && !noPvpLoop && coreT <= 0) { coreT = 30; coreStatsTick(30f); }
                 passiveT -= Time.delta;
                 if (full && !noPvpLoop && passiveT <= 0) { passiveT = PASSIVE_INTERVAL; eachPl(NewModePvp::eachPassiveExp); }
                 orphanT -= Time.delta;

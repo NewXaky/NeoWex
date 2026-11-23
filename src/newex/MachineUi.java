@@ -1194,31 +1194,15 @@ public final class MachineUi {
         }
 
         private void drawBorderAndBloom(float rx, float ry, float rw, float rh, Color ac, float bloom) {
-            // Dùng alpha-blend ngay trong cùng SpriteBatch (KHÔNG Draw.flush / đổi blend state mỗi frame -> hết lag OpenGL 2!)
             if (bloom > 0.01f) {
-                for (int i = 1; i <= 2; i++) {
-                    float exp = i * (2.5f + 2.5f * bloom);
-                    float a = bloom * (0.28f / i);
-                    Lines.stroke(2.0f + i * 2.4f);
-                    Draw.color(ac, a);
-                    Lines.rect(rx - exp, ry - exp, rw + exp * 2f, rh + exp * 2f);
-                }
+                float exp = 3.0f + 3.0f * bloom;
+                Lines.stroke(3.0f + 3.5f * bloom);
+                Draw.color(ac, bloom * 0.28f);
+                Lines.rect(rx - exp, ry - exp, rw + exp * 2f, rh + exp * 2f);
             }
-            // Viền khung sắc nét + 4 góc đậm kiểu máy móc
             Lines.stroke(2.0f);
             Draw.color(ac, 0.90f);
             Lines.rect(rx, ry, rw, rh);
-            float cl = Math.min(18f, Math.min(rw, rh) * 0.22f);
-            Lines.stroke(3.0f);
-            Draw.color(Color.white, 0.55f);
-            Lines.line(rx, ry + rh, rx + cl, ry + rh);
-            Lines.line(rx, ry + rh, rx, ry + rh - cl);
-            Lines.line(rx + rw, ry + rh, rx + rw - cl, ry + rh);
-            Lines.line(rx + rw, ry + rh, rx + rw, ry + rh - cl);
-            Lines.line(rx, ry, rx + cl, ry);
-            Lines.line(rx, ry, rx, ry + cl);
-            Lines.line(rx + rw, ry, rx + rw - cl, ry);
-            Lines.line(rx + rw, ry, rx + rw, ry + cl);
             Draw.reset();
         }
 
