@@ -1112,7 +1112,7 @@ public final class MachineUi {
         if (el == null || maxW <= 40f) return;
         if (el instanceof Label) {
             Label l = (Label) el;
-            if (!l.getWrap() && l.getPrefWidth() > maxW - 8f) {
+            if (l.getPrefWidth() > maxW - 8f) {
                 l.setWrap(true);
             }
             return;
@@ -1120,7 +1120,7 @@ public final class MachineUi {
         if (el instanceof TextButton) {
             TextButton tb = (TextButton) el;
             Label l = tb.getLabel();
-            if (l != null && !l.getWrap()) {
+            if (l != null) {
                 float limit = tb.getWidth() > 20f ? Math.min(maxW, tb.getWidth()) : maxW;
                 if (l.getPrefWidth() > limit - 8f) l.setWrap(true);
             }
@@ -1134,11 +1134,9 @@ public final class MachineUi {
                 float cw = maxW - 8f;
                 if (ch instanceof Label) {
                     Label l = (Label) ch;
-                    if (!l.getWrap() && l.getPrefWidth() > cw) {
+                    if (l.getPrefWidth() > cw) {
                         l.setWrap(true);
-                        if (cell.getMaxWidth() <= 0f || cell.getMaxWidth() > cw) {
-                            cell.maxWidth(Math.max(80f, cw));
-                        }
+                        cell.maxWidth(Math.max(80f, cw));
                     }
                 } else {
                     wrapOverflowLabels(ch, Math.max(80f, cw));
