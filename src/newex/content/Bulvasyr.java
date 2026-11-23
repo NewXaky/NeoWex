@@ -318,23 +318,23 @@ public final class Bulvasyr {
             Fill.circle(e.x, e.y, 8f * e.fout());
         });
 
-        // Bụi sao: các ngôi sao 2 cánh nhỏ lấp lánh rơi lại dọc đường bay
+        // Bụi sao: các ngôi sao 2 cánh nhỏ lấp lánh rơi lại dọc đường bay (giảm 75% kích thước)
         starDustFx = new Effect(36f, e -> {
             float tw = 0.55f + 0.45f * Mathf.absin(e.id * 0.7f + e.time, 3.2f, 1f);
             Draw.blend(Blending.additive);
             Draw.color(e.color, Color.white, 0.4f * e.fout());
             Draw.alpha(e.fout() * tw);
-            drawStar(e.x, e.y - 3f * e.fin(), 0f, 5.2f * e.fout() + 0.8f, 1.0f * e.fout() + 0.2f, 2.2f * e.fout());
+            drawStar(e.x, e.y - 0.75f * e.fin(), 0f, (5.2f * e.fout() + 0.8f) * 0.25f, (1.0f * e.fout() + 0.2f) * 0.25f, 2.2f * e.fout() * 0.25f);
             Draw.blend();
             Draw.reset();
         });
 
-        // Nhịp ngân: vòng sáng mỏng nở ra khi ngôi sao đạt cỡ lớn nhất giữa đường bay
+        // Nhịp ngân: vòng sáng mỏng nở ra khi ngôi sao đạt cỡ lớn nhất giữa đường bay (giảm 75% kích thước)
         starPulseFx = new Effect(28f, e -> {
             Draw.blend(Blending.additive);
             Draw.color(e.color, 0.75f * e.fout());
-            Lines.stroke(1.6f * e.fout() + 0.3f);
-            Lines.circle(e.x, e.y, 4f + e.fin(Interp.pow2Out) * 22f);
+            Lines.stroke((1.6f * e.fout() + 0.3f) * 0.4f);
+            Lines.circle(e.x, e.y, (4f + e.fin(Interp.pow2Out) * 22f) * 0.25f);
             Draw.blend();
             Draw.reset();
         });
@@ -355,10 +355,10 @@ public final class Bulvasyr {
             );
         }).layer(Layer.groundUnit - 1f); // nằm dưới unit
 
-        // Khói vệt đuôi: tím xám nở dần, tan chậm
+        // Khói vệt đuôi: tím xám nở dần, tan chậm (giảm 75% kích thước)
         rocketSmokeFx = new Effect(38f, e -> {
             Draw.color(Tmp.c1.set(MISS_VIOLET).lerp(Color.gray, e.fin()), 0.5f * e.fout());
-            Fill.circle(e.x, e.y, 1.4f + 3.6f * e.fin(Interp.pow2Out));
+            Fill.circle(e.x, e.y, (1.4f + 3.6f * e.fin(Interp.pow2Out)) * 0.25f);
         });
 
         // Chớp lửa nòng: tia vàng-tím, vòng xung kích và khói phụt ngược
@@ -377,9 +377,9 @@ public final class Bulvasyr {
             Drawf.light(e.x, e.y, 46f * e.fout(), MISS_VIOLET, 0.7f * e.fout());
         });
 
-        // Va chạm: ngôi sao 2 cánh dài phóng to dần và tan chậm
-        rocketHitFx = new Effect(58f, 320f, e -> {
-            float grow = 0.45f + 8f * e.fin(Interp.pow2Out);
+        // Va chạm: ngôi sao 2 cánh dài phóng to dần và tan chậm (giảm 75% kích thước)
+        rocketHitFx = new Effect(58f, 120f, e -> {
+            float grow = (0.45f + 8f * e.fin(Interp.pow2Out)) * 0.25f;
             float a = e.fout(Interp.pow2);
             Draw.blend(Blending.additive);
             Draw.color(MISS_VIOLET, 0.55f * a);
@@ -390,12 +390,12 @@ public final class Bulvasyr {
             drawStar(e.x, e.y, 0f, 7f * grow, 1.2f * grow, 2.2f * grow);
             Draw.blend();
             Draw.color(MISS_STEEL, 0.6f * a);
-            Lines.stroke(1.6f * a);
-            Lines.circle(e.x, e.y, e.fin(Interp.pow2Out) * 38f);
+            Lines.stroke(1.6f * a * 0.5f);
+            Lines.circle(e.x, e.y, e.fin(Interp.pow2Out) * 38f * 0.25f);
             Draw.color(MISS_YELLOW, MISS_RED, e.fin());
-            Lines.stroke(1.3f * a);
-            Angles.randLenVectors(e.id + 7, 10, 6f + 40f * e.finpow(), (x, y) ->
-                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 1f + 5f * a)
+            Lines.stroke(1.3f * a * 0.5f);
+            Angles.randLenVectors(e.id + 7, 10, (6f + 40f * e.finpow()) * 0.25f, (x, y) ->
+                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), (1f + 5f * a) * 0.25f)
             );
             Draw.reset();
         });
@@ -1080,8 +1080,8 @@ public final class Bulvasyr {
         public SalvoMissileBulletType() {
             super(5.6f, 70f);
             lifetime = 100f;
-            width = 7.5f;
-            height = 13f;
+            width = 7.5f * 0.25f;
+            height = 13f * 0.25f;
             shrinkY = 0f;
             sprite = "missile-large";
 
@@ -1102,7 +1102,7 @@ public final class Bulvasyr {
             backColor = MISS_INDIGO;
             trailColor = MISS_VIOLET;
             hitColor = MISS_VIOLET;
-            trailWidth = 3.1f;
+            trailWidth = 3.1f * 0.25f;
             trailLength = 30;
             trailChance = 0.9f;
             trailEffect = rocketSmokeFx;
@@ -1203,7 +1203,7 @@ public final class Bulvasyr {
             drawTrail(b);
             Color hue = starHue(sd.phase + t * 0.12f);
             float breathe = 1f + 0.1f * Mathf.sin(t * 0.55f + sd.phase);
-            sc *= breathe;
+            sc *= breathe * 0.25f; // Giảm 75% kích thước đạn
             Draw.blend(Blending.additive);
             Draw.color(hue, 0.28f);
             Fill.circle(b.x, b.y, 7f * sc);
@@ -1232,7 +1232,7 @@ public final class Bulvasyr {
             int note = (b.data instanceof SwirlData) ? ((SwirlData) b.data).idx : 0;
             hitSound.at(x, y, 0.95f + note * 0.17f, hitSoundVolume * 0.6f); // 4 quả nổ nối nhau như 4 nốt nhạc đi lên
             if (!Vars.headless) {
-                for (int k = 0; k < 9; k++) starDustFx.at(x + Mathf.range(10f), y + Mathf.range(10f), 0f, starHue(k * 0.7f).cpy());
+                for (int k = 0; k < 9; k++) starDustFx.at(x + Mathf.range(2.5f), y + Mathf.range(2.5f), 0f, starHue(k * 0.7f).cpy());
                 starPulseFx.at(x, y, 0f, MISS_CYAN.cpy());
             }
 

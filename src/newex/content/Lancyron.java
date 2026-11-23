@@ -35,6 +35,7 @@ import mindustry.gen.EntityMapping;
 import mindustry.gen.Groups;
 import mindustry.gen.Hitboxc;
 import mindustry.gen.MechUnit;
+import mindustry.gen.Mechc;
 import mindustry.gen.Sounds;
 import mindustry.gen.Unit;
 import mindustry.graphics.Drawf;
@@ -180,8 +181,34 @@ public final class Lancyron {
         final OrkanRocketBulletType lightRocket = new OrkanRocketBulletType();
         final RelicShotgunBulletType heavyShotgun = new RelicShotgunBulletType();
 
-        lancyron = new UnitType("lancyron") {{
-            constructor = LancyronUnit::new;
+        lancyron = new UnitType("lancyron") {
+            @Override
+            public void drawMech(Mechc mech) {
+                Unit unit = (Unit) mech;
+                Draw.reset();
+                float e = unit.elevation;
+                float sin = Mathf.lerp(Mathf.sin(mech.walkExtend(true), 2f / Mathf.pi, 1f), 0f, e);
+                float extension = Mathf.lerp(mech.walkExtend(false), 0f, e);
+                float boostTrns = e * 2f;
+
+                // Xóa hiệu ứng pha xám (mechLegColor) làm mờ chân khi di chuyển — giữ chân sắc nét 100%!
+                Draw.mixcol(Color.white, Mathf.clamp(unit.hitTime));
+                for (int i : Mathf.signs) {
+                    Draw.rect(legRegion,
+                        unit.x + Angles.trnsx(mech.baseRotation(), extension * i - boostTrns, -boostTrns * i),
+                        unit.y + Angles.trnsy(mech.baseRotation(), extension * i - boostTrns, -boostTrns * i),
+                        legRegion.width * legRegion.scl() * i,
+                        legRegion.height * legRegion.scl() * (1f - Math.max(-sin * i, 0f) * 0.5f),
+                        mech.baseRotation() - 90f);
+                }
+                Draw.color(Color.white);
+                Draw.rect(baseRegion, unit, mech.baseRotation() - 90f);
+                Draw.mixcol();
+                Draw.reset();
+            }
+
+            {
+                constructor = LancyronUnit::new;
 
             localizedName = "Lancyron";
             description = "Cơ giáp 2 chân hạng nặng mang khiên vật lý trước ngực (550% HP), 2 bệ tên lửa Orkan xả nhanh bên hông và pháo shotgun hạng nặng Thunder ở tâm.";
@@ -266,7 +293,8 @@ public final class Lancyron {
                 ejectEffect = Fx.none;
                 bullet = heavyShotgun;
             }});
-        }};
+            }
+        };
     }
 
     private static void createEffects() {
@@ -396,13 +424,13 @@ public final class Lancyron {
             drawStar4(e.x, e.y, e.rotation, 21f * e.fin(Interp.pow2Out) + 5f, 3.6f * a, 10f * e.fin(Interp.pow2Out) + 2f);
             Draw.color(GOLD_CORE, a);
             Fill.circle(e.x, e.y, 8.5f * a);
-            // Sóng xung kích kép phủ đúng phạm vi nổ splash (32u)
-            Lines.stroke(2.6f * a);
+            // Sóng xung kích kép phủ đúng phạm vi nổ splash (1.5 ô = 12u)
+            Lines.stroke(2.2f * a);
             Draw.color(GOLD_BRIGHT, SOLAR_RED, fin);
-            Lines.circle(e.x, e.y, 3f + e.fin(Interp.pow3Out) * 32f);
-            Lines.stroke(1.2f * a);
+            Lines.circle(e.x, e.y, 2f + e.fin(Interp.pow3Out) * 15f);
+            Lines.stroke(1.1f * a);
             Draw.color(GOLD_CORE, 0.85f * a);
-            Lines.circle(e.x, e.y, 2f + e.fin(Interp.pow2Out) * 20f);
+            Lines.circle(e.x, e.y, 1.5f + e.fin(Interp.pow2Out) * 10f);
             // Mảnh tia lửa nóng văng tung tóe điện ảnh
             Lines.stroke(1.5f * fout);
             Draw.color(GOLD_CORE, SOLAR_RED, fin);
@@ -580,7 +608,7 @@ public final class Lancyron {
             height = 13f;
             hitSize = 5f;
             splashDamage = 90f;
-            splashDamageRadius = 32f;
+            splashDamageRadius = 1.5f * Vars.tilesize; // Phạm vi nổ 1.5 ô (12 đơn vị)
             pierce = false;
             pierceArmor = false;
             collidesAir = true;
@@ -656,9 +684,9 @@ public final class Lancyron {
 
     private static class RelicShotgunBulletType extends BasicBulletType {
         RelicShotgunBulletType() {
-            super(20.0f, 235f);
-            lifetime = 13.5f; // Tốc bay siêu cao (20.0) nhưng thời gian tồn tại thấp (~270u)
-            drag = 0.012f;
+            super(24.0f, 235f);
+            lifetime = RANGE / 24.0f; // Bay nhanh (24.0) và thời gian tồn tại vừa đúng phạm vi bắn RANGE (463.6)
+            drag = 0f;
             width = 6f;
             height = 18f;
             hitSize = 5.5f;
@@ -730,6 +758,8 @@ public final class Lancyron {
         public float physShieldHp = 0f;
         public boolean physShieldDamaged = false;
         public float shieldFlash = 0f;
+        public float shieldOpen = 0f; // 0 = đóng khi không bắn, 1 = mở khiên + 2 cánh giáp khi đang bắn
+        private float openHold = 0f;
 
         private float thrusterTimer = 0f;
         private int lastStep = -1;
@@ -966,6 +996,18 @@ public final class Lancyron {
             ensureShieldInit();
             if (shieldFlash > 0f) shieldFlash = Math.max(0f, shieldFlash - Time.delta / 10f);
 
+            // Chỉ mở khiên vật lý khi đang bắn (giống bản cũ)
+            boolean firing = isShooting();
+            if (!firing && mounts != null) {
+                for (WeaponMount m : mounts) {
+                    if (m.recoil > 0.12f || m.shoot) { firing = true; break; }
+                }
+            }
+            if (firing) openHold = Math.max(openHold, 40f);
+            if (openHold > 0f) openHold = Math.max(0f, openHold - Time.delta);
+            float targetOpen = openHold > 0f ? 1f : 0f;
+            shieldOpen = Mathf.lerpDelta(shieldOpen, targetOpen, targetOpen > shieldOpen ? 0.18f : 0.07f);
+
             if (isShieldActive() && !dead) {
                 interceptFrontBullets();
             }
@@ -1170,9 +1212,10 @@ public final class Lancyron {
             float fwdX = Angles.trnsx(rot, 1f), fwdY = Angles.trnsy(rot, 1f);
             float rightX = Angles.trnsx(rot - 90f, 1f), rightY = Angles.trnsy(rot - 90f, 1f);
 
-            // Khiên vật lý trước ngực cố định (KHÔNG animation chuyển động)
-            float sx = lu.x + fwdX * 15.8f;
-            float sy = lu.y + fwdY * 15.8f;
+            // Khi bắn: khiên đẩy tiến & mở 2 cánh giáp bản lề như bản cũ
+            float open = lu.shieldOpen;
+            float sx = lu.x + fwdX * (15.8f + open * 3.4f);
+            float sy = lu.y + fwdY * (15.8f + open * 3.4f);
 
             float zPrev = Draw.z();
             Draw.z(Layer.groundUnit + 0.05f);
@@ -1182,13 +1225,26 @@ public final class Lancyron {
                 if (shieldWingRegion == null) shieldWingRegion = Core.atlas.find("newex-lancyron-shield-wing");
             }
 
+            // 2 thanh piston thủy lực nối từ ngực khi khiên mở lúc bắn
+            if (open > 0.05f) {
+                Lines.stroke(2.2f);
+                Draw.color(STEEL_LIGHT, 0.85f);
+                for (int s = -1; s <= 1; s += 2) {
+                    float bx = lu.x + fwdX * 11.5f + rightX * (s * 4.8f);
+                    float by = lu.y + fwdY * 11.5f + rightY * (s * 4.8f);
+                    float ex = sx - fwdX * 3.5f + rightX * (s * 4.8f);
+                    float ey = sy - fwdY * 3.5f + rightY * (s * 4.8f);
+                    Lines.line(bx, by, ex, ey);
+                }
+            }
+
             Color tint = Tmp.c1.set(Color.white).lerp(GOLD_CORE, lu.shieldFlash * 0.72f);
 
-            // 1) Vẽ 2 cánh giáp bên hông cố định
+            // 1) Vẽ 2 cánh giáp bản lề trái/phải mở rộng khi bắn
             if (shieldWingRegion != null && shieldWingRegion.found()) {
-                float wingOut = 10.6f;
-                float wingBack = -2.8f;
-                float wingAngle = 6f;
+                float wingOut = 10.6f + open * 2.1f;
+                float wingBack = -2.8f + open * 1.1f;
+                float wingAngle = 6f + open * 18f;
                 float ww = shieldWingRegion.width * Draw.scl;
                 float wh = shieldWingRegion.height * Draw.scl;
 
@@ -1202,10 +1258,24 @@ public final class Lancyron {
                 Draw.rect(shieldWingRegion, lx, ly, -ww, wh, rot - 90f + wingAngle);
             }
 
-            // 2) Vẽ tấm khiên chính trước ngực cố định
+            // 2) Vẽ tấm khiên chính trước ngực
             if (shieldCenterRegion != null && shieldCenterRegion.found()) {
                 Draw.color(tint);
                 Draw.rect(shieldCenterRegion, sx, sy, rot - 90f);
+            }
+
+            // Mạch năng lượng vàng sáng lên khi mở khiên lúc bắn
+            float energyA = Math.max(open * 0.45f, lu.shieldFlash * 0.85f);
+            if (energyA > 0.04f) {
+                Draw.blend(Blending.additive);
+                Draw.color(GOLD_BRIGHT, energyA);
+                Lines.stroke(1.4f + lu.shieldFlash * 1.2f);
+                float seamW = 11.5f + open * 1.5f;
+                Lines.line(
+                    sx - rightX * seamW + fwdX * 1.5f, sy - rightY * seamW + fwdY * 1.5f,
+                    sx + rightX * seamW + fwdX * 1.5f, sy + rightY * seamW + fwdY * 1.5f
+                );
+                Draw.blend();
             }
 
             // Thanh độ bền khiên (chỉ đồng minh thấy)
