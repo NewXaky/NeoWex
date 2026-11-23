@@ -121,29 +121,13 @@ public final class NexDynamicShadows {
     private static final Mat shadowProj = new Mat();
 
     private static int saveFboAndViewport() {
-        int prevFbo = 0;
-        try {
-            fboQueryBuf.clear();
-            fboQueryBuf.put(0, 0);
-            Gl.getIntegerv(GL20.GL_FRAMEBUFFER_BINDING, fboQueryBuf);
-            prevFbo = fboQueryBuf.get(0);
-        } catch (Throwable ignored) {}
+        // Trigger.preDraw luôn chạy trước WorldRenderer khi FBO mặc định là 0 và viewport = toàn màn hình.
+        // Không gọi Gl.getIntegerv mỗi frame để tránh stall đường ống lệnh GPU Intel OpenGL 2 (gây lag cả máy khi live)!
         savedVpX = 0;
         savedVpY = 0;
         savedVpW = Math.max(1, Core.graphics.getWidth());
         savedVpH = Math.max(1, Core.graphics.getHeight());
-        try {
-            vpQueryBuf.clear();
-            Gl.getIntegerv(GL20.GL_VIEWPORT, vpQueryBuf);
-            int vw = vpQueryBuf.get(2), vh = vpQueryBuf.get(3);
-            if (vw > 0 && vh > 0) {
-                savedVpX = vpQueryBuf.get(0);
-                savedVpY = vpQueryBuf.get(1);
-                savedVpW = vw;
-                savedVpH = vh;
-            }
-        } catch (Throwable ignored) {}
-        return prevFbo;
+        return 0;
     }
 
     private static void restoreFboAndViewport(int prevFbo) {
@@ -350,9 +334,21 @@ public final class NexDynamicShadows {
         shadDirty = true;
     }
 
+    private static boolean isLowMemOrIntelGl2() {
+        try {
+            if (Runtime.getRuntime().maxMemory() <= 2400L * 1024L * 1024L) return true;
+            if (Core.graphics != null && Core.graphics.getGLVersion() != null) {
+                String v = String.valueOf(Core.graphics.getGLVersion().vendorString).toLowerCase();
+                if (v.contains("intel")) return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
     private static void loadSettings() {
         enabled = Core.settings.getBool(KEY_ENABLED, DEF_ENABLED);
-        liteMode = Core.settings.getBool(KEY_LITE, DEF_LITE);
+        boolean defLite = DEF_LITE || isLowMemOrIntelGl2();
+        liteMode = Core.settings.getBool(KEY_LITE, defLite);
         viewOnly = Core.settings.getBool(KEY_VIEWONLY, DEF_VIEWONLY);
         dayNightCycle = Core.settings.getBool(KEY_DAYNIGHT, DEF_DAYNIGHT);
         rotateShadows = Core.settings.getBool(KEY_ROTATE, DEF_ROTATE);
