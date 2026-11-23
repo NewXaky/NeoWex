@@ -1106,6 +1106,7 @@ public class NewModePvp {
         final HashMap<String, Object> ov = new HashMap<>();
         Item ammoItem; boolean ammoItemSet, errLogged, warned;
         BulletType eqBullet; boolean eqBulletSet;
+        int weight = -1;
         Def(String id, Block block, int cost, boolean mount, String kind) { this.id = id; this.block = block; this.cost = cost; this.mount = mount; this.kind = kind; }
     }
     static final class Defs { final ArrayList<Def> list = new ArrayList<>(); final HashMap<String, Def> map = new HashMap<>(); }
@@ -3330,6 +3331,11 @@ public class NewModePvp {
                 // Đa đạn: giảm 10% tốc độ di chuyển cho mỗi pháo cùng loại lắp thêm
                 unit.speedMultiplier *= Math.max(0.15f, 1f - TM_DUP_SPD_PENALTY * eqc.dupExtra);
             }
+            if (isPl && stOwn != null) {
+                // Trọng lượng pháo so với độ chịu nặng của Unit player (<=60%: không phạt; 60-100%: giảm nhẹ; >100%: quá tải giảm mạnh)
+                float wm = weightSpeedMul(stOwn);
+                if (wm < 0.999f) unit.speedMultiplier *= wm;
+            }
             if (eqc.nLu > 1) unit.damageMultiplier *= 1 + (eqc.nLu - 1) * LUSTRE_ATK_PCT / 100f;
             if (eqc.nSm > 0) unit.reloadMultiplier *= SMITE_RELOAD_MUL;
             if (eqc.nSm > 1) unit.damageMultiplier *= 1 + (eqc.nSm - 1) * SMITE_ATK_PCT / 100f;
@@ -4710,6 +4716,77 @@ public class NewModePvp {
     static int builtCount(St st) { int n = 0; for (int i = 0; i < st.p.size(); i++) if (st.p.get(i) >= 0) n++; return n; }
     static int equipCount(St st) { int n = 0; for (int i = 0; i < st.p.size(); i++) if (st.p.get(i) == EQUIPPED) n++; return n; }
     static int equipSlots(St st) { return Math.min(EQUIP_SLOT_CAP, Math.max(1, st.lv)); }
+
+    // ===== Hệ thống Trọng Lượng Pháo & Độ Chịu Nặng của Unit Player =====
+    private static final int[] TIER_LOAD_BASE = {35, 60, 95, 140, 200, 260, 300, 300, 350, 380, 380};
+
+    /** Trọng lượng của 1 pháo khi lắp lên Unit: tính theo kích thước + sức mạnh sát thương (cân bằng pháo rẻ nhưng quá mạnh) + giá. */
+    static int turretWeight(Def def) {
+        if (def == null || def.block == null) return 6;
+        if (def.weight > 0) return def.weight;
+        int sz = Math.max(1, def.block.size);
+        int dmg = Math.max(0, turretDmg(def));
+        float w = sz * sz * 2.2f + (float) Math.sqrt(dmg) * 0.75f + def.cost * 0.45f;
+        if (def.id.equals(MALIGN_ID) || def.id.equals(SMITE_ID) || def.id.equals(LUSTRE_ID)) w *= 1.35f;
+        def.weight = Math.max(4, Math.round(w));
+        return def.weight;
+    }
+
+    static String weightTierTag(int w) {
+        if (w <= 15) return "[#7dff9c]" + tr("Nhẹ", "Light") + "[]";
+        if (w <= 35) return "[#ffd166]" + tr("Vừa", "Medium") + "[]";
+        if (w <= 65) return "[orange]" + tr("Nặng", "Heavy") + "[]";
+        return "[scarlet]" + tr("Siêu nặng", "Super Heavy") + "[]";
+    }
+
+    /** Độ chịu nặng chuẩn của Unit Player (phụ thuộc bậc Unit + Cấp + chỉ số Máu/Giáp). */
+    static int unitLoadCap(St st) {
+        if (st == null) return 35;
+        int tier = Mathf.clamp(activeTier(st), 1, TIER_LOAD_BASE.length);
+        int base = TIER_LOAD_BASE[tier - 1];
+        int[] eff = GearItems.war() ? GearItems.eff(st) : st.s;
+        int hpLv = eff != null && eff.length > 0 ? Math.max(0, eff[0]) : 0;
+        int armLv = eff != null && eff.length > 1 ? Math.max(0, eff[1]) : 0;
+        return base + Math.max(0, st.lv - 1) * 2 + hpLv * 3 + armLv * 4;
+    }
+
+    /** Ngưỡng chịu nặng tối đa tuyệt đối (125% độ chịu nặng chuẩn — vượt quá không thể lắp thêm pháo lên unit). */
+    static int unitHardLoadMax(St st) {
+        return Math.round(unitLoadCap(st) * 1.25f);
+    }
+
+    /** Tổng trọng lượng tất cả pháo đang gắn trực tiếp lên Unit Player. */
+    static int equippedWeight(St st) {
+        if (st == null || st.p.size() != st.d.size()) return 0;
+        Defs defs = droneDefs();
+        int sum = 0;
+        for (int i = 0; i < st.d.size(); i++) {
+            if (st.p.get(i) != EQUIPPED) continue;
+            Def def = defs.map.get(st.d.get(i));
+            if (def != null) sum += turretWeight(def);
+        }
+        return sum;
+    }
+
+    /** Hệ số tốc độ di chuyển theo tỉ lệ trọng lượng pháo / độ chịu nặng của Unit. */
+    static float weightSpeedMul(St st) {
+        int w = equippedWeight(st);
+        if (w <= 0) return 1f;
+        float ratio = w / (float) Math.max(1, unitLoadCap(st));
+        if (ratio <= 0.60f) return 1f;
+        if (ratio <= 1.00f) return 1f - (ratio - 0.60f) * 0.45f; // 1.00 -> 0.82 (-18%)
+        return Math.max(0.45f, 0.82f - (ratio - 1.00f) * 1.08f);  // Quá tải: 0.82 -> 0.55 (-45% ở 125%)
+    }
+
+    static String loadSummaryText(St st) {
+        int w = equippedWeight(st), cap = unitLoadCap(st), hard = unitHardLoadMax(st);
+        float pct = w * 100f / Math.max(1, cap);
+        String col = w > cap ? "[scarlet]" : (pct > 60f ? "[#ffd166]" : "[#7dff9c]");
+        String tag = w > cap ? tr("QUÁ TẢI", "OVERLOAD") : (pct > 60f ? tr("Nặng", "Heavy") : tr("Nhẹ", "Light"));
+        float pen = (1f - weightSpeedMul(st)) * 100f;
+        String spdTxt = pen > 0.05f ? ("  [scarlet]-" + pctStr(pen) + "% " + tr("tốc độ", "speed") + "[]") : "";
+        return col + w + "/" + cap + " (" + pctStr(pct) + "% • " + tag + ")[]  [gray]max " + hard + "[]" + spdTxt;
+    }
     static St localState() { return Vars.player == null ? null : byId.get(Vars.player.id); }
     static boolean nearOwnCore() {
         if (Vars.player == null) return false;
@@ -4845,6 +4922,13 @@ public class NewModePvp {
             if (mode.equals("e")) {
                 if (!d.equip || !d.mount) { toast(player, tr("[scarlet]Pháo này không thể gắn lên unit!", "[scarlet]This turret cannot be mounted!")); return; }
                 if (equipCount(st) >= equipSlots(st)) { toast(player, tr("[scarlet]Hết ô gắn!", "[scarlet]No free mount slot!")); return; }
+                int nextW = equippedWeight(st) + turretWeight(d);
+                int hardMax = unitHardLoadMax(st);
+                if (nextW > hardMax) {
+                    toast(player, tr("[scarlet]Quá tải trọng lượng Unit (" + nextW + "/" + hardMax + ")! Hãy nâng Unit / Máu / Giáp hoặc tháo pháo nặng.",
+                        "[scarlet]Unit load exceeded (" + nextW + "/" + hardMax + ")! Upgrade Unit / HP / Armor or unmount heavy turrets."));
+                    return;
+                }
                 st.p.set(idx, EQUIPPED);
             } else if (mode.equals("c")) {
                 if (player.team() == null || player.team().core() == null) { toast(player, tr("[scarlet]Không tìm thấy lõi để lắp pháo!", "[scarlet]No core found to mount turret!")); return; }
@@ -5507,7 +5591,10 @@ public class NewModePvp {
         card.add(txt[0]).width(inner).left().wrap().minWidth(0).padTop(4).row();
         card.add(txt[1]).width(inner).left().wrap().minWidth(0).padTop(2).row();
         int dmg = turretDmg(def);
-        if (dmg > 0) card.add("[scarlet]" + tr("Sát thương: ", "Damage: ") + dmg + "[]").width(inner).left().wrap().minWidth(0).padTop(2).row();
+        int wt = turretWeight(def);
+        String statLine = (dmg > 0 ? "[scarlet]" + tr("Sát thương: ", "Damage: ") + dmg + "[]  •  " : "")
+            + "[#ffd166]" + tr("Trọng lượng: ", "Weight: ") + wt + "[] (" + weightTierTag(wt) + ")";
+        card.add(statLine).width(inner).left().wrap().minWidth(0).padTop(2).row();
         return card;
     }
 
@@ -5529,11 +5616,13 @@ public class NewModePvp {
         final float W = pnl.innerW();
         final boolean narrow = narrowAt(W);
         boolean slotFull = equipCount(st) >= equipSlots(st), builtFull = builtCount(st) >= maxBuilt();
+        int curLoadW = equippedWeight(st), hardLoadMax = unitHardLoadMax(st);
         Table head = new Table(Styles.black6);
         head.margin(8);
         head.add("[accent]" + tr("Túi đồ", "Bag") + "[]").left().expandX();
         head.add("[lightgray]" + tr("Đang lắp: ", "Mounted: ") + "[white]" + equipCount(st) + "/" + equipSlots(st) + "[]  [lightgray]" + tr("Xây: ", "Built: ") + "[white]" + builtCount(st) + "/" + maxBuilt() + "[]").right();
         head.row();
+        head.add("[lightgray]" + tr("Độ chịu nặng Unit: ", "Unit Load: ") + "[]" + loadSummaryText(st)).colspan(2).left().wrap().width(Math.max(140f, W - 24f)).padTop(3).row();
         head.add(tmodeBox(st, W - 24f)).colspan(2).growX().padTop(4);
         h.add(head).growX().pad(4).row();
 
@@ -5571,7 +5660,8 @@ public class NewModePvp {
             Table row = new Table(Styles.black6);
             row.margin(8);
             row.add(new Image(def.block.uiIcon)).size(iconSz).padRight(10);
-            String nm = "[white]" + def.block.localizedName + "[]  [accent]x" + total + "[]"
+            int defWt = turretWeight(def);
+            String nm = "[white]" + def.block.localizedName + "[]  [accent]x" + total + "[]  [#ffd166]" + tr("Nặng: ", "Wt: ") + defWt + "[] (" + weightTierTag(defWt) + ")"
                 + (g.on.size() > 0 ? "\n[lightgray]" + tr("Đang lắp unit: ", "On unit: ") + "[white]" + g.on.size() + "[]" : "")
                 + (g.core.size() > 0 ? "\n[lightgray]" + tr("Đang lắp lõi: ", "On core: ") + "[cyan]" + g.core.size() + "[]" : "")
                 + (g.built.size() > 0 ? "\n[lightgray]" + tr("Đã xây: ", "Built: ") + "[white]" + g.built.size() + "[]" : "");
@@ -5582,10 +5672,11 @@ public class NewModePvp {
             final int backIdx = g.on.size() > 0 ? g.on.get(g.on.size() - 1) : (g.core.size() > 0 ? g.core.get(g.core.size() - 1) : (g.built.size() > 0 ? g.built.get(g.built.size() - 1) : -1));
             final int sellIdx = bagIdx >= 0 ? bagIdx : backIdx;
             final String did = def.id;
+            boolean tooHeavy = curLoadW + defWt > hardLoadMax;
             TextButton ub = bt.button(tr("Tháo", "Unmount"), () -> { bagTouch(did); send(REQ_MODE, backIdx + "|u"); }).size(btnW, btnH()).padLeft(4).get();
             ub.setDisabled(backIdx < 0);
             TextButton mb = bt.button(tr("Lắp", "Mount"), () -> { bagTouch(did); send(REQ_MODE, bagIdx + "|e"); }).size(btnW, btnH()).padLeft(3).get();
-            mb.setDisabled(bagIdx < 0 || slotFull || !def.equip || !def.mount);
+            mb.setDisabled(bagIdx < 0 || slotFull || tooHeavy || !def.equip || !def.mount);
             TextButton cb = bt.button(tr("Lắp lõi", "Core"), () -> { bagTouch(did); send(REQ_MODE, bagIdx + "|c"); }).size(btnW + 6f, btnH()).padLeft(3).get();
             cb.setDisabled(bagIdx < 0 || coreFull || equipBullet(def) == null);
             TextButton bb = bt.button(tr("Xây", "Build"), () -> { bagTouch(did); startBuild(did); }).size(btnW, btnH()).padLeft(3).get();
@@ -6216,6 +6307,7 @@ public class NewModePvp {
         out.add(new String[]{"[#eccc68]⇤ " + tr("Đẩy lùi", "Knockback") + "[]" + statLvTag(st, 11), "[#f6e58d]+" + numStr(s[11] * KNOCK_PER) + "[]"});
         if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{"[#ff7f50]✖ " + tr("Giảm hồi máu", "Heal reduction") + "[]" + statLvTag(st, STAT_HEAL), "[#ff9f7f]" + pctStr(Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT)) + "%[]"});
         out.add(new String[]{"[#f9ca24]❖ " + tr("Pháo gắn", "Mounted turrets") + "[]", "[#ffd166]unit " + equipCount(st) + "/" + equipSlots(st) + "[]  [cyan]" + tr("lõi ", "core ") + coreMountCount(st) + "/" + coreMountCap(st) + "[]  [lightgray]" + tr("xây ", "built ") + builtCount(st) + "/" + maxBuilt() + "[]"});
+        out.add(new String[]{"[#ffb347]⚖ " + tr("Trọng lượng / Độ chịu nặng", "Turret weight / Load cap") + "[]", loadSummaryText(st)});
         return out;
     }
 
