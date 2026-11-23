@@ -143,6 +143,7 @@ public class NexMod extends Mod {
         MatchTimer.init();
         PerfCore.init();
         DecalLimiter.init(); // rút ngắn thời gian tồn tại vết đen dưới đất
+        NexProfiler.init(); // đo hiệu năng, ghi newex-profile.txt
         NexNet.init();
         NexFree.init();
         MachineUi.init();
