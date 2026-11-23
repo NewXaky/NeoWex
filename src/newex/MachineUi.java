@@ -132,8 +132,12 @@ public final class MachineUi {
     private static final float MIN_SCALE = 0.35f, MAX_SCALE = 4f;
     /** Thời gian trượt trang (ms): thoát / vào. Giữ y như giao diện cũ. */
     public static final int EXIT_MS = 90, ENTER_MS = 170;
-    /** Thời gian animation mở khung MachineUi (ms): pha 1 vẽ 2 tia dọc từ tâm, pha 2 tách sang 2 bên trái/phải. */
-    private static final int OPEN_P1_MS = 150, OPEN_P2_MS = 220, OPEN_TOTAL_MS = OPEN_P1_MS + OPEN_P2_MS;
+    /** Thời gian animation mở khung MachineUi (ms):
+     *  pha 1 vẽ 2 tia dọc từ tâm, pha 2 mở cửa sang 2 bên hết cỡ (chưa hiện nội dung),
+     *  pha 3 sau khi mở hoàn toàn mới quét hologram và hiện dần nội dung từng lớp. */
+    private static final int OPEN_P1_MS = 140, OPEN_P2_MS = 220, OPEN_P3_MS = 320;
+    private static final int OPEN_DOOR_MS = OPEN_P1_MS + OPEN_P2_MS;
+    private static final int OPEN_TOTAL_MS = OPEN_DOOR_MS + OPEN_P3_MS;
 
     private static boolean pvpFlag = false;
     private static Object lastMap;
@@ -303,9 +307,14 @@ public final class MachineUi {
         private int lastCfg = Integer.MIN_VALUE;
         private boolean moved;
         private float maxScale = MAX_SCALE;
-        // animation mở giao diện (tâm -> 2 tia lên/xuống -> tách sang 2 bên trái/phải)
+        // animation mở / đóng giao diện (tâm -> 2 tia dọc -> mở cửa 100% -> quét hologram hiện nội dung)
         long openT0 = 0L;
         boolean opening = false;
+        boolean closingExplicit = false;
+        boolean fadeSeenFull = false;
+        float peakDlgA = 0f;
+        Table topBarRef, tabsRowRef, bodyRef;
+        Image divLineRef;
         // khôi phục vị trí cuộn sau khi dựng lại nội dung
         private float restoreY;
         private int restoreN;
@@ -396,6 +405,19 @@ public final class MachineUi {
         void startOpenAnim() {
             openT0 = Time.millis();
             opening = true;
+            closingExplicit = false;
+            fadeSeenFull = false;
+            peakDlgA = 0f;
+            if (keepButtons && dialog.buttons != null) dialog.buttons.color.a = 0f;
+        }
+
+        boolean isClosing() {
+            float a = clamp(dialog.color.a, 0f, 1f);
+            if (a > peakDlgA) peakDlgA = a;
+            if (a >= 0.98f || (opening && Time.millis() - openT0 > 220L)) fadeSeenFull = true;
+            if (closingExplicit) return true;
+            if (peakDlgA >= 0.5f && a < peakDlgA - 0.02f) return true;
+            return fadeSeenFull && a < 0.995f;
         }
 
         private void autoWrapPanel() {
@@ -405,7 +427,11 @@ public final class MachineUi {
             wrapOverflowLabels(footer, mw);
         }
 
-        public void hide() { dialog.hide(); }
+        public void hide() {
+            closingExplicit = true;
+            opening = false;
+            dialog.hide();
+        }
 
         /** Dựng lại nội dung ngay, không hiệu ứng (giữ nguyên vị trí cuộn). */
         public void rebuild() {
@@ -519,7 +545,12 @@ public final class MachineUi {
 
         private void onHidden() {
             exiting = false;
+            opening = false;
+            closingExplicit = false;
+            fadeSeenFull = false;
+            peakDlgA = 0f;
             pendingApply = null;
+            if (keepButtons && dialog.buttons != null) dialog.buttons.color.a = 1f;
             if (slide != null) slide.stop();
         }
 
@@ -550,6 +581,22 @@ public final class MachineUi {
             }
             fit();
             place();
+            if (keepButtons && dialog.buttons != null) {
+                if (opening && !isClosing()) {
+                    long dt = Math.max(0L, Time.millis() - openT0);
+                    if (dt < OPEN_DOOR_MS) {
+                        dialog.buttons.color.a = 0f;
+                    } else if (dt < OPEN_TOTAL_MS) {
+                        float t3 = clamp((dt - OPEN_DOOR_MS) / (float) OPEN_P3_MS, 0f, 1f);
+                        float b = clamp((t3 - 0.35f) / 0.55f, 0f, 1f);
+                        dialog.buttons.color.a = b * b * (3f - 2f * b);
+                    } else {
+                        dialog.buttons.color.a = 1f;
+                    }
+                } else if (dialog.buttons.color.a < 0.999f) {
+                    dialog.buttons.color.a = 1f;
+                }
+            }
             if (restoreN > 0 && scroll != null) {
                 // Người dùng đang chạm/kéo: không giành quyền cuộn với họ
                 if (Core.input.isTouched()) restoreN = 0;
@@ -574,6 +621,11 @@ public final class MachineUi {
             float maxK = Math.min(FIT_LIMIT * a[0] / nw, FIT_LIMIT * a[1] / nh);
             float k = Math.min(maxK, maxScale * sm);
             k = clamp(k, MIN_SCALE, Math.max(MIN_SCALE, maxK));
+            if (isClosing()) {
+                float pa = clamp(dialog.color.a, 0f, 1f);
+                float ease = pa * pa * (3f - 2f * pa);
+                k *= (0.94f + 0.06f * ease);
+            }
             if (Math.abs(dialog.scaleX - k) > 0.002f || Math.abs(dialog.scaleY - k) > 0.002f) {
                 dialog.setTransform(true);
                 dialog.setOrigin(Align.center);
@@ -692,15 +744,21 @@ public final class MachineUi {
             final Color acc = new Color(accentColor());
             ShellFrame sh = new ShellFrame(this, W, shellH);
             sh.setClip(false);
-            sh.add(topBar(topH, tabsInBar)).growX().height(topH).row();
+            topBarRef = topBar(topH, tabsInBar);
+            sh.add(topBarRef).growX().height(topH).row();
             final Image divLine = sh.image(Tex.whiteui, acc).growX().height(line).get();
             divLine.update(() -> divLine.setColor(accentColor()));
+            divLineRef = divLine;
             sh.row();
             if (tabsH > 0f) {
                 Table row = new Table(Styles.black6);
                 tabsInto(row, true);
+                tabsRowRef = row;
                 sh.add(row).growX().height(tabsH).row();
+            } else {
+                tabsRowRef = null;
             }
+            bodyRef = body;
             sh.add(body).size(W, areaH);
 
             shell = sh;
@@ -740,7 +798,7 @@ public final class MachineUi {
                 tabsInto(tabs, false);
                 top.add(tabs).growY().padLeft(6f).padRight(4f);
             }
-            top.button(Icon.cancel, Styles.cleari, () -> dialog.hide()).size(topH);
+            top.button(Icon.cancel, Styles.cleari, this::hide).size(topH);
             return top;
         }
 
@@ -1174,35 +1232,132 @@ public final class MachineUi {
      * Khung chính MachineUi:
      * - Nền mờ (Blur/dim) + nền bán trong suốt tùy chỉnh (%)
      * - Viền khung đổi màu theo tông màu + hiệu ứng phát sáng Bloom nhẹ không flush GPU (chạy mượt 60 FPS kể cả OpenGL 2 Intel!)
-     * - Animation mở UI: từ chấm tâm -> vẽ 2 đường thẳng lên/xuống cùng lúc -> tách sang 2 bên trái/phải mở khung UI!
+     * - Animation mở UI 3 pha:
+     *   Pha 1: từ chấm tâm bắn 2 tia dọc lên/xuống
+     *   Pha 2: 2 cánh cửa mở sang trái/phải hết cỡ (chưa hiện nội dung)
+     *   Pha 3: sau khi mở xong 100% -> khóa góc + tia quét hologram từ trên xuống + nội dung hiện dần từng lớp mượt mà
+     * - Khi thoát: chữ, nút, nền, blur và viền mờ đồng bộ cùng một đường cong (không bị chữ mất trước nền sau).
      */
     private static final class ShellFrame extends Fixed {
         private final Panel panel;
-        private final Vec2 vBl = new Vec2(), vTr = new Vec2();
+        private final Element[] animEls = new Element[48];
+        private final float[] origA = new float[48], origY = new float[48];
+        private int animN;
 
         ShellFrame(Panel panel, float fw, float fh) {
             super(null, fw, fh);
             this.panel = panel;
         }
 
-        private void drawBackdropBlur(float blur) {
-            if (blur <= 0.01f) return;
+        private static float smooth(float t) {
+            float c = clamp(t, 0f, 1f);
+            return c * c * (3f - 2f * c);
+        }
+
+        private void pushAnim(Element el, float alphaMul, float dy) {
+            if (el == null || animN >= animEls.length) return;
+            int idx = animN++;
+            animEls[idx] = el;
+            origA[idx] = el.color.a;
+            origY[idx] = el.translation.y;
+            el.color.a = origA[idx] * clamp(alphaMul, 0f, 1f);
+            el.translation.y = origY[idx] + dy;
+        }
+
+        private void restoreAnim() {
+            for (int i = animN - 1; i >= 0; i--) {
+                Element el = animEls[i];
+                if (el != null) {
+                    el.color.a = origA[i];
+                    el.translation.y = origY[i];
+                    animEls[i] = null;
+                }
+            }
+            animN = 0;
+        }
+
+        private void applyPhase3Stagger(float t3) {
+            // 1) Thanh tiêu đề & đường kẻ phát sáng hiện trước (từ trên trượt nhẹ xuống)
+            float topP = smooth(t3 / 0.34f);
+            pushAnim(panel.topBarRef, topP, (1f - topP) * 7f);
+            pushAnim(panel.divLineRef, smooth((t3 - 0.04f) / 0.30f), 0f);
+            if (panel.tabsRowRef != null) {
+                float tabP = smooth((t3 - 0.07f) / 0.34f);
+                pushAnim(panel.tabsRowRef, tabP, (1f - tabP) * 6f);
+            }
+
+            // 2) Header cố định
+            float hdP = smooth((t3 - 0.10f) / 0.36f);
+            pushAnim(panel.header, hdP, -(1f - hdP) * 8f);
+
+            // 3) Vùng nội dung chính: ẩn thanh cuộn lúc đầu rồi đổ sóng từng hàng/thẻ từ trên xuống dưới
+            float slP = smooth((t3 - 0.08f) / 0.22f);
+            pushAnim(panel.slide, slP, 0f);
+
+            Seq<Element> items = panel.content.getChildren();
+            if (items.size == 1 && items.first() instanceof Group) {
+                Seq<Element> inner = ((Group) items.first()).getChildren();
+                if (inner.size > 1) items = inner;
+            }
+            if (items.size > 0 && items.size <= 36) {
+                int cap = Math.min(items.size, 10);
+                for (int i = 0; i < items.size; i++) {
+                    int idx = Math.min(i, cap);
+                    float start = 0.12f + idx * 0.036f;
+                    float p = smooth((t3 - start) / 0.36f);
+                    float ease = 1f - (1f - p) * (1f - p);
+                    pushAnim(items.get(i), p, -(1f - ease) * 12f);
+                }
+            } else {
+                float ctP = smooth((t3 - 0.14f) / 0.44f);
+                pushAnim(panel.content, ctP, -(1f - ctP) * 12f);
+            }
+
+            // 4) Footer hiện sau cùng
+            float ftP = smooth((t3 - 0.28f) / 0.42f);
+            pushAnim(panel.footer, ftP, -(1f - ftP) * 8f);
+        }
+
+        private void drawBackdropBlur(float blur, float paMul) {
+            float b = blur * paMul;
+            if (b <= 0.01f) return;
             float pad = 12f + 24f * blur;
-            Draw.color(0.02f, 0.03f, 0.05f, blur * 0.42f);
+            Draw.color(0.02f, 0.03f, 0.05f, b * 0.42f);
             Fill.crect(x - pad, y - pad, width + pad * 2f, height + pad * 2f);
             Draw.reset();
         }
 
-        private void drawBorderAndBloom(float rx, float ry, float rw, float rh, Color ac, float bloom) {
+        private void drawBorderAndBloom(float rx, float ry, float rw, float rh, Color ac, float bloom, float paMul) {
+            if (paMul <= 0.01f) return;
             if (bloom > 0.01f) {
                 float exp = 3.0f + 3.0f * bloom;
                 Lines.stroke(3.0f + 3.5f * bloom);
-                Draw.color(ac, bloom * 0.28f);
+                Draw.color(ac, clamp(bloom * 0.28f * paMul, 0f, 1f));
                 Lines.rect(rx - exp, ry - exp, rw + exp * 2f, rh + exp * 2f);
             }
             Lines.stroke(2.0f);
-            Draw.color(ac, 0.90f);
+            Draw.color(ac, 0.90f * paMul);
             Lines.rect(rx, ry, rw, rh);
+            Draw.reset();
+        }
+
+        private void drawCornerBrackets(float rx, float ry, float rw, float rh, Color ac, float a, float offset) {
+            if (a <= 0.01f) return;
+            float len = Math.min(22f, Math.min(rw, rh) * 0.16f);
+            float x0 = rx - offset, y0 = ry - offset, x1 = rx + rw + offset, y1 = ry + rh + offset;
+            Lines.stroke(2.6f);
+            Draw.color(ac, a);
+            Lines.line(x0, y0, x0 + len, y0); Lines.line(x0, y0, x0, y0 + len);
+            Lines.line(x1, y0, x1 - len, y0); Lines.line(x1, y0, x1, y0 + len);
+            Lines.line(x0, y1, x0 + len, y1); Lines.line(x0, y1, x0, y1 - len);
+            Lines.line(x1, y1, x1 - len, y1); Lines.line(x1, y1, x1, y1 - len);
+            Lines.stroke(1.1f);
+            Draw.color(Color.white, a * 0.85f);
+            float sLen = len * 0.65f;
+            Lines.line(x0, y0, x0 + sLen, y0); Lines.line(x0, y0, x0, y0 + sLen);
+            Lines.line(x1, y0, x1 - sLen, y0); Lines.line(x1, y0, x1, y0 + sLen);
+            Lines.line(x0, y1, x0 + sLen, y1); Lines.line(x0, y1, x0, y1 - sLen);
+            Lines.line(x1, y1, x1 - sLen, y1); Lines.line(x1, y1, x1, y1 - sLen);
             Draw.reset();
         }
 
@@ -1214,88 +1369,165 @@ public final class MachineUi {
             float blur = blurAmt();
             float bloom = bloomAmt();
 
+            // Khi đang đóng hộp thoại: chữ, nút, nền, blur và viền thoát đồng bộ 100% theo cùng 1 đường cong!
+            if (panel.isClosing()) {
+                panel.opening = false;
+                float pa = clamp(panel.dialog.color.a, 0f, 1f);
+                if (pa <= 0.004f) return;
+                float ease = smooth(pa);
+                drawBackdropBlur(blur, ease);
+                Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha * ease);
+                Fill.crect(x, y, width, height);
+                Draw.reset();
+                float prevA = color.a;
+                color.a = clamp(ease / Math.max(0.005f, pa), 0f, 1f);
+                try {
+                    super.draw();
+                } finally {
+                    color.a = prevA;
+                }
+                drawBorderAndBloom(x, y, width, height, ac, bloom, ease);
+                return;
+            }
+
             if (panel.opening) {
                 long dt = Math.max(0L, Time.millis() - panel.openT0);
                 float cx = x + width * 0.5f;
                 float cy = y + height * 0.5f;
 
                 if (dt < OPEN_P1_MS) {
-                    // Pha 1: từ 1 chấm nhỏ ở tâm -> vẽ 2 đường thẳng lên trên và xuống dưới cùng lúc
+                    // Pha 1: từ chấm tâm -> phóng 2 tia laser dọc lên/xuống cùng lúc (chưa hiện nội dung)
                     float t = clamp(dt / (float) OPEN_P1_MS, 0f, 1f);
                     float ease = 1f - (1f - t) * (1f - t);
                     float halfH = height * 0.5f * ease;
 
+                    drawBackdropBlur(blur, 0.25f * ease);
                     if (bloom > 0.01f) {
-                        Lines.stroke(6f + 6f * bloom);
-                        Draw.color(ac, 0.32f * bloom);
+                        Lines.stroke(6.5f + 6.5f * bloom);
+                        Draw.color(ac, 0.34f * bloom);
                         Lines.line(cx, cy, cx, cy + halfH);
                         Lines.line(cx, cy, cx, cy - halfH);
-                        Fill.circle(cx, cy, 7f + 4f * bloom);
+                        Fill.circle(cx, cy, 8f + 5f * bloom * (1f - 0.3f * t));
                     }
-                    Lines.stroke(2.6f);
+                    Lines.stroke(2.8f);
                     Draw.color(ac, 0.98f);
                     Lines.line(cx, cy, cx, cy + halfH);
                     Lines.line(cx, cy, cx, cy - halfH);
-                    Lines.stroke(1.2f);
-                    Draw.color(Color.white, 0.95f);
+                    Lines.stroke(1.3f);
+                    Draw.color(Color.white, 0.96f);
                     Lines.line(cx, cy - halfH, cx, cy + halfH);
                     Draw.color(Color.white, 1f);
-                    Fill.circle(cx, cy, 3.6f * (1f - 0.35f * t));
-                    Fill.circle(cx, cy + halfH, 2.8f);
-                    Fill.circle(cx, cy - halfH, 2.8f);
+                    Fill.circle(cx, cy, 3.8f * (1f - 0.35f * t));
+                    Fill.circle(cx, cy + halfH, 3.0f);
+                    Fill.circle(cx, cy - halfH, 3.0f);
                     Draw.reset();
                     return;
-                } else if (dt < OPEN_TOTAL_MS) {
-                    // Pha 2: 2 đường thẳng tách mở sang 2 bên trái & phải -> lộ dần toàn bộ giao diện MachineUi bên trong!
+                } else if (dt < OPEN_DOOR_MS) {
+                    // Pha 2: 2 cánh cửa laser mở rộng sang trái & phải tới 100% chiều rộng (CHƯA hiện nội dung)
                     float t = clamp((dt - OPEN_P1_MS) / (float) OPEN_P2_MS, 0f, 1f);
                     float ease = 1f - (float) Math.pow(1f - t, 3);
                     float halfW = width * 0.5f * ease;
                     float rx = cx - halfW;
                     float rw = halfW * 2f;
 
-                    drawBackdropBlur(blur * ease);
-
-                    Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha);
+                    drawBackdropBlur(blur, 0.25f + 0.75f * ease);
+                    Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha * (0.58f + 0.42f * ease));
                     Fill.crect(rx, y, rw, height);
+
+                    // Hiệu ứng khoang công nghệ mở cửa: tia ngang nhẹ + đường tách tâm mờ dần
+                    if (rw > 12f) {
+                        Lines.stroke(1f);
+                        Draw.color(ac, 0.075f * (1f - 0.35f * t));
+                        int gridN = 5;
+                        for (int i = 1; i <= gridN; i++) {
+                            float gy = y + height * (i / (float) (gridN + 1));
+                            Lines.line(rx + 2f, gy, rx + rw - 2f, gy);
+                        }
+                        if (t < 0.75f) {
+                            float seamA = 0.24f * (1f - t / 0.75f);
+                            Lines.stroke(1.4f);
+                            Draw.color(ac, seamA);
+                            Lines.line(cx, y + 3f, cx, y + height - 3f);
+                        }
+                    }
                     Draw.reset();
 
-                    if (rw > 4f && Core.scene != null) {
-                        vBl.set(rx, y);
-                        vTr.set(rx + rw, y + height);
-                        localToStageCoordinates(vBl);
-                        localToStageCoordinates(vTr);
-                        float sx = Core.graphics.getWidth() / Math.max(1f, Core.scene.getWidth());
-                        float sy = Core.graphics.getHeight() / Math.max(1f, Core.scene.getHeight());
-                        int scX = Math.max(0, Math.round(Math.min(vBl.x, vTr.x) * sx));
-                        int scY = Math.max(0, Math.round(Math.min(vBl.y, vTr.y) * sy));
-                        int scW = Math.max(1, Math.round(Math.abs(vTr.x - vBl.x) * sx));
-                        int scH = Math.max(1, Math.round(Math.abs(vTr.y - vBl.y) * sy));
-                        Draw.flush();
-                        Gl.enable(GL20.GL_SCISSOR_TEST);
-                        Gl.scissor(scX, scY, scW, scH);
-                        super.draw();
-                        Draw.flush();
-                        Gl.disable(GL20.GL_SCISSOR_TEST);
+                    drawBorderAndBloom(rx, y, rw, height, ac, Math.max(0.5f, bloom), 1f);
+                    // 2 thanh cửa laser sáng rực quét sang 2 bên
+                    float railA = 0.92f * (1f - 0.28f * t);
+                    if (bloom > 0.01f) {
+                        Lines.stroke(6f + 4f * bloom);
+                        Draw.color(ac, 0.30f * bloom * railA);
+                        Lines.line(rx, y, rx, y + height);
+                        Lines.line(rx + rw, y, rx + rw, y + height);
                     }
-
-                    drawBorderAndBloom(rx, y, rw, height, ac, Math.max(0.45f, bloom));
                     Lines.stroke(2.8f);
-                    Draw.color(Color.white, 0.85f * (1f - t * 0.45f));
+                    Draw.color(Color.white, railA);
                     Lines.line(rx, y, rx, y + height);
                     Lines.line(rx + rw, y, rx + rw, y + height);
+                    Draw.color(Color.white, railA);
+                    Fill.circle(rx, y, 2.6f); Fill.circle(rx, y + height, 2.6f);
+                    Fill.circle(rx + rw, y, 2.6f); Fill.circle(rx + rw, y + height, 2.6f);
                     Draw.reset();
+                    return;
+                } else if (dt < OPEN_TOTAL_MS) {
+                    // Pha 3: Cửa đã mở hết 100% -> khóa khung + tia quét hologram từ trên xuống + nội dung hiện dần từng lớp!
+                    float t3 = clamp((dt - OPEN_DOOR_MS) / (float) OPEN_P3_MS, 0f, 1f);
+                    float lockP = 1f - clamp(t3 / 0.48f, 0f, 1f);
+                    lockP *= lockP;
+
+                    drawBackdropBlur(blur, 1f);
+                    Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha);
+                    Fill.crect(x, y, width, height);
+                    Draw.reset();
+
+                    applyPhase3Stagger(t3);
+                    try {
+                        super.draw();
+                    } finally {
+                        restoreAnim();
+                    }
+
+                    // Tia quét hologram chạy mượt từ trên xuống dưới ngay trên nội dung vừa hiện
+                    float sweep = 1f - (float) Math.pow(1f - t3, 2.3);
+                    float scanY = y + height * (1f - sweep);
+                    float beamA = (1f - t3) * clamp(t3 * 9f, 0f, 1f);
+                    if (beamA > 0.01f) {
+                        float trailH = Math.min(34f, (y + height) - scanY);
+                        if (trailH > 1f) {
+                            Draw.color(ac, beamA * 0.14f);
+                            Fill.crect(x + 2f, scanY, width - 4f, trailH);
+                            Draw.color(ac, beamA * 0.22f);
+                            Fill.crect(x + 2f, scanY, width - 4f, trailH * 0.35f);
+                        }
+                        if (bloom > 0.01f) {
+                            Lines.stroke(5.5f + 4f * bloom);
+                            Draw.color(ac, beamA * 0.32f * bloom);
+                            Lines.line(x + 2f, scanY, x + width - 2f, scanY);
+                        }
+                        Lines.stroke(2.0f);
+                        Draw.color(ac, beamA * 0.92f);
+                        Lines.line(x + 2f, scanY, x + width - 2f, scanY);
+                        Lines.stroke(1.0f);
+                        Draw.color(Color.white, beamA * 0.95f);
+                        Lines.line(x + 2f, scanY, x + width - 2f, scanY);
+                        Draw.reset();
+                    }
+
+                    drawBorderAndBloom(x, y, width, height, ac, Math.min(1.35f, bloom + 0.65f * lockP), 1f);
+                    drawCornerBrackets(x, y, width, height, ac, 0.95f * lockP, 6f * lockP);
                     return;
                 } else {
                     panel.opening = false;
                 }
             }
 
-            drawBackdropBlur(blur);
+            drawBackdropBlur(blur, 1f);
             Draw.color(PANEL.r, PANEL.g, PANEL.b, alpha);
             Fill.crect(x, y, width, height);
             Draw.reset();
             super.draw();
-            drawBorderAndBloom(x, y, width, height, ac, bloom);
+            drawBorderAndBloom(x, y, width, height, ac, bloom, 1f);
         }
     }
 

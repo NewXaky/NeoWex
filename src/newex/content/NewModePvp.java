@@ -500,8 +500,8 @@ public class NewModePvp {
         ArrayList<Integer> gInv = new ArrayList<>(); ArrayList<Byte> gInvSrc = new ArrayList<>(); int[] gEq = GearItems.newEq(); int gEqSrc = 0; int[] gEqBonus = new int[GearItems.MAXSLOTS];
         java.util.HashSet<Integer> gBought = new java.util.HashSet<>();   // vật phẩm cửa hàng đã mua (mỗi loại 1 lần)
         int[] gDelta = new int[STATS.length], gEff = new int[STATS.length]; int gKey = Integer.MIN_VALUE, gSkills = 0, gMoveAtk = 0, gSkillAtk = 0; boolean gAny = false, gSlowBonus = false;
-        /** Số đợt tối đa đã huấn luyện để tạo ra Unit này (dùng trong PvP Chiếm Cứ để xem thông tin Unit Host/Player). */
-        int trainWaves = 0;
+        /** Số đợt tối đa & số ô trang bị đã huấn luyện để tạo ra Unit này (dùng trong PvP Chiếm Cứ / UI Unit để xem thông tin Unit Host/Player). */
+        int trainWaves = 0, trainGearSlots = 0;
         void padStats() {
             if (s.length < STATS.length) s = Arrays.copyOf(s, STATS.length);
             if (plv == null || plv.length < PILOT_COUNT) plv = plv == null ? new int[PILOT_COUNT] : Arrays.copyOf(plv, PILOT_COUNT);
@@ -797,6 +797,7 @@ public class NewModePvp {
                 arr(sb, s.plv != null ? s.plv : new int[PILOT_COUNT]);
                 sb.append(",\"pexp\":"); arr(sb, s.pexp != null ? s.pexp : new int[PILOT_COUNT]);
                 sb.append(",\"pgift\":"); ints(sb, s.pgift != null ? s.pgift : new ArrayList<>());
+                sb.append(",\"tw\":").append(s.trainWaves).append(",\"tgs\":").append(s.trainGearSlots);
                 sb.append('}');
             }
             tags.put(TAG_STORE, sb.append('}').toString());
@@ -828,6 +829,8 @@ public class NewModePvp {
         s.pexp = readInts(o.get("pexp"), PILOT_COUNT, s.pexp);
         JsonValue pg = o.get("pgift");
         if (pg != null && pg.isArray()) for (JsonValue c = pg.child; c != null; c = c.next) s.pgift.add((int) c.asDouble());
+        s.trainWaves = o.getInt("tw", 0);
+        s.trainGearSlots = o.getInt("tgs", 0);
         return s;
     }
     static void restoreStore() {
@@ -856,7 +859,7 @@ public class NewModePvp {
             sb.append(',').append(s.cmd).append(',').append(s.w).append(',').append(s.wl).append(",\"").append(ChaosMode.enc(s)).append("\",").append(s.tm).append(",\"").append(GearItems.enc(s)).append("\",");
             arr(sb, s.plv != null ? s.plv : new int[PILOT_COUNT]); sb.append(',');
             arr(sb, s.pexp != null ? s.pexp : new int[PILOT_COUNT]); sb.append(',');
-            ints(sb, s.pgift != null ? s.pgift : new ArrayList<>()); sb.append(',').append(s.trainWaves);
+            ints(sb, s.pgift != null ? s.pgift : new ArrayList<>()); sb.append(',').append(s.trainWaves).append(',').append(s.trainGearSlots);
             sb.append(']');
         }
         sb.append("},\"cr\":").append(ChaosMode.round).append(",\"th\":").append(ChaosMode.hideFlag ? 1 : 0).append("}");
@@ -888,6 +891,7 @@ public class NewModePvp {
                 if (a.size > 17) s.pexp = readInts(a.get(17), PILOT_COUNT, s.pexp);
                 if (a.size > 18 && a.get(18).isArray()) for (JsonValue c = a.get(18).child; c != null; c = c.next) s.pgift.add((int) c.asDouble());
                 if (a.size > 19) s.trainWaves = a.get(19).asInt();
+                if (a.size > 20) s.trainGearSlots = a.get(20).asInt();
                 n.put(Integer.parseInt(a.name), s);
             }
             byId = n;
@@ -6325,6 +6329,13 @@ public class NewModePvp {
         if (statVisible(STAT_HEAL) && s.length > STAT_HEAL) out.add(new String[]{"[#ff7f50]✖ " + tr("Giảm hồi máu", "Heal reduction") + "[]" + statLvTag(st, STAT_HEAL), "[#ff9f7f]" + pctStr(Math.min(HEAL_CUT_MAX, s[STAT_HEAL] * HEAL_CUT_PCT)) + "%[]"});
         out.add(new String[]{"[#f9ca24]❖ " + tr("Pháo gắn", "Mounted turrets") + "[]", "[#ffd166]unit " + equipCount(st) + "/" + equipSlots(st) + "[]  [cyan]" + tr("lõi ", "core ") + coreMountCount(st) + "/" + coreMountCap(st) + "[]  [lightgray]" + tr("xây ", "built ") + builtCount(st) + "/" + maxBuilt() + "[]"});
         out.add(new String[]{"[#ffb347]⚖ " + tr("Trọng lượng / Độ chịu nặng", "Turret weight / Load cap") + "[]", loadSummaryText(st)});
+        int gsCap = st.trainGearSlots > 0 ? st.trainGearSlots : (GearItems.war() ? GearItems.slots() : 0);
+        if (gsCap > 0) {
+            int gsEq = 0;
+            int gsLim = Math.min(GearItems.MAXSLOTS, Math.max(gsCap, GearItems.slots()));
+            for (int gi = 0; gi < gsLim; gi++) if (GearItems.def(st.gEq[gi]) != null) gsEq++;
+            out.add(new String[]{"[#ffd166]◈ " + tr("Số ô trang bị", "Equipment slots") + "[]", "[#ffd166]" + gsEq + "/" + gsCap + " " + tr("ô", "slots") + "[]"});
+        }
         return out;
     }
 
@@ -6363,7 +6374,15 @@ public class NewModePvp {
             if (st == null) { p.add("[scarlet]" + tr("Người chơi đã rời đi.", "Player left.") + "[]").row(); return; }
             boolean isHost = PvpDomination.isActive() && pid == PvpDomination.hostPlayerId();
             String hostBadge = isHost ? "[gold][HOST][] " : "";
-            String trainBadge = st.trainWaves > 0 ? ("  [cyan](" + tr("Huấn luyện: ", "Trained: ") + st.trainWaves + " " + tr("đợt", "waves") + ")[]") : "";
+            int gearSlotCap = st.trainGearSlots > 0 ? st.trainGearSlots : (GearItems.war() ? GearItems.slots() : 0);
+            String trainBadge = "";
+            if (st.trainWaves > 0 && gearSlotCap > 0) {
+                trainBadge = "  [cyan](" + tr("Huấn luyện: ", "Trained: ") + st.trainWaves + " " + tr("đợt", "waves") + " • [#ffd166]" + gearSlotCap + " " + tr("ô trang bị", "gear slots") + "[cyan])[]";
+            } else if (st.trainWaves > 0) {
+                trainBadge = "  [cyan](" + tr("Huấn luyện: ", "Trained: ") + st.trainWaves + " " + tr("đợt", "waves") + ")[]";
+            } else if (gearSlotCap > 0) {
+                trainBadge = "  [#ffd166](" + gearSlotCap + " " + tr("ô trang bị", "gear slots") + ")[]";
+            }
             p.add(hostBadge + "[#ffd166]" + plName(pid) + "[]  [#4ef2d2]" + tr("Cấp ", "Lv ") + st.lv + "[]" + trainBadge).left().wrap().growX().row();
             if (st.pi > 0) {
                 int plv = st.plv != null && st.pi < st.plv.length ? st.plv[st.pi] : 0;
@@ -6373,13 +6392,20 @@ public class NewModePvp {
             Unit u = plUnit(pid);
             if (u != null && !(u.isValid() && !u.dead)) u = null;
             ArrayList<String[]> lines = u != null ? scanLines(st, u) : null;
-            if (lines == null) p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[#ffdf6b]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
-            else addScanLines(p, lines, 4f);
+            if (lines == null) {
+                p.add("[lightgray]" + tr("Unit: ", "Unit: ") + "[#ffdf6b]" + tierType(activeTier(st)).localizedName + "[]  [scarlet]" + tr("(không quét được: unit đang chết/chưa hồi sinh)", "(cannot scan: unit dead/respawning)") + "[]").left().wrap().growX().padBottom(6).row();
+            } else {
+                addScanLines(p, lines, 4f);
+            }
             boolean any = false;
-            if (GearItems.war()) {   // Chiến tranh: hiện tên vật phẩm đang lắp + nguồn gốc (Mua / Nhặt)
-                p.add("[#ffd166]◆ " + tr("Vật phẩm đang lắp", "Equipped items") + "[]").left().padTop(8).padBottom(3).row();
+            if (GearItems.war() || st.trainGearSlots > 0) {   // Chiến tranh / Huấn luyện / PvP Chiếm Cứ: hiện tên vật phẩm đang lắp + số ô trang bị
+                int eqCap = gearSlotCap > 0 ? gearSlotCap : GearItems.slots();
+                int loopLim = Math.min(GearItems.MAXSLOTS, Math.max(eqCap, GearItems.slots()));
+                int eqCount = 0;
+                for (int i = 0; i < loopLim; i++) if (GearItems.def(st.gEq[i]) != null) eqCount++;
+                p.add("[#ffd166]◆ " + tr("Vật phẩm đang lắp", "Equipped items") + " (" + eqCount + "/" + eqCap + " " + tr("ô trang bị", "gear slots") + ")[]").left().padTop(8).padBottom(3).row();
                 int idx = 0;
-                for (int i = 0; i < GearItems.slots(); i++) {
+                for (int i = 0; i < loopLim; i++) {
                     GearItems.Def gd = GearItems.def(st.gEq[i]);
                     if (gd == null) continue;
                     any = true;
@@ -6478,7 +6504,9 @@ public class NewModePvp {
                 col.left();
                 String hTag = (pid == hpid && hpid >= 0) ? "[gold][HOST][] " : "";
                 String twTag = st.trainWaves > 0 ? ("  [cyan]" + st.trainWaves + " " + tr("đợt", "w") + "[]") : "";
-                col.add(hTag + "[white]" + plName(pid) + "[]  [accent]" + tr("Cấp ", "Lv ") + st.lv + "[]" + twTag).left().wrap().growX().row();
+                int gsShow = st.trainGearSlots > 0 ? st.trainGearSlots : (GearItems.war() ? GearItems.slots() : 0);
+                String gsTag = gsShow > 0 ? ("  [#ffd166]" + gsShow + " " + tr("ô TB", "gear") + "[]") : "";
+                col.add(hTag + "[white]" + plName(pid) + "[]  [accent]" + tr("Cấp ", "Lv ") + st.lv + "[]" + twTag + gsTag).left().wrap().growX().row();
                 col.add(kcText(st)).left().wrap().growX();
                 row.add(col).growX().left().minWidth(0);
                 row.clicked(() -> openUnitDetail(pid));

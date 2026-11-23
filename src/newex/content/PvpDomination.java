@@ -102,6 +102,7 @@ public final class PvpDomination {
     public static final String KEY_TRAIN_DUP_TURRET = "newex-train-dup-turret";
     public static final String KEY_TRAIN_TMODE = "newex-train-tmode";
     public static final String KEY_TRAIN_MULTI_SAVE = "newex-train-multi-save";
+    public static final String KEY_TRAIN_GEAR_SLOTS = "newex-train-gear-slots";
     public static final int DEFAULT_TRAIN_MAX_WAVES = 15;
     private static final String KEY_BAR_X = "newex-dom-bar-x";
     private static final String KEY_BAR_Y = "newex-dom-bar-y";
@@ -460,6 +461,7 @@ public final class PvpDomination {
         public String ch = "";
         public int power = 0;
         public int maxWaves = 0;
+        public int gearSlots = 0;
     }
 
     /** Lưu vị trí lõi gốc của bản đồ PvP Chiếm Cứ để bảo đảm bất tử 100% (tự phục hồi kể cả bị skill gọi kill()/setAir()). */
@@ -618,6 +620,7 @@ public final class PvpDomination {
     static Unit trainUnit = null;
     static int trainWave = 0;
     static int trainMaxWaves = DEFAULT_TRAIN_MAX_WAVES;
+    static int trainGearSlots = GearItems.MAXSLOTS;
     static float trainNextDelay = 0f;
     static boolean trainFinished = false;
     static boolean trainPromptShown = false;
@@ -689,6 +692,10 @@ public final class PvpDomination {
 
     public static int getTrainMaxWaves() {
         return Mathf.clamp(Core.settings.getInt(KEY_TRAIN_MAX_WAVES, DEFAULT_TRAIN_MAX_WAVES), 1, 200);
+    }
+
+    public static int getTrainGearSlots() {
+        return Mathf.clamp(Core.settings.getInt(KEY_TRAIN_GEAR_SLOTS, GearItems.MAXSLOTS), GearItems.TYPES, GearItems.MAXSLOTS);
     }
 
     public static boolean trainDupTurretOn() {
@@ -792,6 +799,7 @@ public final class PvpDomination {
         trainUnit = null;
         trainWave = 0;
         trainMaxWaves = getTrainMaxWaves();
+        trainGearSlots = getTrainGearSlots();
         trainNextDelay = 0f;
         trainFinished = false;
         trainPromptShown = false;
@@ -831,6 +839,9 @@ public final class PvpDomination {
             if (tg != null) {
                 if (tg.containsKey(TAG_TRAIN_MAXW)) {
                     try { trainMaxWaves = Mathf.clamp(Integer.parseInt(tg.get(TAG_TRAIN_MAXW, String.valueOf(DEFAULT_TRAIN_MAX_WAVES))), 1, 200); } catch (Throwable ignored) {}
+                }
+                if (tg.containsKey(GearItems.TAG_SLOTS)) {
+                    try { trainGearSlots = Mathf.clamp(Integer.parseInt(tg.get(GearItems.TAG_SLOTS, String.valueOf(GearItems.MAXSLOTS))), GearItems.TYPES, GearItems.MAXSLOTS); } catch (Throwable ignored) {}
                 }
                 trainMultiCache = "1".equals(tg.get(TAG_TRAIN_MULTI, trainDupTurretOn() ? "1" : "0"));
                 try { trainTmodeCache = Integer.parseInt(tg.get(TAG_TRAIN_TMODE, String.valueOf(trainTurretMode()))) == 1 ? 1 : 0; } catch (Throwable ignored) { trainTmodeCache = 0; }
@@ -888,12 +899,18 @@ public final class PvpDomination {
     }
 
     public static void onBeginTraining(int maxWaves, boolean dupTurret, int turretMode, boolean multiSave) {
+        onBeginTraining(maxWaves, dupTurret, turretMode, multiSave, getTrainGearSlots());
+    }
+
+    public static void onBeginTraining(int maxWaves, boolean dupTurret, int turretMode, boolean multiSave, int gearSlots) {
         int clamped = Mathf.clamp(maxWaves, 1, 200);
+        int clampedSlots = Mathf.clamp(gearSlots, GearItems.TYPES, GearItems.MAXSLOTS);
         int tm = turretMode == 1 ? 1 : 0;
         Core.settings.put(KEY_TRAIN_MAX_WAVES, clamped);
         Core.settings.put(KEY_TRAIN_DUP_TURRET, dupTurret);
         Core.settings.put(KEY_TRAIN_TMODE, tm);
         Core.settings.put(KEY_TRAIN_MULTI_SAVE, multiSave);
+        Core.settings.put(KEY_TRAIN_GEAR_SLOTS, clampedSlots);
         NewModePvp.onBegin();
         Rules r = Vars.state.rules;
         r.tags.put(TAG_DOM, "0");
@@ -903,7 +920,7 @@ public final class PvpDomination {
         r.tags.put(TAG_TRAIN_TMODE, String.valueOf(tm));
         r.tags.put(TAG_TRAIN_MULTISAVE, multiSave ? "1" : "0");
         r.tags.put(ChaosMode.TAG, "0");
-        r.tags.put(GearItems.TAG_SLOTS, String.valueOf(GearItems.MAXSLOTS));
+        r.tags.put(GearItems.TAG_SLOTS, String.valueOf(clampedSlots));
         r.waves = false;
         r.waveTimer = false;
         r.attackMode = false;
@@ -920,6 +937,7 @@ public final class PvpDomination {
         trainMultiCache = dupTurret;
         trainTmodeCache = tm;
         trainMaxWaves = clamped;
+        trainGearSlots = clampedSlots;
         trainWave = 0;
         trainUnit = null;
         trainFinished = false;
@@ -928,8 +946,8 @@ public final class PvpDomination {
         scanTrainingSpawns();
         NewModePvp.syncRules();
         if (!Vars.headless) {
-            Vars.ui.showInfoToast(tr("[#38ef7d]Huấn Luyện Unit Player: Hạ lần lượt " + clamped + " quái đợt (tỉ lệ rơi đồ 100%) để tạo bản sao lưu!",
-                "[#38ef7d]Unit Training: Defeat " + clamped + " wave dummies (100% drop rate) to create a saved Unit!"), 4.5f);
+            Vars.ui.showInfoToast(tr("[#38ef7d]Huấn Luyện Unit Player: Hạ lần lượt " + clamped + " quái đợt (" + clampedSlots + " ô trang bị, tỉ lệ rơi đồ 100%) để tạo bản sao lưu!",
+                "[#38ef7d]Unit Training: Defeat " + clamped + " wave dummies (" + clampedSlots + " gear slots, 100% drop rate) to create a saved Unit!"), 4.5f);
         }
     }
 
@@ -2305,6 +2323,7 @@ public final class PvpDomination {
             Table trainCard = new Table(Styles.black6);
             trainCard.margin(6f);
             trainCard.label(() -> "[#38ef7d]" + tr("Huấn luyện: ", "Training: ") + "[white]" + tr("Đợt ", "Wave ") + trainWave + "/" + trainMaxWaves
+                + "  [#ffd166]" + trainGearSlots + " " + tr("ô TB", "gear") + "[]"
                 + (trainFinished ? "  [#ffd166](" + tr("Hoàn thành!", "Done!") + ")[]" : "") + "[]").padRight(6f);
             TextButton trSaveBtn = new TextButton(tr("[#ffd166]Lưu Unit[]", "[#ffd166]Save Unit[]"), Styles.flatBordert);
             trSaveBtn.clicked(() -> openSaveUnitPromptDialog(
@@ -2468,8 +2487,10 @@ public final class PvpDomination {
         final boolean[] dupVal = {trainDupTurretOn()};
         final int[] tmVal = {trainTurretMode()};
         final int[] maxWVal = {getTrainMaxWaves()};
+        final int[] gearSlotsVal = {getTrainGearSlots()};
         final boolean[] multiSaveVal = {trainMultiSaveOn()};
         final TextField[] mwRef = new TextField[1];
+        final TextField[] gsRef = new TextField[1];
 
         panel.onBuild(() -> {
             Table c = panel.content();
@@ -2534,7 +2555,34 @@ public final class PvpDomination {
             mwCard.add(mwRow).row();
             c.add(mwCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
 
-            // 3) Bật/tắt cho phép sao lưu 1 unit nhiều bản cùng 1 lúc
+            // 3) Tùy chỉnh số ô trang bị
+            Table gsCard = new Table(Styles.black6);
+            gsCard.margin(8f).left().defaults().left();
+            gsCard.add("[white]" + tr("Tùy chỉnh số ô trang bị:", "Equipment slots:") + "[]").padBottom(4f).row();
+            Table gsRow = new Table();
+            final TextField gsField = gsRow.field(String.valueOf(gearSlotsVal[0]), txt -> {
+                try { gearSlotsVal[0] = Mathf.clamp(Integer.parseInt(txt.trim()), GearItems.TYPES, GearItems.MAXSLOTS); } catch (Throwable ignored) {}
+            }).width(100f).get();
+            gsField.setFilter(TextField.TextFieldFilter.digitsOnly);
+            gsField.setMaxLength(2);
+            gsRef[0] = gsField;
+            gsRow.add("[lightgray]" + tr("ô (" + GearItems.TYPES + " - " + GearItems.MAXSLOTS + ", mặc định " + GearItems.MAXSLOTS + ")",
+                "slots (" + GearItems.TYPES + " - " + GearItems.MAXSLOTS + ", default " + GearItems.MAXSLOTS + ")") + "[]").padLeft(8f);
+            gsCard.add(gsRow).padBottom(4f).row();
+            Table gsPresets = new Table();
+            int[] presets = {6, 12, 18, 24};
+            for (int k = 0; k < presets.length; k++) {
+                final int pv = presets[k];
+                gsPresets.button((gearSlotsVal[0] == pv ? "[#38ef7d]" : "[white]") + pv + " " + tr("ô", "sl") + "[]", Styles.flatBordert, () -> {
+                    gearSlotsVal[0] = pv;
+                    if (gsRef[0] != null) gsRef[0].setText(String.valueOf(pv));
+                    panel.rebuild();
+                }).size(64f, 32f).padRight(4f);
+            }
+            gsCard.add(gsPresets).left().row();
+            c.add(gsCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
+
+            // 4) Bật/tắt cho phép sao lưu 1 unit nhiều bản cùng 1 lúc
             Table msCard = new Table(Styles.black6);
             msCard.margin(8f).left();
             msCard.check(tr("Cho phép sao lưu 1 Unit thành nhiều bản cùng 1 lúc (1–5 ô)",
@@ -2547,12 +2595,14 @@ public final class PvpDomination {
             ft.margin(4f);
             ft.button(tr("[#38ef7d]Bắt Đầu Huấn Luyện[]", "[#38ef7d]Start Training[]"), Styles.flatBordert, () -> {
                 try { if (mwRef[0] != null) maxWVal[0] = Mathf.clamp(Integer.parseInt(mwRef[0].getText().trim()), 1, 200); } catch (Throwable ignored) {}
+                try { if (gsRef[0] != null) gearSlotsVal[0] = Mathf.clamp(Integer.parseInt(gsRef[0].getText().trim()), GearItems.TYPES, GearItems.MAXSLOTS); } catch (Throwable ignored) {}
                 Core.settings.put(KEY_TRAIN_MAX_WAVES, maxWVal[0]);
                 Core.settings.put(KEY_TRAIN_DUP_TURRET, dupVal[0]);
                 Core.settings.put(KEY_TRAIN_TMODE, tmVal[0]);
                 Core.settings.put(KEY_TRAIN_MULTI_SAVE, multiSaveVal[0]);
+                Core.settings.put(KEY_TRAIN_GEAR_SLOTS, gearSlotsVal[0]);
                 panel.hide();
-                NewMode.startTrainingMap(maxWVal[0], dupVal[0], tmVal[0], multiSaveVal[0]);
+                NewMode.startTrainingMap(maxWVal[0], dupVal[0], tmVal[0], multiSaveVal[0], gearSlotsVal[0]);
             }).height(44f).minWidth(190f).pad(4f);
             ft.button(tr("Quay Lại", "Back"), Styles.flatBordert, () -> {
                 panel.hide();
@@ -2707,7 +2757,7 @@ public final class PvpDomination {
         String mwTag = su.maxWaves > 0 ? ("  [cyan][" + tr("Max ", "Max ") + su.maxWaves + " " + tr("đợt", "w") + "][]") : "";
         String title = slotPrefix + "[accent]" + (ut != null ? ut.localizedName : "Unit") + "[]  [white]Lv." + su.lv + "[]" + mwTag + "  [lightgray](" + tr("Lực chiến: ", "Power: ") + "[#7cfc00]" + su.power + "[])[]";
         String sub = "[lightgray]Pilot: [white]" + pilotTxt + "[]  •  " + tr("Pháo: ", "Turrets: ") + "[cyan]" + su.d.size() + "[]  •  "
-            + tr("Trang bị: ", "Items: ") + "[#ffd166]" + gearCnt + "[]"
+            + tr("Trang bị: ", "Items: ") + "[#ffd166]" + gearCnt + (su.gearSlots > 0 ? "/" + su.gearSlots : "") + "[]"
             + (mythicCnt > 0 ? "  [#ff4d6d](" + mythicCnt + " " + tr("Thần Thoại", "Mythic") + ")[]" : "");
         card.add(title + "\n" + sub).left().growX().wrap().minWidth(0);
 
@@ -2792,6 +2842,7 @@ public final class PvpDomination {
         st.pi = 0;
         st.tm = 0;
         st.trainWaves = 0;
+        st.trainGearSlots = 0;
 
         if (!body.isEmpty() && !"EMPTY".equals(body)) {
             SavedUnit su = decodeSavedUnit(body);
@@ -2801,6 +2852,7 @@ public final class PvpDomination {
                 st.tm = Mathf.clamp(su.tm, 0, 2);
                 st.pi = Mathf.clamp(su.pi, 0, NewModePvp.PILOT_COUNT);
                 st.trainWaves = Math.max(0, su.maxWaves);
+                st.trainGearSlots = su.gearSlots > 0 ? Mathf.clamp(su.gearSlots, GearItems.TYPES, GearItems.MAXSLOTS) : 0;
                 for (int i = 0; i < st.s.length && i < su.s.length; i++) {
                     st.s[i] = Mathf.clamp(su.s[i], 0, 120);
                 }
@@ -2818,12 +2870,13 @@ public final class PvpDomination {
                     st.d.add(su.d.get(i));
                     st.p.add(NewModePvp.EQUIPPED);
                 }
-                for (int i = 0; i < st.gEq.length && i < su.gEq.length; i++) {
+                int eqLim = st.trainGearSlots > 0 ? st.trainGearSlots : GearItems.MAXSLOTS;
+                for (int i = 0; i < st.gEq.length && i < su.gEq.length && i < eqLim; i++) {
                     GearItems.Def gd = GearItems.def(su.gEq[i]);
                     st.gEq[i] = (gd != null && gd.slot == i % GearItems.TYPES) ? gd.id : -1;
                 }
                 st.gEqSrc = su.gEqSrc;
-                for (int i = 0; i < st.gEqBonus.length && i < su.gEqBonus.length; i++) {
+                for (int i = 0; i < st.gEqBonus.length && i < su.gEqBonus.length && i < eqLim; i++) {
                     st.gEqBonus[i] = Mathf.clamp(su.gEqBonus[i], 0, 3);
                 }
                 if (su.ch != null && !su.ch.isEmpty()) ChaosMode.dec(st, su.ch);
@@ -2849,6 +2902,7 @@ public final class PvpDomination {
         SavedUnit su = new SavedUnit();
         su.savedAt = System.currentTimeMillis();
         su.maxWaves = Math.max(0, maxWaves);
+        su.gearSlots = Mathf.clamp(isTraining() ? trainGearSlots : GearItems.slots(), GearItems.TYPES, GearItems.MAXSLOTS);
         su.lv = st.lv;
         su.u = NewModePvp.activeTier(st);
         su.tm = st.tm;
@@ -2872,6 +2926,11 @@ public final class PvpDomination {
         su.gEq = Arrays.copyOf(st.gEq, GearItems.MAXSLOTS);
         su.gEqSrc = st.gEqSrc;
         su.gEqBonus = st.gEqBonus != null ? Arrays.copyOf(st.gEqBonus, GearItems.MAXSLOTS) : new int[GearItems.MAXSLOTS];
+        for (int i = su.gearSlots; i < GearItems.MAXSLOTS; i++) {
+            su.gEq[i] = -1;
+            su.gEqBonus[i] = 0;
+            su.gEqSrc &= ~(1 << i);
+        }
         su.ch = ChaosMode.enc(st);
 
         UnitType ut = NewModePvp.tierType(Math.max(1, su.u));
@@ -2897,7 +2956,7 @@ public final class PvpDomination {
         sb.append("\"nm\":\"").append(su.name.replace("\\", "\\\\").replace("\"", "\\\"")).append("\"");
         sb.append(",\"at\":").append(su.savedAt);
         sb.append(",\"lv\":").append(su.lv).append(",\"u\":").append(su.u).append(",\"tm\":").append(su.tm).append(",\"pi\":").append(su.pi);
-        sb.append(",\"pw\":").append(su.power).append(",\"mw\":").append(su.maxWaves);
+        sb.append(",\"pw\":").append(su.power).append(",\"mw\":").append(su.maxWaves).append(",\"gs\":").append(su.gearSlots);
         sb.append(",\"s\":"); NewModePvp.arr(sb, su.s);
         sb.append(",\"plv\":"); NewModePvp.arr(sb, su.plv);
         sb.append(",\"pexp\":"); NewModePvp.arr(sb, su.pexp);
@@ -2942,6 +3001,7 @@ public final class PvpDomination {
         su.ch = o.getString("ch", "");
         su.power = o.getInt("pw", computePower(su));
         su.maxWaves = o.getInt("mw", 0);
+        su.gearSlots = o.getInt("gs", 0);
         return su;
     }
 
