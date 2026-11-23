@@ -1120,7 +1120,7 @@ public final class MachineUi {
         if (el == null || maxW <= 40f) return;
         if (el instanceof Label) {
             Label l = (Label) el;
-            if (l.getText().length > 16 && l.getPrefWidth() > maxW - 8f) {
+            if (l.getText().length() > 16 && l.getPrefWidth() > maxW - 8f) {
                 l.setWrap(true);
             }
             return;
@@ -1128,7 +1128,7 @@ public final class MachineUi {
         if (el instanceof TextButton) {
             TextButton tb = (TextButton) el;
             Label l = tb.getLabel();
-            if (l != null && l.getText().length > 16) {
+            if (l != null && l.getText().length() > 16) {
                 float limit = tb.getWidth() > 20f ? Math.min(maxW, tb.getWidth()) : maxW;
                 if (l.getPrefWidth() > limit - 8f) l.setWrap(true);
             }
@@ -1142,7 +1142,7 @@ public final class MachineUi {
                 float cw = maxW - 8f;
                 if (ch instanceof Label) {
                     Label l = (Label) ch;
-                    if (l.getText().length > 16 && l.getPrefWidth() > cw) {
+                    if (l.getText().length() > 16 && l.getPrefWidth() > cw) {
                         l.setWrap(true);
                         cell.maxWidth(Math.max(80f, cw));
                     }
