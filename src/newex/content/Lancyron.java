@@ -562,7 +562,7 @@ public final class Lancyron {
 
             // 1 khe vũ khí NẶNG ở giữa tâm unit (Thunder): bắn chậm hơn, đạn shotgun tốc bay cực cao nhưng thời gian tồn tại thấp, sát thương cực lớn
             weapons.add(new ThunderShotgunWeapon("newex-lancyron-weapon-heavy") {{
-                x = 0f;
+                x = 2.5f;   // lệch phải 1 chút cho cân đối ngoại hình
                 y = 2.5f;
                 mirror = false;
                 top = true;
