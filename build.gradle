@@ -48,21 +48,54 @@ tasks.register('jarAndroid') {
     dependsOn jar
     doLast {
         if (!sdkRoot || !new File(sdkRoot).exists()) {
-            throw new GradleException('Không tìm thấy Android SDK (ANDROID_HOME).')
+            throw new GradleException('Không tìm thấy Android SDK (ANDROID_HOME). Không có SDK thì không tạo được classes.dex cho Android.')
         }
-        def platform = new File(sdkRoot, 'platforms').listFiles().sort { it.name }.reverse()
-                .find { new File(it, 'android.jar').exists() }
-        def tools = new File(sdkRoot, 'build-tools').listFiles().sort { it.name }.reverse()
-                .find { new File(it, 'd8').exists() }
+
+        // so sánh số phiên bản theo từng số (34 < 36, 9 < 34)
+        def parts = { String s -> (s =~ /\d+/).collect { it as int } }
+        def cmp = { String a, String b ->
+            def x = parts(a), y = parts(b)
+            for (int i = 0; i < Math.max(x.size(), y.size()); i++) {
+                int p = i < x.size() ? x[i] : 0
+                int q = i < y.size() ? y[i] : 0
+                if (p != q) return p <=> q
+            }
+            return 0
+        }
+
+        def platform = (new File(sdkRoot, 'platforms').listFiles() ?: [])
+                .findAll { it.isDirectory() && it.name ==~ /android-\d+/ && new File(it, 'android.jar').exists() }
+                .max { a, b -> cmp(a.name, b.name) }
+        def tools = (new File(sdkRoot, 'build-tools').listFiles() ?: [])
+                .findAll { it.isDirectory() && it.name ==~ /\d+(\.\d+)*/ && new File(it, 'd8').exists() }
+                .max { a, b -> cmp(a.name, b.name) }
         if (platform == null || tools == null) throw new GradleException('Thiếu android.jar hoặc d8 trong Android SDK.')
+        println "Dùng platform ${platform.name}, build-tools ${tools.name}"
 
         def out = new File(buildDir, 'libs/NeoWexAndroid.jar')
-        def cp = configurations.compileClasspath.files + [new File(platform, 'android.jar')]
-        def cmd = [new File(tools, 'd8').path] +
-                cp.collectMany { ['--classpath', it.path] } +
-                ['--min-api', '14', '--output', out.path, jar.archiveFile.get().asFile.path]
-        exec { commandLine cmd }
+        out.parentFile.mkdirs()
+        out.delete()
+
+        def cmd = [new File(tools, 'd8').path,
+                   '--lib', new File(platform, 'android.jar').path]
+        configurations.compileClasspath.files.each { cmd += ['--classpath', it.path] }
+        cmd += ['--min-api', '14', '--output', out.path, jar.archiveFile.get().asFile.path]
+
+        def result = exec {
+            commandLine cmd
+            ignoreExitValue = true
+        }
+        if (result.exitValue != 0) throw new GradleException("d8 lỗi (exit ${result.exitValue}), xem log phía trên.")
+        checkDex(out)
     }
+}
+
+def checkDex(File f) {
+    if (!f.exists()) throw new GradleException("Không có file ${f.name}")
+    def zf = new java.util.zip.ZipFile(f)
+    try {
+        if (zf.getEntry('classes.dex') == null) throw new GradleException("${f.name} KHÔNG có classes.dex -> sẽ lỗi ClassNotFound trên Android")
+    } finally { zf.close() }
 }
 
 // 3) gộp PC + Android thành 1 file mod: NeoWex.jar
@@ -72,4 +105,5 @@ tasks.register('deploy', Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from { zipTree(jar.archiveFile.get().asFile) }
     from { zipTree(new File(buildDir, 'libs/NeoWexAndroid.jar')) }
+    doLast { checkDex(archiveFile.get().asFile) }
 }
