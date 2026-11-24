@@ -299,7 +299,15 @@ public final class Lancyron {
         }
     }
 
+    /** Skill Roll 1-2-3 chỉ dùng được trong các map NewMode (PvP, Chiếm Cứ, Huấn Luyện, Sinh Tồn); map thường không có skill. */
+    static boolean skillAllowed() {
+        try {
+            return NewModePvp.isFull() || PvpDomination.isActive() || PvpDomination.isTraining() || Survival.isActive();
+        } catch (Throwable err) { return false; }
+    }
+
     static void castSkillFromClient() {
+        if (!skillAllowed()) return;
         if (Vars.state == null || Vars.state.isPaused() || Vars.player == null || Time.time < localCdEnd) return;
         Unit u = Vars.player.unit();
         if (!(u instanceof LancyronUnit) || u.dead || ((LancyronUnit) u).isClone) return;
@@ -313,6 +321,7 @@ public final class Lancyron {
 
     static void onSkillReq(Player player, String payload) {
         if (player == null) return;
+        if (!skillAllowed()) return;
         Unit u = player.unit();
         if (!(u instanceof LancyronUnit) || u.dead || ((LancyronUnit) u).isClone) return;
         if (Zeralion.isBound(u)) return;
@@ -2607,7 +2616,7 @@ public final class Lancyron {
             }
         });
 
-        t.visible(() -> Vars.ui.hudfrag.shown && Vars.player != null && isLancyron(Vars.player.unit()) && !Vars.player.unit().dead);
+        t.visible(() -> Vars.ui.hudfrag.shown && skillAllowed() && Vars.player != null && isLancyron(Vars.player.unit()) && !Vars.player.unit().dead);
         t.pack();
 
         if (Core.settings.has(HUD_KEY + "-x") && Core.settings.has(HUD_KEY + "-y")) {
