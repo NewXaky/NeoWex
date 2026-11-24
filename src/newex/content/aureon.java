@@ -5,11 +5,13 @@ import arc.graphics.Blending;
 import arc.graphics.Color;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Fill;
+import arc.graphics.g2d.Font;
 import arc.graphics.g2d.Lines;
 import arc.math.Angles;
 import arc.math.Mathf;
 import arc.math.Rand;
 import arc.scene.ui.layout.Table;
+import arc.util.Align;
 import arc.util.Strings;
 import arc.util.Time;
 import arc.util.Tmp;
@@ -33,8 +35,10 @@ import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
 import mindustry.type.UnitType;
 import mindustry.type.Weapon;
+import mindustry.ui.Fonts;
 import mindustry.world.meta.Env;
 import mindustry.world.meta.StatUnit;
+import newex.UnitSkillInfo;
 
 /**
  * Unit Aureon - Robot xung kích 4 chân hạng nặng T5.
@@ -81,16 +85,32 @@ public final class aureon {
     /** Mỗi tia điện: 60% Tấn công + 60% Giáp, tính cho 1 GIÂY (chia đều cho các nhịp chạm mỗi damageInterval tick). */
     public static final float ARC_ATK_RATIO = 0.60f;
     public static final float ARC_ARMOR_RATIO = 0.60f;
+    /** Kỹ năng bị động Quá Tải Cận Điện: thu hẹp khoảng cách tới mục tiêu giúp 4 khe vũ khí điện tăng tối đa +120% sát thương (gấp 2.2 lần ở cự ly <= 8 ô). */
+    public static final float CLOSE_BONUS_MAX = 1.20f;
+    public static final float CLOSE_FULL_DIST = 64f;
 
-    /** Sát thương mỗi nhịp chạm của 1 tia = (60% Tấn công + 60% Giáp) * damageInterval / 60. */
-    static float arcDamage(Unit u, float interval) {
+    /** Tỉ lệ thu hẹp khoảng cách (0.0 ở tầm tối đa 42.5 ô -> 1.0 khi áp sát <= 8 ô tính tới mép hitbox mục tiêu). */
+    public static float proximityFactor(Unit u, Teamc target) {
+        if (u == null || target == null) return 0f;
+        float hitPad = (target instanceof Hitboxc) ? ((Hitboxc) target).hitSize() * 0.5f : 0f;
+        float effDist = Math.max(0f, u.dst(target) - hitPad);
+        return Mathf.clamp(1f - (effDist - CLOSE_FULL_DIST) / Math.max(1f, RANGE - CLOSE_FULL_DIST));
+    }
+
+    public static float proximityDamageMul(Unit u, Teamc target) {
+        return 1f + CLOSE_BONUS_MAX * proximityFactor(u, target);
+    }
+
+    /** Sát thương mỗi nhịp chạm của 1 tia = (60% Tấn công + 60% Giáp) * hệ số cận điện * damageInterval / 60. */
+    static float arcDamage(Unit u, Teamc target, float interval) {
         float atk = BASE_ATK + NewModePvp.skillFlatAtk(u); // + sát thương cộng thêm từ trang nâng cấp (PvP)
         float raw = ARC_ATK_RATIO * atk * Math.max(0.1f, u.damageMultiplier) + ARC_ARMOR_RATIO * Math.max(0f, u.armor);
-        return raw * interval / 60f;
+        return raw * proximityDamageMul(u, target) * interval / 60f;
     }
 
     private static final Color OUTLINE_COL = Color.valueOf("232933");
     private static final Color ARC_OUTER = Color.valueOf("66d9ff");
+    private static final Color ARC_OVERLOAD = Color.valueOf("ffe066");
     private static final Color ARC_CORE = Color.valueOf("eefbff");
     private static final Color LOCK_RED = Color.valueOf("ff3b30");
     private static final Color LOCK_CHARGE = Color.valueOf("38e57d");
@@ -117,8 +137,8 @@ public final class aureon {
                 Draw.color(ARC_OUTER, ARC_CORE, e.fout());
                 Lines.stroke(1.5f * e.fout());
                 Lines.circle(e.x, e.y, 3f + e.fin() * 10f);
-                Angles.randLenVectors(e.id, 3, 14f * e.fin(), (x, y) ->
-                    Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 4f * e.fout())
+                Angles.randLenVectors(e.id, 4, 13f * e.fin(), (x, y) ->
+                    Fill.circle(e.x + x, e.y + y, 1.6f * e.fout())
                 );
             });
             shootEffect = Fx.none;
@@ -129,8 +149,8 @@ public final class aureon {
             constructor = LegsUnit::create;
 
             localizedName = "Aureon";
-            description = "Robot xung kích 4 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ.";
-            details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa. Mỗi tia điện gây 60% Tấn công + 60% Giáp mỗi giây. Nếu đã khóa 100% mục tiêu và tiêu diệt nó, mục tiêu kế tiếp trong tầm được khóa ngay lập tức (bỏ qua thời gian khóa).";
+            description = "Robot xung kích 4 chân hạng nặng T5 trang bị 4 pháo hồ quang điện hội tụ và nội tại Quá Tải Cận Điện.";
+            details = "Cần 1.5 giây để khóa mục tiêu trước khi phóng 4 luồng sét cao áp hội tụ. Mục tiêu rời khỏi tầm bắn sẽ lập tức mất khóa. Mỗi tia điện gây 60% Tấn công + 60% Giáp mỗi giây. Nội tại Quá Tải Cận Điện: khoảng cách tới mục tiêu càng thu hẹp, cả 4 khe vũ khí điện càng được tăng thêm sát thương (tối đa +120% khi áp sát <= 8 ô). Nếu đã khóa 100% mục tiêu và tiêu diệt nó, mục tiêu kế tiếp trong tầm được khóa ngay lập tức.";
 
             health = 52800f; // 66000 -20%
             armor = 22f;
@@ -165,6 +185,8 @@ public final class aureon {
             weapons.add(createArcWeapon(9.5f, 4.5f, arcBullet));
             weapons.add(createArcWeapon(18.5f, -1.5f, arcBullet));
         }};
+
+        UnitSkillInfo.registerAureon();
     }
 
     private static Weapon createArcWeapon(float wx, float wy, ElectricArcBulletType arcBullet) {
@@ -273,7 +295,7 @@ public final class aureon {
             b.fdata += Time.delta; // đồng hồ hiệu ứng: dừng lại khi game tạm dừng
 
             if (b.timer(1, damageInterval)) {
-                b.damage = arcDamage(u, damageInterval);
+                b.damage = arcDamage(u, target, damageInterval);
                 if (target instanceof Hitboxc) {
                     Hitboxc h = (Hitboxc) target;
                     h.collision(b, target.x(), target.y());
@@ -294,6 +316,7 @@ public final class aureon {
             float dst0 = Mathf.dst(x1, y1, tx, ty);
             if (dst0 < 1f) return;
 
+            float prox = proximityFactor(u, lock.lockedTarget);
             float ang0 = Angles.angle(x1, y1, tx, ty);
             float perpX = -Mathf.sinDeg(ang0);
             float perpY = Mathf.cosDeg(ang0);
@@ -310,31 +333,31 @@ public final class aureon {
 
             int seg = Mathf.clamp((int) (dst / 10f), 8, 36);
             float ph = b.fdata; // thay cho Time.time để hiệu ứng đứng yên khi tạm dừng
-            long fast = (long) (ph * 0.9f) + b.id * 131L;
-            float pulse = 0.5f + 0.5f * Mathf.sin(ph * 0.35f + b.id);
+            long fast = (long) (ph * (0.9f + prox * 0.5f)) + b.id * 131L;
+            float pulse = 0.5f + 0.5f * Mathf.sin(ph * (0.35f + prox * 0.25f) + b.id);
 
-            // nòng trong sáng/trắng hơn, nòng ngoài xanh đậm hơn -> dễ phân biệt từng tia
+            // Càng thu hẹp khoảng cách (prox -> 1), tia điện càng rực vàng-trắng cao áp và dày hơn!
             float inner = Mathf.clamp(1f - Math.abs(lateral) / 60f, 0f, 1f);
-            Color beam = Tmp.c1.set(ARC_OUTER).lerp(Color.white, inner * 0.35f);
+            Color beam = Tmp.c1.set(ARC_OUTER).lerp(ARC_OVERLOAD, prox * 0.72f).lerp(Color.white, inner * 0.30f);
 
             float zPrev = Draw.z();
             Draw.z(Layer.bullet + 1f);
 
-            buildBolt(seg, x1, y1, x2, y2, pX, pY, 6.5f, fast);
+            buildBolt(seg, x1, y1, x2, y2, pX, pY, 6.5f + prox * 2.2f, fast);
 
             // vầng sáng mảnh
             Draw.blend(Blending.additive);
-            Draw.color(beam, 0.16f);
-            Lines.stroke(4.2f + pulse * 0.8f);
+            Draw.color(beam, 0.16f + prox * 0.12f);
+            Lines.stroke(4.2f + prox * 1.8f + pulse * 0.8f);
             strokeBolt(seg);
             Draw.blend();
 
             // thân tia + lõi
             Draw.color(beam, 0.95f);
-            Lines.stroke(1.7f + pulse * 0.4f);
+            Lines.stroke(1.7f + prox * 0.85f + pulse * 0.4f);
             strokeBolt(seg);
             Draw.color(ARC_CORE, 1f);
-            Lines.stroke(0.75f);
+            Lines.stroke(0.75f + prox * 0.45f);
             strokeBolt(seg);
 
             // nhánh sét nhỏ, thưa
@@ -387,10 +410,10 @@ public final class aureon {
 
             rand.setSeed(fast + 4242L);
             Draw.color(ARC_CORE, 0.9f);
-            Lines.stroke(0.9f);
             for (int i = 0; i < 4; i++) {
                 float a = rand.random(360f);
-                Lines.lineAngle(x2 + Angles.trnsx(a, 3f), y2 + Angles.trnsy(a, 3f), a, rand.random(4f, 10f));
+                float r = rand.random(3.5f, 9f);
+                Fill.circle(x2 + Angles.trnsx(a, r), y2 + Angles.trnsy(a, r), 1.35f);
             }
 
             Drawf.light(x1, y1, 16f, beam, 0.3f);
@@ -481,7 +504,7 @@ public final class aureon {
             Draw.draw(Layer.overlayUI, () -> {
                 drawFiringRange(unit);
                 if (lockedTarget != null && isValidTarget(lockedTarget)) {
-                    drawLockReticle(lockedTarget, lockProgress);
+                    drawLockReticle(unit, lockedTarget, lockProgress);
                 }
             });
         }
@@ -506,7 +529,7 @@ public final class aureon {
             Draw.reset();
         }
 
-        private void drawLockReticle(Teamc target, float progress) {
+        private void drawLockReticle(Unit unit, Teamc target, float progress) {
             float tx = target.x();
             float ty = target.y();
             boolean locked = progress >= 1f;
@@ -555,12 +578,24 @@ public final class aureon {
             float fillH = barH * progress;
             Fill.rect(barX, ty - (barH - fillH) * 0.5f, barW, fillH);
 
+            int bonusPct = Math.round(proximityFactor(unit, target) * CLOSE_BONUS_MAX * 100f);
+            if (bonusPct > 0) {
+                Font font = Fonts.outline;
+                float ox = font.getData().scaleX, oy = font.getData().scaleY;
+                font.getData().setScale(0.24f);
+                Color bc = Tmp.c1.set(ARC_OUTER).lerp(ARC_OVERLOAD, bonusPct / 120f);
+                font.setColor(bc.r, bc.g, bc.b, 0.95f);
+                font.draw("+" + bonusPct + "% ST", tx, ty + sqSize + 11f, 0, Align.center, false);
+                font.setColor(Color.white);
+                font.getData().setScale(ox, oy);
+            }
+
             Draw.reset();
         }
 
         @Override
         public String localized() {
-            return "Khóa mục tiêu hồ quang";
+            return "Khóa Mục Tiêu & Quá Tải Cận Điện";
         }
 
         @Override
@@ -569,7 +604,9 @@ public final class aureon {
             t.row();
             t.add("[lightgray]Thời gian khóa: [white]" + Strings.autoFixed(LOCK_DURATION / 60f, 1) + " " + StatUnit.seconds.localized());
             t.row();
-            t.add("[lightgray]Cơ chế: [white]Hội tụ 4 tia sét sau khi khóa; mất khóa ngay nếu mục tiêu rời tầm bắn");
+            t.add("[lightgray]Nội tại Quá Tải Cận Điện: [gold]Khoảng cách càng thu hẹp, 4 khe pháo điện càng tăng thêm sát thương (tối đa +120% ở cự ly ≤ 8 ô)");
+            t.row();
+            t.add("[lightgray]Cơ chế: [white]Hội tụ 4 tia sét sau khi khóa; hạ gục mục tiêu đã khóa giúp khóa tức thì mục tiêu kế tiếp");
         }
     }
 }

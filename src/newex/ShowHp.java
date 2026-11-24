@@ -336,6 +336,7 @@ public final class ShowHp {
 
     static void drawUnit(Unit u, String style) {
         if (u == null || !u.isValid() || u.dead || !u.isAdded()) return;
+        if (newex.content.Lancyron.isHiddenFromViewer(u)) return;
 
         int id = u.id;
         float curHp = u.health, maxHp = effectiveMaxHp(u), curShield = u.shield;

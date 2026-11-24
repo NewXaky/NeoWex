@@ -17,6 +17,7 @@ import newex.content.Bulvasyr;
 import newex.content.BulvasyrDash;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
+import newex.content.Lancyron;
 import newex.content.Zeralion;
 
 import java.util.HashMap;
@@ -139,6 +140,25 @@ public final class UnitSkillInfo {
         ));
     }
 
+    public static void registerAureon() {
+        register(new SkillProfile(
+            "Aureon",
+            () -> newex.content.aureon.aureon,
+            "HỘI TỤ HỒ QUANG · QUÁ TẢI CẬN ĐIỆN",
+            DamageKind.BASIC_ATTACK,
+            Color.valueOf("66D9FF"),
+            "Nội tại khóa: [cyan]1.5s[] | Chuyển khóa tức thì khi hạ gục",
+            "[gold]4 Pháo Hồ Quang Điện[]: mỗi tia gây [scarlet]60%[] Tấn Công + [sky]60%[] Giáp mỗi giây (tổng 4 tia = [scarlet]240%[] Tấn Công + [sky]240%[] Giáp / giây)\n"
+                + "[gold]Quá Tải Cận Điện[] (Nội tại khoảng cách): sát thương cả 4 khe vũ khí điện tự động tăng thêm từ [green]+0%[] (ở tầm xa nhất [cyan]42.5[] ô) lên tối đa [scarlet]+120%[] khi thu hẹp khoảng cách áp sát mục tiêu ([cyan]≤ 8[] ô)!\n"
+                + "[sky]Hiệu ứng đòn đánh[]: Gây trạng thái [cyan]Giật Điện (Shocked)[] liên tục lên mục tiêu.",
+            "Cần [cyan]1.5 giây[] khóa mục tiêu trước khi đồng loạt khai hỏa cả 4 khe pháo hồ quang điện cao áp tự động bám dính mục tiêu (không cần giữ nút bắn). Tính là [accent]Đòn Đánh Thường[].",
+            "[gold]1. Quá Tải Cận Điện (Mới)[]: Khoảng cách giữa Aureon và mục tiêu càng thu hẹp, điện áp của cả 4 khe vũ khí càng tăng mạnh — cộng thêm tối đa [scarlet]+120% sát thương[] (gấp [gold]2.2 lần[]) khi áp sát!\n"
+                + "[gold]2. Nối Mạch Tức Thì[]: Nếu mục tiêu bị hạ gục sau khi đã khóa đủ [cyan]100%[], mục tiêu kế tiếp trong tầm sẽ được [green]khóa ngay lập tức[] (bỏ qua 1.5s chờ khóa).",
+            null,
+            () -> "Tự động khóa mục tiêu gần nhất; trên PC/Mobile có thể rê tâm ngắm vào mục tiêu muốn ưu tiên khóa."
+        ));
+    }
+
     public static void registerZeralion() {
         register(new SkillProfile(
             "Zeralion",
@@ -174,9 +194,32 @@ public final class UnitSkillInfo {
         ));
     }
 
+    public static void registerLancyron() {
+        register(new SkillProfile(
+            "Lancyron",
+            () -> Lancyron.lancyron,
+            "ROLL VẬN MỆNH 1-2-3 · KHIÊN VẬT LÝ AEGIS",
+            DamageKind.BASIC_ATTACK,
+            Color.valueOf("F2A81D"),
+            "Roll 1-2-3: [cyan]5.0s[] hồi chiêu, quay số [cyan]1.0s[] trên đầu unit",
+            "[gold]2 Bệ Tên Lửa Nhẹ Orkan[] (hông): ổ [cyan]20[] viên/khẩu, nạp [green]5[] viên/giây, xả [scarlet]10[] viên/giây tên lửa vật lý nổ diện rộng\n"
+                + "[gold]Pháo Shotgun Nặng Thunder[] (tâm): bắn chùm [cyan]9[] viên đạn plasma siêu tốc xuyên giáp, sát thương dồn cực lớn\n"
+                + "[sky]Khiên Vật Lý Trước Ngực[]: độ bền [green]550% HP[], che phủ mặt trước ([cyan]±66°[]), chặn hoàn toàn đạn, mảnh đạn & laser chính diện",
+            "Khi kích hoạt sẽ hiện con số trên đầu unit và [gold]roll trong 1 giây[] (mọi người chơi trong host đều nhìn thấy), ngẫu nhiên 1 trong 3 hiệu ứng:\n"
+                + "[#ff5a26]1. Song Kích Liên Thanh (5 giây)[]: Trong [cyan]5 giây[], tăng tốc độ bắn thêm [green]+10%[] và toàn bộ khe vũ khí của unit bắn [gold]liên kích[] (từ [white]1 trong 1 đòn[] thành [accent]2 trong 1 đòn[]).\n"
+                + "[#4ef2ff]2. Ảo Ảnh Tàng Hình[]: Tạo ngay [cyan]1 unit phân thân[] tự động di chuyển và tấn công như bình thường; bản thân [sky]tàng hình trong 3 giây[], tăng [green]+50%[] tốc độ di chuyển và [lightgray]không thể bắn khi đang tàng hình[] (chỉ phe ta thấy bản tàng hình, địch hoàn toàn không thấy).\n"
+                + "[#5bff96]3. Huyết Khiên & Tái Đúc Aegis[]: Phá khiên bắn tung mảnh giáp ra phía trước; nếu máu dưới [scarlet]99%[] cộng thêm [green]+5000 HP[] vào Max HP; nếu độ bền khiên dưới [scarlet]99%[] sẽ đợi [cyan]1 giây[] để tái đúc lại [green]100%[] khiên vật lý mới!",
+            "[gold]Khiên Vật Lý Tách Lớp[]: Tấm khiên chính và 2 cánh giáp bản lề tự động đẩy thủy lực mở rộng khi khai hỏa. Nhận [scarlet]+50%[] sát thương từ đạn vật lý và giảm [green]-50%[] sát thương từ đạn năng lượng/laser.",
+            null,
+            () -> "PC: Roll 1-2-3 - phím [accent][" + Lancyron.getSkillKey().value + "][] (đổi trong Cài đặt -> Phím kĩ năng)\nMobile: nút ROLL 1-3 trên màn hình"
+        ));
+    }
+
     public static void init() {
         registerHonivery();
+        registerAureon();
         registerBulvasyr();
+        registerLancyron();
         registerArchueng();
         registerZeralion();
     }

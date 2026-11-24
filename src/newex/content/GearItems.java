@@ -106,12 +106,12 @@ final class GearItems {
         d(S_WEAPON, 4, "Thần kiếm Heliyron", "Heliyron Godblade", "heliyron,spectre", 2, 16, 4, 8, 6, 8, 9, 6, 3, -4, 1, -3, 14, 22);
         // ---- Mũ
         d(S_HELM, 0, "Mũ đồng", "Copper Cap", "copper-wall,mender", 0, 2, 7, 1);
-        d(S_HELM, 0, "Kính ngắm vụn", "Scrap Scope", "scrap-wall,scrap", 5, 3, 12, 1);
+        d(S_HELM, 0, "Kính ngắm vụn", "Scrap Scope", "scrap-wall,scrap", 5, 3);
         d(S_HELM, 1, "Mũ chiến binh", "Warrior Helm", "titanium-wall,mender", 0, 3, 7, 3, 8, 1);
         d(S_HELM, 1, "Kính xạ thủ", "Marksman Visor", "lancer,mender", 5, 4, 7, 4);
-        d(S_HELM, 2, "Mũ Korynd", "Korynd Helm", "korynd,thorium-wall", 0, 5, 1, 3, 12, 4, 3, -2);
+        d(S_HELM, 2, "Mũ Korynd", "Korynd Helm", "korynd,thorium-wall", 0, 5, 1, 3, 3, -2);
         d(S_HELM, 3, "Vương miện Sallowyr", "Sallowyr Crown", "sallowyr,force-projector", 7, 8, 8, 5, 5, 4, 4, -3);
-        d(S_HELM, 4, "Mão Hư Vô", "Void Diadem", "newex,surge-wall", 7, 12, 5, 8, 12, 6, 0, -3, 4, -3);
+        d(S_HELM, 4, "Mão Hư Vô", "Void Diadem", "newex,surge-wall", 7, 12, 5, 8, 0, -3, 4, -3);
         // ---- Giáp
         d(S_ARMOR, 0, "Áo vải", "Cloth Vest", "copper-wall", 0, 2, 1, 1, 3, -1);
         d(S_ARMOR, 0, "Giáp da", "Leather Armor", "scrap-wall-large,copper-wall-large", 1, 3, 0, 1);
@@ -137,13 +137,13 @@ final class GearItems {
         d(S_RING, 3, "Nhẫn Obsidis", "Obsidis Ring", "obsidis,surge-alloy", 6, 10, 9, 6, 8, 6, 4, -3);
         d(S_RING, 4, "Nhẫn Starlight", "Starlight Ring", "starlight,phase-fabric", 6, 16, 9, 9, 5, 8, 8, 8, 2, -3, 0, -3);
         // ---- Bùa
-        d(S_CHARM, 0, "Bùa bào tử", "Spore Charm", "spore-pod", 8, 2, 12, 2, 1, -1);
+        d(S_CHARM, 0, "Bùa bào tử", "Spore Charm", "spore-pod", 8, 2, 1, -1);
         d(S_CHARM, 0, "Bùa than", "Coal Charm", "coal", 13, 3, 11, 1);
-        d(S_CHARM, 1, "Bùa plastanium", "Plastanium Charm", "plastanium", 12, 4, 13, 3, 3, -1);
+        d(S_CHARM, 1, "Bùa plastanium", "Plastanium Charm", "plastanium", 13, 3, 3, -1);
         d(S_CHARM, 1, "Bùa kích thích", "Stimulant Charm", "pyratite,blast-compound", 4, 4, 13, 4);
-        d(S_CHARM, 2, "Bùa Berrybyr", "Berrybyr Charm", "berrybyr,phase-fabric", 13, 8, 12, 4, 8, 3, 0, -2);
-        d(S_CHARM, 3, "Bùa Sallowyr", "Sallowyr Charm", "sallowyr,surge-alloy", 13, 12, 12, 6, 9, 5, 2, -3, 3, -3, 14, 10);
-        d(S_CHARM, 4, "Bùa Pha Lê Hư Vô", "Void Crystal Charm", "newex-obsidis,newex-starlight", 13, 18, 12, 10, 9, 8, 7, 8, 1, -4, 3, -4);
+        d(S_CHARM, 2, "Bùa Berrybyr", "Berrybyr Charm", "berrybyr,phase-fabric", 13, 8, 8, 3, 0, -2);
+        d(S_CHARM, 3, "Bùa Sallowyr", "Sallowyr Charm", "sallowyr,surge-alloy", 13, 12, 9, 5, 2, -3, 3, -3, 14, 10);
+        d(S_CHARM, 4, "Bùa Pha Lê Hư Vô", "Void Crystal Charm", "newex-obsidis,newex-starlight", 13, 18, 9, 8, 7, 8, 1, -4, 3, -4);
         // ---- Vật phẩm cửa hàng (chỉ mua, không rơi từ quái đợt)
         shop("Bùa Dịch Chuyển", "Recall Charm", "phase-fabric,phase-conveyor", K_TP, 1,
             "Kỹ năng: đứng yên 3s để dịch chuyển về căn cứ (hồi 30s). Nút hiện ở góc dưới bên phải khi có trong túi hoặc đã lắp.", "Skill: stand still 3s to teleport to base (30s cooldown). Button at bottom-right while in bag or equipped.");
@@ -163,7 +163,7 @@ final class GearItems {
             "Skill: On kill, +1% attack for player unit skills (max 500%).", 2, 6, 6, 6, 7, 4);
         sk(S_CHARM, R_LEGEND, "Bùa Tài Lộc", "Fortune Charm", "surge-alloy,phase-fabric", SK_MIN_PT,
             "Kỹ năng: Mỗi phút nhận 1 điểm.",
-            "Skill: Gain 1 point every minute.", 8, 3, 12, 3);
+            "Skill: Gain 1 point every minute.", 8, 3);
         sk(S_ARMOR, R_LEGEND, "Giáp Phục Hận", "Vengeance Armor", "surge-wall-large,thorium-wall-large", SK_DEATH_CDR,
             "Kỹ năng: Khi bị kẻ địch là player tiêu diệt, giảm 50% thời gian hồi sinh và hồi chiêu kỹ năng pilot.",
             "Skill: When killed by an enemy player, -50% respawn time and pilot skill cooldown.", 0, 5, 1, 6);
@@ -186,7 +186,7 @@ final class GearItems {
         sk(S_CHARM, R_MYTHIC, "Ấn Quang Huy", "Radiant Crest", "newex-berrybyr,surge-alloy", SK_TEAM_BUFF,
             "Kỹ năng: Đánh trúng mục tiêu tích 1 tầng Tinh Quang Cộng Hưởng; đủ 1000 tầng giúp cả phe nhận +10% Tấn công & +10% Giáp trong 20s (chỉ tích lại sau khi hết buff).",
             "Skill: On hit, gain 1 stack of Astral Resonance; at 1000 stacks, grants the whole team +10% ATK & +10% Armor for 20s (re-stacks only after buff ends).",
-            0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11, 1, 12, 1, 13, 1, 14, 1);
+            0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11, 1, 13, 1, 14, 1);
         sk(S_WEAPON, R_MYTHIC, "Pháo Ấn Sư Tử", "Lionstrike Core", "zeralion,spectre,lancer", SK_BASIC_ZERA,
             "Kỹ năng: Tăng 50% sát thương gây ra cho các đòn đánh thường; nếu đang dùng unit Zeralion thì tăng thêm 100%.",
             "Skill: +50% damage for basic attacks; +100% additional damage when piloting Zeralion.", 2, 6, 4, 4);
@@ -316,7 +316,7 @@ final class GearItems {
             if (d.skill > 0) mask |= (1 << d.skill);
             int bt = eqBonusAt(st, s);
             for (int i = 0; i + 1 < d.mods.length; i += 2) {
-                if (d.mods[i] >= 0 && d.mods[i] < st.gDelta.length) {
+                if (d.mods[i] >= 0 && d.mods[i] < st.gDelta.length && d.mods[i] != 12) {
                     st.gDelta[d.mods[i]] += bonusModVal(d.mods[i + 1], bt);
                     any = true;
                 }
@@ -331,18 +331,18 @@ final class GearItems {
                 if (gd == null) continue;
                 for (int j = 0; j + 1 < gd.mods.length; j += 2) {
                     int idx = gd.mods[j], val = gd.mods[j + 1];
-                    if (idx >= 0 && idx < st.gDelta.length && val > 0) { st.gDelta[idx] += val; any = true; }
+                    if (idx >= 0 && idx < st.gDelta.length && idx != 12 && val > 0) { st.gDelta[idx] += val; any = true; }
                 }
             }
         }
-        // Giáp Trọng Lực: tốc độ < 6.9 ô/s -> tăng +1 cấp mọi chỉ số (hiện rõ trong bảng thông tin)
+        // Giáp Trọng Lực: tốc độ < 6.9 ô/s -> tăng +1 cấp mọi chỉ số (bỏ qua chỉ số 12 của lính)
         if (st.gSlowBonus && (mask & (1 << SK_SLOW_ALL1)) != 0) {
-            for (int i = 0; i < st.gDelta.length; i++) st.gDelta[i] += 1;
+            for (int i = 0; i < st.gDelta.length; i++) if (i != 12) st.gDelta[i] += 1;
             any = true;
         }
-        // Lõi Quang Tuyến: giảm mọi chỉ số -1 cấp
+        // Lõi Quang Tuyến: giảm mọi chỉ số -1 cấp (bỏ qua chỉ số 12 của lính)
         if ((mask & (1 << SK_CORE_LASER)) != 0) {
-            for (int i = 0; i < st.gDelta.length; i++) st.gDelta[i] -= 1;
+            for (int i = 0; i < st.gDelta.length; i++) if (i != 12) st.gDelta[i] -= 1;
             any = true;
         }
         st.gAny = any;

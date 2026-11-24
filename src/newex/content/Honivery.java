@@ -420,6 +420,8 @@ public final class Honivery {
             buildKeybindRow(t);
             HoniveryPvp.buildKeybindRow(t);
             ArchuengPvp.buildKeybindRow(t);
+            BulvasyrDash.buildKeybindRow(t);
+            Lancyron.buildKeybindRow(t);
         });
     }
 

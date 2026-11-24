@@ -217,10 +217,10 @@ public class NewModePvp {
     static final String KEY_MAXLV = "newex-pvp-max-level";
     static final int LIMIT_MAXLV = 999;
     static final int FREE_SWITCH_LEVEL = 5;
-    static final int TIER_MAX = 11; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion, 11 bulvasyr (unit moi chien tranh)
-    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64, BULVASYR_MIN_LEVEL = 40;
+    static final int TIER_MAX = 12; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion, 11 bulvasyr, 12 lancyron (unit moi chien tranh)
+    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64, BULVASYR_MIN_LEVEL = 40, LANCYRON_MIN_LEVEL = 0;
     /** Cấp tối thiểu để chọn unit bậc t (0 = không yêu cầu). */
-    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : t == 11 ? BULVASYR_MIN_LEVEL : 0; }
+    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : t == 11 ? BULVASYR_MIN_LEVEL : t == 12 ? LANCYRON_MIN_LEVEL : 0; }
     static boolean isWarTier(int t) { return t >= 9; }
 
     // ===== Chế độ lắp nhiều pháo cùng loại (St.tm: 0 = Dồn lực tăng ST, 1 = Đa đạn giảm 10% tốc độ/pháo cùng loại) =====
@@ -684,6 +684,7 @@ public class NewModePvp {
         if (lv == 9) { UnitType a = newex.content.aureon.aureon; return a != null ? a : UnitTypes.collaris; }
         if (lv == 10) { UnitType z = Zeralion.zeralion; return z != null ? z : UnitTypes.collaris; }
         if (lv == 11) { UnitType b = Bulvasyr.bulvasyr; return b != null ? b : UnitTypes.collaris; }
+        if (lv == 12) { UnitType l = Lancyron.lancyron; return l != null ? l : UnitTypes.collaris; }
         if (tierList == null) tierList = new UnitType[]{UnitTypes.merui, UnitTypes.cleroi, UnitTypes.anthicus, UnitTypes.tecta, UnitTypes.collaris};
         return tierList[Math.min(5, Math.max(1, lv)) - 1];
     }
@@ -1536,7 +1537,7 @@ public class NewModePvp {
     static Aim aimState(Unit u, Player pl) {
         Aim a = new Aim();
         try { a.x = u.aimX(); a.y = u.aimY(); a.shoot = u.isShooting(); } catch (Throwable err) {}
-        try { if (pl != null && pl.shooting) { a.shoot = true; a.x = u.aimX(); a.y = u.aimY(); } } catch (Throwable err) {}
+        try { if (pl != null && pl.unit() == u && pl.shooting) { a.shoot = true; a.x = u.aimX(); a.y = u.aimY(); } } catch (Throwable err) {}
         try {
             mindustry.entities.units.WeaponMount[] m = u.mounts();
             if (m != null) for (mindustry.entities.units.WeaponMount w : m) if (w.shoot) { a.shoot = true; a.x = w.aimX; a.y = w.aimY; break; }
@@ -1767,7 +1768,7 @@ public class NewModePvp {
             if (stt.tgt == null) { float niv = fldF(blk, "newTargetInterval", -1f); if (niv > 0) iv = niv; }
             stt.tt = iv;
             Tgt nt = null;
-            try { if (Groups.fire.size() > 0) nt = findFire(u, def, mp, range); } catch (Throwable err) {}
+            try { nt = findFire(u, def, mp, range); } catch (Throwable err) {}
             if (nt == null) nt = wrap(findTarget(u, def, mp, range));
             stt.tgt = nt;
         }
@@ -2027,7 +2028,19 @@ public class NewModePvp {
     static void mountFire(Player pl, ArrayList<Def> list, Unit u, String pfx) {
         int n = list.size();
         if (n == 0) return;
-        if (Zeralion.isBound(u)) return; // bị Zeralion khóa: không bắn được
+        if (Zeralion.isBound(u) || Lancyron.isStealthedUnit(u)) { // bị Zeralion khóa hoặc Lancyron đang tàng hình: không thể bắn
+            for (int k = 0; k < n; k++) {
+                Def def = list.get(k);
+                String key = pl.id + ":" + pfx + k + ":" + def.id;
+                MState stt = mountSt.get(key);
+                if (stt != null && stt.b != null) {
+                    try { stt.b.remove(); } catch (Throwable ignored) {}
+                    stt.b = null;
+                }
+                equipBeam.remove(key);
+            }
+            return;
+        }
         St own = byId.get(pl.id);
         int tm = own != null ? tmodeCfg() : -1;
         Aim ast = null;
@@ -2189,7 +2202,12 @@ public class NewModePvp {
         if (st == null || st.d.size() == 0 || st.p.size() != st.d.size()) return;
         Defs defs = droneDefs();
         Unit u = pl.unit();
-        if (u != null && u.isValid() && !u.dead) mountFire(pl, equipList(st, defs), u, "u");
+        if (u != null && u.isValid() && !u.dead) {
+            ArrayList<Def> eq = equipList(st, defs);
+            mountFire(pl, eq, u, "u");
+            Unit clone = Lancyron.getActiveClone(u);
+            if (clone != null && clone.isValid() && !clone.dead) mountFire(pl, eq, clone, "uc");
+        }
         CoreBlock.CoreBuild core = pl.team() != null ? pl.team().core() : null;
         if (core != null && core.isValid()) mountCoreFire(pl, core, coreList(st, defs));
     }
@@ -2199,7 +2217,12 @@ public class NewModePvp {
         if (st == null || st.d.size() == 0 || st.p.size() != st.d.size()) return;
         Defs defs = droneDefs();
         Unit u = pl.unit();
-        if (u != null && u.isValid()) drawMounts(pl, u, equipList(st, defs), "u");
+        if (u != null && u.isValid()) {
+            ArrayList<Def> eq = equipList(st, defs);
+            if (!Lancyron.isHiddenFromViewer(u)) drawMounts(pl, u, eq, "u");
+            Unit clone = Lancyron.getActiveClone(u);
+            if (clone != null && clone.isValid() && !clone.dead) drawMounts(pl, clone, eq, "uc");
+        }
         CoreBlock.CoreBuild core = pl.team() != null ? pl.team().core() : null;
         if (core != null && core.isValid()) drawCoreMounts(pl, core, coreList(st, defs));
     }
@@ -2256,7 +2279,7 @@ public class NewModePvp {
         float t = Time.time - at;
         if (t < 0 || t >= PILOT_FX_TICKS) { if (t >= PILOT_FX_TICKS) pilotFxAt.remove(pl.id); return; }
         Unit u = pl.unit();
-        if (u == null || !u.isValid() || u.dead) return;
+        if (u == null || !u.isValid() || u.dead || Lancyron.isHiddenFromViewer(u)) return;
         TextureRegion reg = pilotIconRegion(st.pi);
         if (reg == null) return;
         float p = t / PILOT_FX_TICKS, h = (float) Math.sin(p * Math.PI);
@@ -3250,6 +3273,7 @@ public class NewModePvp {
         if (pLv > 0) hpT *= 1 + pilotHpPct(pi, pLv) / 100f * pK;
         hpT *= ChaosMode.hpMul();
         hpT = Math.max(Math.min(20f, tHp), hpT);   // vật phẩm trừ máu không được làm máu tối đa âm
+        hpT += Lancyron.getBonusMaxHp(unit);       // cộng thêm +5000 Max HP từ kỹ năng Roll #3 của Lancyron
         boolean xakyNeoOn = pi == PILOT_XAKYNEO, vanhauOn = pi == PILOT_VANHAU;
         if (Math.abs(unit.maxHealth - hpT) > 0.5f) {
             float diff = hpT - unit.maxHealth;
@@ -3698,6 +3722,7 @@ public class NewModePvp {
         if (botUnitOf(u) != null) return;
         if (PvpDomination.isSoloBot(u)) return;
         if (TikTokBridge.isTaggedUnit(u)) return;
+        if (Lancyron.isCloneUnit(u)) return;
         if (orphanTypes == null) { orphanTypes = new ArrayList<>(); for (int k = 1; k <= TIER_MAX; k++) orphanTypes.add(tierType(k)); }
         for (UnitType t : orphanTypes) if (u.type == t) { try { Call.unitDespawn(u); } catch (Throwable err) { u.remove(); } return; }
     }
@@ -3814,7 +3839,9 @@ public class NewModePvp {
         }
         if (u.type == want && u.team == pl.team()) { swapPending.remove(pl.id); prevUnit.put(pl.id, u); return; }
         boolean isTier = false;
-        for (int lv = 1; lv <= TIER_MAX; lv++) if (u.type == tierType(lv)) { isTier = true; break; }
+        if (!Lancyron.isCloneUnit(u)) {
+            for (int lv = 1; lv <= TIER_MAX; lv++) if (u.type == tierType(lv)) { isTier = true; break; }
+        }
         boolean isCoreUnit = false;
         try { CoreBlock.CoreBuild cr = pl.team().core(); isCoreUnit = cr != null && u.type == ((CoreBlock) cr.block).unitType; } catch (Throwable err) {}
         if (!isTier && !isCoreUnit) {
@@ -4723,7 +4750,7 @@ public class NewModePvp {
     static int equipSlots(St st) { return Math.min(EQUIP_SLOT_CAP, Math.max(1, st.lv)); }
 
     // ===== Hệ thống Trọng Lượng Pháo & Độ Chịu Nặng của Unit Player =====
-    private static final int[] TIER_LOAD_BASE = {35, 60, 95, 140, 200, 260, 300, 300, 350, 380, 380};
+    private static final int[] TIER_LOAD_BASE = {35, 60, 95, 140, 200, 260, 300, 300, 350, 380, 380, 380};
 
     /** Trọng lượng của 1 pháo khi lắp lên Unit: tính theo kích thước + sức mạnh sát thương (cân bằng pháo rẻ nhưng quá mạnh) + giá. */
     static int turretWeight(Def def) {
@@ -5443,9 +5470,14 @@ public class NewModePvp {
         Table col = new Table();
         col.left();
         col.add("[white]" + ut.localizedName + "[]").left().row();
-        col.add("[lightgray]" + (isWarTier(t) ? tr("Unit mới chiến tranh · yêu cầu cấp " + tierMinLevel(t), "New war unit · requires Lv " + tierMinLevel(t)) : isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t)) + "[]").left().wrap().growX();
+        String roleText = isWarTier(t)
+            ? (tierMinLevel(t) > 0
+                ? tr("Unit mới chiến tranh · yêu cầu cấp " + tierMinLevel(t), "New war unit · requires Lv " + tierMinLevel(t))
+                : tr("Unit mới chiến tranh", "New war unit"))
+            : (isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t));
+        col.add("[lightgray]" + roleText + "[]").left().wrap().growX();
         row.add(col).growX().left().minWidth(0);
-        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 10 ? "Zeralion" : t == 11 ? "Bulvasyr" : null;
+        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 9 ? "Aureon" : t == 10 ? "Zeralion" : t == 11 ? "Bulvasyr" : t == 12 ? "Lancyron" : null;
         if (t == cur) row.add("[accent]" + tr("Đang dùng", "In use") + "[]").width(selW).center();
         else if (st.lv < tierMinLevel(t)) row.add("[scarlet]" + tr("Cần cấp ", "Need Lv ") + tierMinLevel(t) + "[]").width(selW).center();
         else row.button(tr("Chọn", "Select"), () -> send(REQ_UNIT, String.valueOf(t))).size(selW, btnH());

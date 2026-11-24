@@ -298,25 +298,140 @@ public final class Bulvasyr {
         launchSound = Vars.headless ? Sounds.none : Sounds.shootSmite;
 
         shieldHitFx = new Effect(16f, e -> {
+            Draw.blend(Blending.additive);
             Draw.color(Color.white, SHIELD_SPARK, e.fin());
             Lines.stroke(1.6f * e.fout());
             Lines.circle(e.x, e.y, 2f + e.fin() * 10f);
+            drawStar(e.x, e.y, e.rotation, 7f * e.fout(), 2.0f * e.fout(), 3.2f * e.fout());
             Angles.randLenVectors(e.id, 5, 14f * e.fin(), e.rotation, 65f, (x, y) ->
-                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 4.5f * e.fout())
+                Fill.circle(e.x + x, e.y + y, 1.8f * e.fout())
             );
+            Draw.blend();
+            Draw.reset();
         });
 
-        shieldBreakFx = new Effect(36f, 120f, e -> {
-            Draw.color(SHIELD_SPARK, SHIELD_BLUE, e.fin());
-            Lines.stroke(3.2f * e.fout());
-            Lines.circle(e.x, e.y, 6f + e.fin() * 34f);
-            Angles.randLenVectors(e.id, 14, 38f * e.finpow(), (x, y) -> {
-                Draw.color(SHIELD_BLUE, SHIELD_STEEL, Mathf.randomSeed(e.id + (int) x));
-                Fill.poly(e.x + x, e.y + y, 4, 4.5f * e.fout(), e.rotation + x * 4f);
+        shieldBreakFx = new Effect(64f, 240f, e -> {
+            float fin = e.fin(), fout = e.fout();
+            float a = e.fout(Interp.pow2);
+            float outAng = e.rotation;          // hướng văng ngang ra khỏi mạn trái (rotation + 90)
+            float fwdAng = e.rotation - 90f;    // hướng mũi cơ giáp Bulvasyr
+            float fwdX = Angles.trnsx(fwdAng, 1f), fwdY = Angles.trnsy(fwdAng, 1f);
+
+            // 1) Khói áp suất thủy lực & bụi chiến trường bung dọc mạn trái
+            Angles.randLenVectors(e.id + 51, 11, 8f + 46f * e.finpow(), outAng, 78f, (x, y) -> {
+                Draw.color(Tmp.c1.set(SHIELD_STEEL).lerp(Color.darkGray, fin), 0.42f * fout);
+                Fill.circle(e.x + x, e.y + y, 2.5f + 6.5f * e.fin(Interp.pow2Out));
             });
-            Draw.color(Color.white, e.fout());
-            Fill.circle(e.x, e.y, 8f * e.fout());
-        });
+
+            // 2) Tấm khiên vật lý nứt toác làm 3 mảng giáp lớn rồi văng xoay 3D ra ngoài (không dùng đường thẳng)
+            if (fin < 0.72f) {
+                float p = fin / 0.72f;
+                float ep = Interp.pow3Out.apply(p);
+                float fadePlate = 1f - Interp.pow2In.apply(p);
+                for (int seg = -1; seg <= 1; seg++) {
+                    float segAng = outAng + seg * 28f + (Mathf.randomSeedRange(e.id + seg * 17, 14f));
+                    float dist = 4f + ep * (32f + Math.abs(seg) * 8f);
+                    float cx = e.x + fwdX * (seg * 11f) + Angles.trnsx(segAng, dist);
+                    float cy = e.y + fwdY * (seg * 11f) + Angles.trnsy(segAng, dist);
+                    float spin = fwdAng + seg * (18f + ep * 95f);
+                    float tilt3D = 0.35f + 0.65f * Math.abs(Mathf.cos(p * 5.2f + seg));
+                    float w = 8.5f * tilt3D * (1f - 0.25f * p);
+                    float h = 11.5f * (1f - 0.2f * p);
+                    float sx = Angles.trnsx(spin, 1f), sy = Angles.trnsy(spin, 1f);
+                    float rx = Angles.trnsx(spin - 90f, 1f), ry = Angles.trnsy(spin - 90f, 1f);
+
+                    float x1 = cx + sx * h - rx * w, y1 = cy + sy * h - ry * w;
+                    float x2 = cx + sx * h + rx * w, y2 = cy + sy * h + ry * w;
+                    float x3 = cx - sx * h + rx * (w * 0.7f), y3 = cy - sy * h + ry * (w * 0.7f);
+                    float x4 = cx - sx * h - rx * (w * 0.85f), y4 = cy - sy * h - ry * (w * 0.85f);
+
+                    Draw.color(OUTLINE_COL, 0.92f * fadePlate);
+                    Fill.quad(x1, y1, x2, y2, x3, y3, x4, y4);
+                    Draw.color(Tmp.c1.set(SHIELD_BLUE).lerp(SHIELD_SPARK, Math.max(0f, 1f - p * 2.4f)), 0.95f * fadePlate);
+                    Fill.quad(
+                        Mathf.lerp(cx, x1, 0.82f), Mathf.lerp(cy, y1, 0.82f),
+                        Mathf.lerp(cx, x2, 0.82f), Mathf.lerp(cy, y2, 0.82f),
+                        Mathf.lerp(cx, x3, 0.82f), Mathf.lerp(cy, y3, 0.82f),
+                        Mathf.lerp(cx, x4, 0.82f), Mathf.lerp(cy, y4, 0.82f)
+                    );
+                }
+            }
+
+            // 3) 22 mảnh giáp đa giác xoay 3D & hạt cầu sáng (tuyệt đối không dùng đường thẳng quanh vòng tròn)
+            Angles.randLenVectors(e.id, 22, 10f + 72f * e.finpow(), outAng, 88f, (x, y) -> {
+                int seed = e.id + (int) (x * 13f + y * 7f);
+                float sx = e.x + x, sy = e.y + y;
+                float flip = 0.25f + 0.75f * Math.abs(Mathf.cos(fin * 9f + seed));
+                float sz = (2.8f + Mathf.randomSeed(seed, 0f, 3.8f)) * fout;
+                float rot = e.rotation + x * 5.5f + fin * 160f;
+
+                Draw.color(OUTLINE_COL, 0.85f * fout);
+                Fill.poly(sx, sy, 4, sz * 1.22f * flip, rot);
+                boolean isCyan = (seed & 3) == 0;
+                Draw.color(isCyan ? MISS_CYAN : ((seed & 1) == 0 ? SHIELD_BLUE : SHIELD_STEEL), 0.95f * fout);
+                Fill.poly(sx, sy, 4, sz * flip, rot);
+
+                if (fin < 0.65f) {
+                    Draw.blend(Blending.additive);
+                    Draw.color(isCyan ? MISS_CYAN : SHIELD_SPARK, 0.55f * fout);
+                    Fill.circle(sx, sy, sz * 0.95f);
+                    Draw.blend();
+                }
+            });
+
+            Draw.blend(Blending.additive);
+
+            // 4) Sóng xung kích lưỡi liềm mềm mượt quét ra mạn trái (dải quad mịn, không kẻ đường thẳng)
+            float cresR = 12f + e.fin(Interp.pow3Out) * 68f;
+            int arcSegs = 18;
+            float halfArc = 68f;
+            for (int i = 0; i < arcSegs; i++) {
+                float f1 = (float) i / arcSegs, f2 = (float) (i + 1) / arcSegs;
+                float a1 = outAng - halfArc + halfArc * 2f * f1;
+                float a2 = outAng - halfArc + halfArc * 2f * f2;
+                float env1 = Mathf.sin(f1 * Mathf.PI), env2 = Mathf.sin(f2 * Mathf.PI);
+                float th1 = (12f * a + 2f) * env1, th2 = (12f * a + 2f) * env2;
+
+                Draw.color(MISS_VIOLET, MISS_CYAN, f1);
+                Draw.alpha(0.75f * a * ((env1 + env2) * 0.5f));
+                Fill.quad(
+                    e.x + Angles.trnsx(a1, cresR - th1), e.y + Angles.trnsy(a1, cresR - th1),
+                    e.x + Angles.trnsx(a1, cresR), e.y + Angles.trnsy(a1, cresR),
+                    e.x + Angles.trnsx(a2, cresR), e.y + Angles.trnsy(a2, cresR),
+                    e.x + Angles.trnsx(a2, cresR - th2), e.y + Angles.trnsy(a2, cresR - th2)
+                );
+            }
+
+            // 5) Vòng sóng tròn đồng tâm mượt mà (không có bất kỳ đường thẳng hay tia sét thẳng nào quanh vòng tròn)
+            Lines.stroke(3.2f * a);
+            Draw.color(SHIELD_SPARK, MISS_VIOLET, fin);
+            Lines.circle(e.x, e.y, 8f + e.fin(Interp.pow3Out) * 54f);
+
+            Lines.stroke(1.8f * a);
+            Draw.color(MISS_CYAN, SHIELD_BLUE, fin);
+            Lines.circle(e.x, e.y, 5f + e.fin(Interp.pow2Out) * 38f);
+
+            // 6) Các ngôi sao 4 cánh nhỏ lấp lánh bung theo luồng nổ
+            Angles.randLenVectors(e.id + 23, 8, 8f + 52f * e.fin(Interp.pow2Out), outAng, 75f, (x, y) -> {
+                Draw.color(MISS_CYAN, Color.white, 0.5f);
+                Draw.alpha(0.85f * a);
+                drawStar(e.x + x, e.y + y, 0f, 7.5f * a, 1.8f * a, 3.2f * a);
+            });
+
+            // 7) Chớp sao 4 cánh khổng lồ tại tâm vỡ khiên
+            float starGrow = e.fout(Interp.pow2Out);
+            Draw.color(MISS_VIOLET, 0.75f * a);
+            drawStar(e.x, e.y, outAng + 45f, 44f * starGrow + 6f, 8.5f * a, 22f * starGrow);
+            Draw.color(MISS_CYAN, 0.92f * a);
+            drawStar(e.x, e.y, outAng, 36f * starGrow + 4f, 5.5f * a, 16f * starGrow);
+            Draw.color(Color.white, a);
+            drawStar(e.x, e.y, outAng, 22f * starGrow, 3.0f * a, 9.5f * starGrow);
+            Fill.circle(e.x, e.y, 11f * a);
+
+            Draw.blend();
+            Drawf.light(e.x, e.y, 115f * a, MISS_CYAN, 0.95f * a);
+            Draw.reset();
+        }).layer(Layer.effect + 0.25f);
 
         // Bụi sao: các ngôi sao 2 cánh nhỏ lấp lánh rơi lại dọc đường bay (giảm 75% kích thước)
         starDustFx = new Effect(36f, e -> {
@@ -339,7 +454,7 @@ public final class Bulvasyr {
             Draw.reset();
         });
 
-        // Bước chân nặng: vòng chấn + bụi bung + tia lửa tím
+        // Bước chân nặng: vòng chấn + bụi bung + hạt sáng tím (không dùng đường thẳng quanh vòng tròn)
         footstepFx = new Effect(30f, 70f, e -> {
             Draw.color(MISS_STEEL, 0.55f * e.fout());
             Lines.stroke(1.6f * e.fout());
@@ -349,10 +464,10 @@ public final class Bulvasyr {
                 Fill.circle(e.x + x, e.y + y, 1.6f + 2.8f * e.fin());
             });
             Draw.color(MISS_VIOLET, MISS_YELLOW, e.fin());
-            Lines.stroke(1.1f * e.fout());
             Angles.randLenVectors(e.id + 5, 4, 4f + 12f * e.finpow(), (x, y) ->
-                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), 0.8f + 3f * e.fout())
+                Fill.circle(e.x + x, e.y + y, 1.4f * e.fout())
             );
+            Draw.reset();
         }).layer(Layer.groundUnit - 1f); // nằm dưới unit
 
         // Khói vệt đuôi: tím xám nở dần, tan chậm (giảm 75% kích thước)
@@ -377,7 +492,7 @@ public final class Bulvasyr {
             Drawf.light(e.x, e.y, 46f * e.fout(), MISS_VIOLET, 0.7f * e.fout());
         });
 
-        // Va chạm: ngôi sao 2 cánh dài phóng to dần và tan chậm (giảm 75% kích thước)
+        // Va chạm: ngôi sao 2 cánh dài phóng to dần và tan chậm (không dùng đường thẳng quanh vòng tròn)
         rocketHitFx = new Effect(58f, 120f, e -> {
             float grow = (0.45f + 8f * e.fin(Interp.pow2Out)) * 0.25f;
             float a = e.fout(Interp.pow2);
@@ -393,9 +508,8 @@ public final class Bulvasyr {
             Lines.stroke(1.6f * a * 0.5f);
             Lines.circle(e.x, e.y, e.fin(Interp.pow2Out) * 38f * 0.25f);
             Draw.color(MISS_YELLOW, MISS_RED, e.fin());
-            Lines.stroke(1.3f * a * 0.5f);
-            Angles.randLenVectors(e.id + 7, 10, (6f + 40f * e.finpow()) * 0.25f, (x, y) ->
-                Lines.lineAngle(e.x + x, e.y + y, Mathf.angle(x, y), (1f + 5f * a) * 0.25f)
+            Angles.randLenVectors(e.id + 7, 8, (6f + 40f * e.finpow()) * 0.25f, (x, y) ->
+                Fill.circle(e.x + x, e.y + y, 1.2f * a)
             );
             Draw.reset();
         });
@@ -624,8 +738,16 @@ public final class Bulvasyr {
 
             if (physShieldHp <= 0.01f) {
                 physShieldHp = 0f;
-                shieldBreakFx.at(hitX, hitY, rotation + SHIELD_ANGLE_OFFSET);
-                if (!Vars.headless) Sounds.explosion.at(hitX, hitY, 0.85f, 0.9f);
+                float shieldFacing = rotation + SHIELD_ANGLE_OFFSET;
+                float plateX = x + Angles.trnsx(shieldFacing, hitSize * 0.48f);
+                float plateY = y + Angles.trnsy(shieldFacing, hitSize * 0.48f);
+                shieldHitFx.at(hitX, hitY, hitAngle);
+                shieldBreakFx.at(plateX, plateY, shieldFacing);
+                Effect.shake(5.4f, 24f, plateX, plateY);
+                if (!Vars.headless) {
+                    Sounds.explosion.at(plateX, plateY, 0.82f, 1.0f);
+                    Sounds.shootSmite.at(plateX, plateY, 0.72f, 0.85f);
+                }
             } else {
                 shieldHitFx.at(hitX, hitY, hitAngle);
             }

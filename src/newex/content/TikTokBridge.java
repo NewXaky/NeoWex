@@ -499,7 +499,7 @@ public final class TikTokBridge {
 
             for (Map.Entry<Integer, ViewerTag> e : unitTags.entrySet()) {
                 Unit u = Groups.unit.getByID(e.getKey());
-                if (u == null || !u.isValid() || u.dead) continue;
+                if (u == null || !u.isValid() || u.dead || Lancyron.isHiddenFromViewer(u)) continue;
                 if (!NewModePvp.camVisible(u.x, u.y, u.hitSize + 64f)) continue;
 
                 ViewerTag tag = e.getValue();

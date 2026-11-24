@@ -724,7 +724,7 @@ public final class NexDynamicShadows {
         final boolean lowPerf = PerfCore.level() >= 1;
         if ((unitShadowsEnabled && unitFade > 0.005f) || lightEraseEnabled) {
             Groups.unit.intersect(screenX1, screenY1, screenX2 - screenX1, screenY2 - screenY1, (Cons<Unit>) u -> {
-                if (u == null || u.dead) return;
+                if (u == null || u.dead || newex.content.Lancyron.isHiddenFromViewer(u)) return;
                 if (lightEraseEnabled) {
                     float lr = (u.type != null && u.type.lightRadius > 4f) ? u.type.lightRadius * 0.72f : (u.isPlayer() ? 42f : 0f);
                     if (lr > 4f) addDynLight(u.x, u.y, lr, 0.45f);
