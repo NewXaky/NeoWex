@@ -295,7 +295,7 @@ public final class SurvivorSkills {
         DESC.put("xylaon", new String[]{"Bắn càng lâu càng nóng, tốc bắn tối đa +350%", "Heats up while firing, up to +350% fire rate"});
         DESC.put("lyvervon", new String[]{"Cột thu lôi: hồ quang chính xác, bắn liên tục", "Lightning rod: precise arc strikes, constant fire"});
         DESC.put("vendicum", new String[]{"Đầy năng lượng: +1000% sát thương, +250% tốc bắn", "At full charge: +1000% damage, +250% fire rate"});
-        DESC.put("drone-launcher", new String[]{"Triệu hồi drone chiến đấu, tự hủy sau 10 giây", "Launches combat drones that self-destruct after 10s"});
+        DESC.put("drone-launcher", new String[]{"Hiếm: Triệu hồi ngẫu nhiên 1 unit tồn tại 10s (hồi chiêu 15s)", "Rare: Summons a random unit for 10s (15s cooldown)"});
         DESC.put("holyder", new String[]{"Tự sạc tăng sát thương, dựng khiên chặn đạn", "Self-charging heavy energy cannon with a bullet shield"});
         DESC.put("plasanod", new String[]{"Hai tia laser quét liên tục, ngắm lâu gọi sét nổ", "Twin sweeping lasers; long aim calls blast lightning"});
         DESC.put("tankani4k", new String[]{"Bản tối thượng Tankani, 1.673 sát thương, sạc đầy xuyên giáp", "Ultimate Tankani, 1,673 dmg, armor-piercing when fully charged"});
@@ -312,7 +312,7 @@ public final class SurvivorSkills {
         DESC.put("tyber", new String[]{"Tên lửa 3 nòng, tự bắn tầm nhiệt và nổ xung kích", "3-barrel missiles, extra heat-seekers and shock pulses"});
         DESC.put("endyr", new String[]{"Xả đạn năng lượng / laser diện rộng vào vùng mục tiêu", "Area energy and laser barrages on a target zone"});
         DESC.put("sonicor", new String[]{"Sóng âm xuyên, đẩy lùi mục tiêu (bản rút gọn)", "Piercing sonic wave with knockback (simplified)"});
-        DESC.put("spawner", new String[]{"Mảnh tinh thể tự dẫn (bản rút gọn)", "Homing crystal shards (simplified)"});
+        DESC.put("spawner", new String[]{"Hiếm: Triệu hồi ngẫu nhiên 1 unit tồn tại 10s (hồi chiêu 15s)", "Rare: Summons a random unit for 10s (15s cooldown)"});
     }
 
     static String descOf(SkillDef def) {
@@ -729,6 +729,7 @@ public final class SurvivorSkills {
         String why = "";
         int retryLeft = 2;
         float retryT = 0;
+        float summonCd = 0f;
         PlayerState ownerState;
     }
 
@@ -845,9 +846,11 @@ public final class SurvivorSkills {
         List<Object> picks = new ArrayList<>();
         int cannonWant = Math.min(want, open.size());
         int tries = 0;
-        while (picks.size() < cannonWant && tries < 60) {
+        while (picks.size() < cannonWant && tries < 100) {
             tries++;
             SkillDef cand = open.get(Mathf.random(open.size() - 1));
+            // Giảm thấp tỉ lệ xuất hiện của Tháp điều phối drone & Kén triệu hồi
+            if (isSummonSkill(cand.name) && tries < 80 && !Mathf.chance(0.20)) continue;
             if (!picks.contains(cand)) picks.add(cand);
         }
         while (picks.size() < want) picks.add(randomStatPick());
@@ -1129,17 +1132,30 @@ public final class SurvivorSkills {
             for (Object o : st.offer) if (pickId(o).equals(payload)) { c = o; break; }
             if (c == null) { st.offerOut = false; return; }
             resolvePick(player, st, c);
-        }, true, 50);
+        }, false, 50);
 
         NexNet.on("newex-survival-reroll", (player, payload) -> {
             if (player == null || Vars.net.client()) return;
             doReroll(player, getState(player));
-        }, true, 50);
+        }, false, 50);
 
         NexNet.on("newex-survival-reopen", (player, payload) -> {
             if (player == null || Vars.net.client()) return;
             getState(player).offerOut = false;
-        }, true, 200);
+        }, false, 200);
+
+        NexNet.onClient("newex-survival-scd", payload -> {
+            if (Vars.player == null || payload == null || payload.isEmpty()) return;
+            int sep = payload.indexOf(':');
+            if (sep <= 0) return;
+            String nm = payload.substring(0, sep);
+            float cd;
+            try { cd = Float.parseFloat(payload.substring(sep + 1)); } catch (Throwable e) { return; }
+            PlayerState st = playerStates.get(Vars.player.id);
+            if (st == null) return;
+            Skill sk = findSkill(st, nm);
+            if (sk != null) sk.summonCd = Math.max(0f, cd);
+        });
 
         NexNet.onClient("newex-survival-me", payload -> {
             String[] a = payload.split("\\|");
@@ -1176,7 +1192,7 @@ public final class SurvivorSkills {
             if (!Vars.net.client() || payload == null || payload.isEmpty()) return;
             String[] parts = payload.split("\\|");
             for (String part : parts) {
-                String[] seg = part.split("\\^");
+                String[] seg = part.split("\\^", -1);
                 if (seg.length < 3) continue;
                 Player pl = Groups.player.getByID(Integer.parseInt(seg[0]));
                 if (pl == null) continue;
@@ -1388,12 +1404,139 @@ public final class SurvivorSkills {
         }
     }
 
+    // ------------------------------------------------------------ kỹ năng triệu hồi ngẫu nhiên (drone-launcher & spawner): tồn tại 10s, hồi chiêu 15s
+    static final float SUMMON_DURATION = 600f; // 10 giây
+    static final float SUMMON_CD = 900f;       // 15 giây
+
+    static boolean isSummonSkill(String name) {
+        return "drone-launcher".equals(name) || "spawner".equals(name);
+    }
+
+    static final class ActiveSummon {
+        final Unit unit;
+        float life;
+        ActiveSummon(Unit u, float life) { this.unit = u; this.life = life; }
+    }
+    static final List<ActiveSummon> activeSummons = new ArrayList<>();
+    static arc.scene.Element summonHudOverlay = null;
+
+    static void tickActiveSummons() {
+        if (Vars.net.client() || activeSummons.isEmpty()) return;
+        for (int i = activeSummons.size() - 1; i >= 0; i--) {
+            ActiveSummon as = activeSummons.get(i);
+            if (as.unit == null || as.unit.dead || !as.unit.isAdded()) {
+                activeSummons.remove(i);
+                continue;
+            }
+            as.life -= Time.delta;
+            if (as.life <= 0f) {
+                try { Fx.unitDespawn.at(as.unit.x, as.unit.y, 0f, as.unit); } catch (Throwable ignored) {}
+                try { mindustry.gen.Call.unitDespawn(as.unit); }
+                catch (Throwable t) { try { as.unit.remove(); } catch (Throwable ignored) {} }
+                activeSummons.remove(i);
+            }
+        }
+    }
+
+    static void updateSummonSkill(Player player, Unit unit, Skill sk) {
+        if (sk.summonCd > 0f) {
+            sk.summonCd = Math.max(0f, sk.summonCd - Time.delta);
+            return;
+        }
+        if (Vars.net.client()) return;
+        mindustry.type.UnitType ut = PvpDomination.pickRandomTrainingUnit();
+        if (ut == null) return;
+        float ang = Mathf.random(360f);
+        float dist = Math.max(18f, unit.hitSize * 0.7f + 12f);
+        float sx = Mathf.clamp(unit.x + Angles.trnsx(ang, dist), 16f, Math.max(32f, Vars.world.unitWidth() - 16f));
+        float sy = Mathf.clamp(unit.y + Angles.trnsy(ang, dist), 16f, Math.max(32f, Vars.world.unitHeight() - 16f));
+        try {
+            Unit su = ut.create(unit.team);
+            su.set(sx, sy);
+            su.rotation = unit.rotation;
+            su.add();
+            activeSummons.add(new ActiveSummon(su, SUMMON_DURATION));
+            try { Fx.spawn.at(sx, sy); } catch (Throwable ignored) {}
+            sk.summonCd = SUMMON_CD;
+            if (player != null && player != Vars.player && player.con != null) {
+                NexNet.sendTo(player, "newex-survival-scd", sk.name + ":" + SUMMON_CD);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    static void ensureSummonHud() {
+        if (Vars.headless || Vars.ui == null || Vars.ui.hudGroup == null) return;
+        if (summonHudOverlay != null && summonHudOverlay.parent != null) return;
+        summonHudOverlay = new arc.scene.Element() {
+            @Override
+            public void draw() {
+                if (!isSurvivalActive() || Vars.player == null || Vars.state == null || !Vars.state.isGame()) return;
+                if (Vars.ui.hudfrag != null && !Vars.ui.hudfrag.shown) return;
+                setSize(Core.graphics.getWidth(), Core.graphics.getHeight());
+                PlayerState st = playerStates.get(Vars.player.id);
+                if (st == null || st.skills.isEmpty()) return;
+                float scl = arc.scene.ui.layout.Scl.scl(1f);
+                float sz = (Vars.mobile ? 56f : 44f) * scl;
+                float margin = 16f * scl;
+                int slotIdx = 0;
+                for (int i = 0; i < st.skills.size(); i++) {
+                    Skill sk = st.skills.get(i);
+                    if (!isSummonSkill(sk.name) || sk.def == null || sk.def.block == null) continue;
+                    arc.graphics.g2d.TextureRegion reg = sk.def.block.uiIcon;
+                    if (reg == null || !reg.found()) continue;
+                    float left = Math.max(0f, sk.summonCd);
+                    float frac = Mathf.clamp(left / SUMMON_CD);
+                    float cx = Core.graphics.getWidth() - margin - sz * 0.5f - slotIdx * (sz + margin * 0.5f);
+                    float cy = margin + sz * 0.5f;
+                    slotIdx++;
+
+                    Draw.color();
+                    Draw.alpha(frac > 0f ? 0.45f : 1f);
+                    Draw.rect(reg, cx, cy, sz, sz);
+                    if (frac > 0f) {
+                        Draw.color(Color.black, 0.65f);
+                        float h = sz * frac;
+                        Fill.rect(cx, cy + sz * 0.5f - h * 0.5f, sz, h);
+                    }
+                    Draw.color(frac > 0f ? Color.lightGray : mindustry.graphics.Pal.accent, 1f);
+                    arc.graphics.g2d.Lines.stroke(2f * scl);
+                    arc.graphics.g2d.Lines.rect(cx - sz * 0.5f, cy - sz * 0.5f, sz, sz);
+                    Draw.reset();
+                    if (frac > 0f) {
+                        int sec = (int) Math.ceil(left / 60f);
+                        arc.graphics.g2d.Font f = mindustry.ui.Fonts.outline;
+                        if (f != null) {
+                            float prevX = f.getScaleX(), prevY = f.getScaleY();
+                            float fs = 0.85f * scl * (Vars.mobile ? 1.15f : 1f);
+                            f.getData().setScale(fs);
+                            f.setColor(Color.white);
+                            f.draw(sec + "s", cx, cy + 6f * scl, 0, Align.center, false);
+                            f.getData().setScale(prevX, prevY);
+                        }
+                    }
+                }
+                Draw.reset();
+            }
+        };
+        summonHudOverlay.touchable = arc.scene.event.Touchable.disabled;
+        summonHudOverlay.name = "newex-survival-summon-hud";
+        summonHudOverlay.setSize(Core.graphics.getWidth(), Core.graphics.getHeight());
+        Vars.ui.hudGroup.addChild(summonHudOverlay);
+        summonHudOverlay.toFront();
+    }
+
     static void updateOrbiters(Player player, Unit unit, PlayerState state) {
         List<Skill> skills = state.skills;
         float maxRange = 0;
         for (Skill sk : skills) {
             if (!sk.inited) initDrone(sk, unit);
             moveDrone(sk, unit, skills);
+
+            if (isSummonSkill(sk.name)) {
+                updateSummonSkill(player, unit, sk);
+                if (320f > maxRange) maxRange = 320f;
+                continue;
+            }
 
             if (sk.mode == Mode.SIMPLE && REAL_TURRETS && sk.def.isTurret && sk.retryLeft > 0) {
                 sk.retryT -= Time.delta;
@@ -1654,17 +1797,24 @@ public final class SurvivorSkills {
         Events.on(WorldLoadEvent.class, e -> {
             disposeAll(playerStates);
             playerStates.clear();
+            activeSummons.clear();
             savedByUuid.clear();
             shredBase.clear();
             meInfo = null;
             currentOffer = null;
             rosterT = 0; serveT = 0;
             if (listDialog != null) { try { listDialog.hide(); } catch (Throwable ignored) {} listDialog = null; }
+            if (!Vars.headless) ensureSummonHud();
         });
+
+        if (!Vars.headless) {
+            Events.on(mindustry.game.EventType.ClientLoadEvent.class, e -> ensureSummonHud());
+        }
 
         Events.run(Trigger.update, () -> {
             if (!isSurvivalActive() || Vars.state.gameOver || Vars.state.isPaused()) return;
             boolean server = !Vars.net.client();
+            if (server) tickActiveSummons();
             List<VirtRef> virts = new ArrayList<>();
             Groups.player.each(pl -> {
                 Unit u = pl.unit();
@@ -1719,14 +1869,19 @@ public final class SurvivorSkills {
                     Draw.color(Color.black, 0.22f);
                     fillStar4(x + 3, y - 5, outer * 0.9f, inner * 0.9f, spin);
 
-                    Draw.color(col, 0.2f);
+                    Draw.color(col, 0.25f);
                     Fill.circle(x, y, outer * 1.15f);
-                    Draw.color(col);
-                    fillStar4(x, y, outer, inner, spin);
-                    Draw.color(Color.white, 0.9f);
-                    fillStar4(x, y, outer * 0.55f, inner * 0.55f, spin);
-                    Draw.color(Color.white);
-                    Fill.circle(x, y, outer * 0.14f);
+                    if (sk.def != null && sk.def.block != null && sk.def.block.uiIcon != null && sk.def.block.uiIcon.found()) {
+                        Draw.color();
+                        Draw.rect(sk.def.block.uiIcon, x, y, 10f, 10f, sk.aim - 90f);
+                    } else {
+                        Draw.color(col);
+                        fillStar4(x, y, outer, inner, spin);
+                        Draw.color(Color.white, 0.9f);
+                        fillStar4(x, y, outer * 0.55f, inner * 0.55f, spin);
+                        Draw.color(Color.white);
+                        Fill.circle(x, y, outer * 0.14f);
+                    }
                 }
                 Draw.reset();
             });

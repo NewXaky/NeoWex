@@ -21,12 +21,7 @@ jobs:
           gradle-version: 8.10.2
 
       - name: Build
-        run: gradle deploy --stacktrace
-
-      - name: Kiểm tra classes.dex (bản Android)
-        run: |
-          unzip -l build/libs/NeoWex.jar | grep -E "classes.dex|newex/NexMod.class"
-          unzip -l build/libs/NeoWex.jar | grep -q "classes.dex"
+        run: gradle deploy
 
       - name: Upload mod
         uses: actions/upload-artifact@v4

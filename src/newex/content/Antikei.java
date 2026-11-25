@@ -6,20 +6,21 @@ import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Lines;
 import arc.input.KeyCode;
 import arc.math.Angles;
+import arc.math.Mathf;
 import arc.math.geom.Rect;
 import arc.math.geom.Vec2;
-import arc.struct.Seq;
 import arc.util.Log;
+import arc.util.Time;
 import arc.util.Tmp;
 import mindustry.Vars;
 import mindustry.content.Blocks;
+import mindustry.core.World;
 import mindustry.entities.Units;
 import mindustry.game.EventType.ContentInitEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
 import mindustry.game.Teams.TeamData;
-import mindustry.core.World;
 import mindustry.gen.Building;
 import mindustry.gen.Groups;
 import mindustry.gen.Posc;
@@ -32,86 +33,47 @@ import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 import newex.NexNet;
 
-import java.lang.reflect.Method;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Chuyển từ antikei-logic.js. Sàn "antikei" là dòng chảy điều hướng: đơn vị mặt đất đứng trên sàn bị đẩy theo hướng
- * dòng chảy (do người thiết kế map vẽ trong editor, hoặc tự tính bằng BFS về phía lõi); ở ngoài sàn thì tiến về sàn gần nhất.
- * Trong editor: kéo chuột để vẽ hướng, giữ R + chuột để xóa; chuột giữa xoay 90 độ.
+ * Sàn đường đi "antikei" kiểu game Thủ Thành (Tower Defense) — tối ưu hóa O(1) bằng mảng phẳng:
+ * - Tự động tính trường hướng (Flow Field) mượt từ mọi ô antikei dẫn về lõi phe phòng thủ, bo cua mượt & bám giữa đường.
+ * - Chỉ điều hướng quái đợt (waveTeam, không phải player) để không cướp điều khiển unit người chơi.
+ * - Quái đi lệch khỏi đường có sẵn trường hướng O(1) kéo mượt quay lại mặt đường gần nhất.
+ * - Trong Editor: kéo chuột trái vẽ hướng, giữ R + chuột trái xóa hướng, chuột giữa xoay 90°.
  */
 public final class Antikei {
+    private static final float NO_ANGLE = Float.NaN;
+    private static final Pattern FLOW_ENTRY = Pattern.compile("\"(\\d+)_(\\d+)\"\\s*:\\s*(-?[0-9.eE+\\-]+)");
+    private static final int[] DX4 = {1, -1, 0, 0};
+    private static final int[] DY4 = {0, 0, 1, -1};
+    private static final int[] DX8 = {1, -1, 0, 0, 1, 1, -1, -1};
+    private static final int[] DY8 = {0, 0, 1, -1, 1, -1, 1, -1};
+
     private static Block antikeiBlock;
     private static boolean mapHasAntikei = false;
 
-    private static final Map<String, Float> flowDirectionMap = new HashMap<>();
-    private static final Map<String, Float> autoFlowMap = new HashMap<>();
-    private static final List<String> antikeiTilesList = new ArrayList<>();
+    private static int mapW = 0, mapH = 0;
+    private static boolean[] isRoad = new boolean[0];
+    private static int[] roadDist = new int[0];
+    private static float[] manualAng = new float[0];
+    private static float[] flowAng = new float[0];
+    private static float[] toRoadAng = new float[0];
+    private static int[] roadIndices = new int[0];
+    private static int roadCount = 0;
 
     private static Tile lastEditorTile = null;
     private static int lastCoreCount = -1;
-    private static int frameCount = 0;
-    private static int antikeiDrawVersion = 0;
-    private static int drawCacheVersion = -1;
-    private static int drawCacheLen = -1;
-    private static float[] drawXs = new float[0];
-    private static float[] drawYs = new float[0];
-    private static String[] drawKeys = new String[0];
-
-    private static final Pattern FLOW_ENTRY = Pattern.compile("\"([^\"]+)\"\\s*:\\s*(-?[0-9.eE+\\-]+)");
-
-    private static final class NearestEntry {
-        final Tile t;
-        final int f;
-
-        NearestEntry(Tile t, int f) {
-            this.t = t;
-            this.f = f;
-        }
-    }
+    private static int tickCount = 0;
 
     private static final class TargetEntry {
-        final Teamc t;
-        final int f;
-
-        TargetEntry(Teamc t, int f) {
-            this.t = t;
-            this.f = f;
-        }
+        Teamc t;
+        int tick;
     }
-
-    private static final class AngleEntry {
-        final float a;
-        final int f;
-
-        AngleEntry(float a, int f) {
-            this.a = a;
-            this.f = f;
-        }
-    }
-
-    private static Map<Integer, NearestEntry> nearestCache = new HashMap<>();
-    private static Map<Integer, TargetEntry> unitTargetCache = new HashMap<>();
-    private static Map<String, AngleEntry> angleCache = new HashMap<>();
-
-    /** Team.enemy() có thể không tồn tại ở bản game này (JS gốc bọc try/catch); tra bằng reflection để giữ nguyên hành vi. */
-    private static final Method TEAM_ENEMY;
-
-    static {
-        Method m;
-        try {
-            m = Team.class.getMethod("enemy");
-        } catch (Throwable err) {
-            m = null;
-        }
-        TEAM_ENEMY = m;
-    }
+    private static final HashMap<Integer, TargetEntry> targetCache = new HashMap<>();
 
     private Antikei() {}
 
@@ -119,361 +81,372 @@ public final class Antikei {
         Events.on(ContentInitEvent.class, e -> antikeiBlock = Vars.content.block("newex-antikei"));
 
         Events.on(WorldLoadEvent.class, e -> {
-            cacheAntikeiTiles();
-            if (mapHasAntikei) {
-                clearOresOnAntikei();
-                loadFlowData();
-            }
+            targetCache.clear();
+            lastEditorTile = null;
+            tickCount = 0;
+            rebuildField(true);
         });
 
         Events.run(Trigger.update, Antikei::update);
-        Events.run(Trigger.draw, Antikei::draw);
-    }
-
-    // ------------------------------------------------------------------ tiện ích
-
-    private static Tile findNearestAntikeiCached(Unit unit) {
-        NearestEntry e = nearestCache.get(unit.id);
-        if (e != null && frameCount - e.f < 20) return e.t;
-        Tile t = findNearestAntikeiFast(unit);
-        nearestCache.put(unit.id, new NearestEntry(t, frameCount - (unit.id % 10)));
-        return t;
-    }
-
-    private static String getTileKey(int x, int y) {
-        return x + "_" + y;
-    }
-
-    private static String getMapId() {
-        if (Vars.state == null) return "default_map";
-        if (Vars.state.map != null && Vars.state.map.name() != null) {
-            return String.valueOf(Vars.state.map.name()).replaceAll("[^a-zA-Z0-9_-]", "_");
+        if (!Vars.headless) {
+            Events.run(Trigger.draw, Antikei::draw);
         }
-        return "editor_test_map";
     }
 
-    private static int getTotalCores() {
-        int total = 0;
+    // ------------------------------------------------------------------ Lưu / tải hướng vẽ trong Editor
+
+    private static String getMapKey() {
+        if (Vars.state == null) return "antikei_map_default";
+        if (Vars.state.map != null && Vars.state.map.name() != null) {
+            return "antikei_map_" + Vars.state.map.name().replaceAll("[^a-zA-Z0-9_-]", "_");
+        }
+        return "antikei_map_editor_test";
+    }
+
+    private static void saveManualFlow() {
+        if (Vars.state == null || Vars.state.isMenu() || mapW <= 0) return;
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (int i = 0; i < roadCount; i++) {
+            int idx = roadIndices[i];
+            float a = manualAng[idx];
+            if (Float.isNaN(a)) continue;
+            if (!first) sb.append(',');
+            first = false;
+            int x = idx % mapW, y = idx / mapW;
+            sb.append('"').append(x).append('_').append(y).append("\":").append(Math.round(a * 10f) / 10f);
+        }
+        sb.append('}');
+        Core.settings.put(getMapKey(), sb.toString());
+    }
+
+    private static void loadManualFlow() {
+        Arrays.fill(manualAng, NO_ANGLE);
+        if (Vars.state == null || Vars.state.isMenu() || mapW <= 0) return;
+        String json = Core.settings.getString(getMapKey(), "");
+        if (json == null || json.isEmpty()) return;
+        try {
+            Matcher m = FLOW_ENTRY.matcher(json);
+            while (m.find()) {
+                int x = Integer.parseInt(m.group(1));
+                int y = Integer.parseInt(m.group(2));
+                if (x >= 0 && x < mapW && y >= 0 && y < mapH) {
+                    manualAng[y * mapW + x] = Float.parseFloat(m.group(3));
+                }
+            }
+        } catch (Throwable err) {
+            Log.err("[Antikei] loadManualFlow failed", err);
+        }
+    }
+
+    // ------------------------------------------------------------------ Xây dựng trường hướng (Flow Field) O(W*H)
+
+    private static int countTargetCores() {
         if (Vars.state == null || Vars.state.teams == null) return 0;
-        for (int i = 0; i < Team.all.length; i++) {
-            Team t = Team.all[i];
-            TeamData tData = Vars.state.teams.get(t);
-            if (tData != null && tData.cores != null) {
-                total += tData.cores.size;
+        Team waveTeam = Vars.state.rules != null ? Vars.state.rules.waveTeam : Team.crux;
+        int total = 0;
+        for (TeamData td : Vars.state.teams.active) {
+            if (td != null && td.team != waveTeam && td.team != Team.derelict && td.cores != null) {
+                total += td.cores.size;
             }
         }
         return total;
     }
 
-    private static void saveFlowData() {
-        if (Vars.state.isMenu()) return;
-        String mapId = "antikei_map_" + getMapId();
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Float> entry : flowDirectionMap.entrySet()) {
-            if (!first) sb.append(',');
-            first = false;
-            sb.append('"').append(entry.getKey()).append("\":").append((double) entry.getValue());
-        }
-        sb.append('}');
-        Core.settings.put(mapId, sb.toString());
-    }
-
-    private static void loadFlowData() {
-        flowDirectionMap.clear();
-        if (Vars.state.isMenu()) return;
-        String mapId = "antikei_map_" + getMapId();
-        String jsonStr = Core.settings.getString(mapId, "");
-        if (!jsonStr.isEmpty()) {
-            try {
-                Matcher m = FLOW_ENTRY.matcher(jsonStr);
-                while (m.find()) {
-                    flowDirectionMap.put(m.group(1), Float.valueOf(Float.parseFloat(m.group(2))));
-                }
-            } catch (Throwable err) {
-                Log.info("Error loading antikei flow data: " + err);
-            }
-        }
-    }
-
-    private static CoreBuild closestCoreOf(TeamData teamData, float x, float y) {
-        if (teamData != null && teamData.cores != null && teamData.cores.size > 0) {
-            CoreBuild closest = teamData.cores.first();
-            float minDist = closest.dst2(x, y);
-            for (int i = 0; i < teamData.cores.size; i++) {
-                CoreBuild c = teamData.cores.get(i);
-                float d = c.dst2(x, y);
-                if (d < minDist) {
-                    minDist = d;
-                    closest = c;
-                }
-            }
-            return closest;
-        }
-        return null;
-    }
-
-    private static CoreBuild getClosestCore(float x, float y, Team team) {
-        try {
-            if (TEAM_ENEMY != null) {
-                Team enemyTeam = (Team) TEAM_ENEMY.invoke(team);
-                CoreBuild c = closestCoreOf(Vars.state.teams.get(enemyTeam), x, y);
-                if (c != null) return c;
-            }
-        } catch (Throwable ignored) {
-        }
-
-        try {
-            TeamData playerTeamData = Vars.state.teams.get(Vars.player.team());
-            if (playerTeamData != null && playerTeamData.cores != null && playerTeamData.cores.size > 0) {
-                return playerTeamData.cores.first();
-            }
-        } catch (Throwable ignored) {
-        }
-
-        return null;
-    }
-
-    private static Tile findNearestAntikeiFast(Unit unit) {
-        int uTileX = unit.tileX();
-        int uTileY = unit.tileY();
-
-        for (int r = 1; r <= 300; r++) {
-            for (int dx = -r; dx <= r; dx++) {
-                Tile tile1 = Vars.world.tile(uTileX + dx, uTileY - r);
-                if (tile1 != null && tile1.floor() == antikeiBlock) return tile1;
-                Tile tile2 = Vars.world.tile(uTileX + dx, uTileY + r);
-                if (tile2 != null && tile2.floor() == antikeiBlock) return tile2;
-            }
-            for (int dy = -r + 1; dy <= r - 1; dy++) {
-                Tile tile1 = Vars.world.tile(uTileX - r, uTileY + dy);
-                if (tile1 != null && tile1.floor() == antikeiBlock) return tile1;
-                Tile tile2 = Vars.world.tile(uTileX + r, uTileY + dy);
-                if (tile2 != null && tile2.floor() == antikeiBlock) return tile2;
-            }
-        }
-        return null;
-    }
-
-    private static int[] parseKey(String key) {
-        int i = key.indexOf('_');
-        return new int[]{Integer.parseInt(key.substring(0, i)), Integer.parseInt(key.substring(i + 1))};
-    }
-
-    /** Một ô trong hàng đợi BFS. */
-    private static final class Node {
-        final int x, y;
-        final String key;
-
-        Node(int x, int y, String key) {
-            this.x = x;
-            this.y = y;
-            this.key = key;
-        }
-    }
-
-    private static void cacheAntikeiTiles() {
-        antikeiTilesList.clear();
-        antikeiDrawVersion++;
-        autoFlowMap.clear();
+    private static void rebuildField(boolean reloadManual) {
         mapHasAntikei = false;
+        roadCount = 0;
         if (antikeiBlock == null || Vars.world == null) return;
 
-        for (int x = 0; x < Vars.world.width(); x++) {
-            for (int y = 0; y < Vars.world.height(); y++) {
+        int w = Vars.world.width(), h = Vars.world.height();
+        int total = w * h;
+        if (total <= 0) return;
+
+        if (w != mapW || h != mapH || isRoad.length != total) {
+            mapW = w;
+            mapH = h;
+            isRoad = new boolean[total];
+            roadDist = new int[total];
+            manualAng = new float[total];
+            flowAng = new float[total];
+            toRoadAng = new float[total];
+            Arrays.fill(manualAng, NO_ANGLE);
+        } else {
+            Arrays.fill(isRoad, false);
+        }
+
+        // 1. Quét toàn bộ ô antikei trên bản đồ
+        int count = 0;
+        for (int y = 0; y < h; y++) {
+            int row = y * w;
+            for (int x = 0; x < w; x++) {
                 Tile tile = Vars.world.tile(x, y);
                 if (tile != null && tile.floor() == antikeiBlock) {
-                    antikeiTilesList.add(getTileKey(x, y));
-                    mapHasAntikei = true;
+                    isRoad[row + x] = true;
+                    count++;
+                    if (reloadManual && tile.overlay() != null && tile.overlay() != Blocks.air) {
+                        NexNet.setOverlay(tile, Blocks.air);
+                    }
                 }
             }
+        }
+
+        if (count == 0) return;
+        mapHasAntikei = true;
+        if (roadIndices.length < count) roadIndices = new int[count];
+        roadCount = 0;
+        for (int i = 0; i < total; i++) {
+            if (isRoad[i]) roadIndices[roadCount++] = i;
+        }
+
+        if (reloadManual) loadManualFlow();
+        lastCoreCount = countTargetCores();
+
+        // 2. BFS đa nguồn từ các ô antikei gần lõi phòng thủ (mọi phe trừ waveTeam)
+        Arrays.fill(roadDist, -1);
+        int[] queue = new int[total];
+        int qHead = 0, qTail = 0;
+
+        Team waveTeam = (Vars.state != null && Vars.state.rules != null) ? Vars.state.rules.waveTeam : Team.crux;
+        if (Vars.state != null && Vars.state.teams != null) {
+            for (TeamData td : Vars.state.teams.active) {
+                if (td == null || td.team == waveTeam || td.team == Team.derelict || td.cores == null) continue;
+                for (int ci = 0; ci < td.cores.size; ci++) {
+                    CoreBuild core = td.cores.get(ci);
+                    if (core == null || !core.isValid()) continue;
+                    int cx = World.toTile(core.x);
+                    int cy = World.toTile(core.y);
+
+                    int bestD = Integer.MAX_VALUE;
+                    int bestIdx = -1;
+                    boolean seededNear = false;
+
+                    for (int k = 0; k < roadCount; k++) {
+                        int idx = roadIndices[k];
+                        int rx = idx % w, ry = idx / w;
+                        int d = Math.abs(rx - cx) + Math.abs(ry - cy);
+                        if (d < bestD) {
+                            bestD = d;
+                            bestIdx = idx;
+                        }
+                        if (Math.abs(rx - cx) <= 5 && Math.abs(ry - cy) <= 5) {
+                            if (roadDist[idx] != 0) {
+                                roadDist[idx] = 0;
+                                queue[qTail++] = idx;
+                            }
+                            seededNear = true;
+                        }
+                    }
+                    if (!seededNear && bestIdx >= 0 && roadDist[bestIdx] != 0) {
+                        roadDist[bestIdx] = 0;
+                        queue[qTail++] = bestIdx;
+                    }
+                }
+            }
+        }
+
+        if (qTail == 0 && roadCount > 0) {
+            int first = roadIndices[0];
+            roadDist[first] = 0;
+            queue[qTail++] = first;
+        }
+
+        while (qHead < qTail) {
+            int curr = queue[qHead++];
+            int cx = curr % w, cy = curr / w;
+            int nextD = roadDist[curr] + 1;
+            for (int d = 0; d < 4; d++) {
+                int nx = cx + DX4[d], ny = cy + DY4[d];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                int nIdx = ny * w + nx;
+                if (isRoad[nIdx] && roadDist[nIdx] == -1) {
+                    roadDist[nIdx] = nextD;
+                    queue[qTail++] = nIdx;
+                }
+            }
+        }
+
+        // 3. Tính vector hướng đi mượt (kết hợp 8 hướng + làm mịn bo cua)
+        float[] rawVx = new float[total];
+        float[] rawVy = new float[total];
+        Arrays.fill(flowAng, NO_ANGLE);
+
+        for (int k = 0; k < roadCount; k++) {
+            int idx = roadIndices[k];
+            if (!Float.isNaN(manualAng[idx])) {
+                rawVx[idx] = Mathf.cosDeg(manualAng[idx]);
+                rawVy[idx] = Mathf.sinDeg(manualAng[idx]);
+                continue;
+            }
+            int cd = roadDist[idx];
+            if (cd < 0) continue;
+            int x = idx % w, y = idx / w;
+
+            float vx = 0f, vy = 0f;
+            int bestD = cd;
+            for (int d = 0; d < 8; d++) {
+                int nx = x + DX8[d], ny = y + DY8[d];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                int nIdx = ny * w + nx;
+                if (!isRoad[nIdx]) continue;
+                int nd = roadDist[nIdx];
+                if (nd < 0) continue;
+                // Tránh đi chéo cắt qua góc tường không phải đường
+                if (d >= 4 && (!isRoad[y * w + nx] || !isRoad[ny * w + x])) continue;
+                if (nd < cd) {
+                    float wgt = (cd - nd) * (d < 4 ? 1.0f : 0.72f);
+                    vx += DX8[d] * wgt;
+                    vy += DY8[d] * wgt;
+                    if (nd < bestD) bestD = nd;
+                }
+            }
+            if (vx != 0f || vy != 0f) {
+                float len = (float) Math.sqrt(vx * vx + vy * vy);
+                rawVx[idx] = vx / len;
+                rawVy[idx] = vy / len;
+            }
+        }
+
+        // Làm mịn 1 lượt theo hàng xóm cùng trên mặt đường để quái bo cua siêu mượt như game Thủ Thành
+        for (int k = 0; k < roadCount; k++) {
+            int idx = roadIndices[k];
+            if (!Float.isNaN(manualAng[idx])) {
+                flowAng[idx] = manualAng[idx];
+                continue;
+            }
+            int x = idx % w, y = idx / w;
+            float sx = rawVx[idx] * 2.2f;
+            float sy = rawVy[idx] * 2.2f;
+            int cd = roadDist[idx];
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX4[d], ny = y + DY4[d];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                int nIdx = ny * w + nx;
+                if (isRoad[nIdx] && roadDist[nIdx] >= 0 && roadDist[nIdx] <= cd) {
+                    sx += rawVx[nIdx];
+                    sy += rawVy[nIdx];
+                }
+            }
+            if (sx != 0f || sy != 0f) {
+                flowAng[idx] = Angles.angle(sx, sy);
+            }
+        }
+
+        // 4. BFS ngoài đường: tạo hướng O(1) kéo quái đứng ngoài mặt đường quay về đường antikei gần nhất
+        int[] offDist = new int[total];
+        Arrays.fill(offDist, -1);
+        Arrays.fill(toRoadAng, NO_ANGLE);
+        qHead = 0;
+        qTail = 0;
+        for (int k = 0; k < roadCount; k++) {
+            int idx = roadIndices[k];
+            offDist[idx] = 0;
+            queue[qTail++] = idx;
+        }
+        while (qHead < qTail) {
+            int curr = queue[qHead++];
+            int cx = curr % w, cy = curr / w;
+            int nextD = offDist[curr] + 1;
+            if (nextD > 60) continue; // tối đa 60 ô quanh đường
+            for (int d = 0; d < 4; d++) {
+                int nx = cx + DX4[d], ny = cy + DY4[d];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                int nIdx = ny * w + nx;
+                if (offDist[nIdx] == -1) {
+                    offDist[nIdx] = nextD;
+                    toRoadAng[nIdx] = Angles.angle(nx, ny, cx, cy);
+                    queue[qTail++] = nIdx;
+                }
+            }
+        }
+    }
+
+    private static CoreBuild closestDefenderCore(float x, float y, Team unitTeam) {
+        if (Vars.state == null || Vars.state.teams == null) return null;
+        CoreBuild best = null;
+        float bestD2 = Float.MAX_VALUE;
+        for (TeamData td : Vars.state.teams.active) {
+            if (td == null || td.team == unitTeam || td.team == Team.derelict || td.cores == null) continue;
+            for (int i = 0; i < td.cores.size; i++) {
+                CoreBuild c = td.cores.get(i);
+                if (c != null && c.isValid()) {
+                    float d2 = c.dst2(x, y);
+                    if (d2 < bestD2) { bestD2 = d2; best = c; }
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean isTargetValid(Teamc t) {
+        if (t instanceof Unit) return ((Unit) t).isValid() && !((Unit) t).dead;
+        if (t instanceof Building) return ((Building) t).isValid();
+        return false;
+    }
+
+    // ------------------------------------------------------------------ Cập nhật mỗi tick
+
+    private static void update() {
+        if (antikeiBlock == null || Vars.state == null || Vars.state.isMenu()) return;
+
+        tickCount++;
+        if (tickCount % 1200 == 0) targetCache.clear();
+
+        // Chỉnh sửa hướng dòng chảy trong Editor
+        if (!Vars.headless && Vars.state.isEditor()) {
+            handleEditorInput();
         }
 
         if (!mapHasAntikei) return;
 
-        lastCoreCount = getTotalCores();
-
-        ArrayDeque<Node> queue = new ArrayDeque<>();
-        Map<String, Integer> distanceMap = new HashMap<>();
-
-        for (int i = 0; i < Team.all.length; i++) {
-            Team t = Team.all[i];
-            TeamData tData = Vars.state.teams.get(t);
-            if (tData != null && tData.cores != null) {
-                for (int cIdx = 0; cIdx < tData.cores.size; cIdx++) {
-                    CoreBuild core = tData.cores.get(cIdx);
-                    int coreTileX = World.toTile(core.x);
-                    int coreTileY = World.toTile(core.y);
-
-                    int minDistToCore = -1;
-                    List<Node> closestAntikeiForThisCore = new ArrayList<>();
-
-                    for (int k = 0; k < antikeiTilesList.size(); k++) {
-                        String key = antikeiTilesList.get(k);
-                        int[] p = parseKey(key);
-                        int tx = p[0], ty = p[1];
-                        int dst = Math.abs(tx - coreTileX) + Math.abs(ty - coreTileY);
-
-                        if (minDistToCore == -1 || dst < minDistToCore) {
-                            minDistToCore = dst;
-                            closestAntikeiForThisCore = new ArrayList<>();
-                            closestAntikeiForThisCore.add(new Node(tx, ty, key));
-                        } else if (dst == minDistToCore) {
-                            closestAntikeiForThisCore.add(new Node(tx, ty, key));
-                        }
-                    }
-
-                    for (int k = 0; k < antikeiTilesList.size(); k++) {
-                        String key = antikeiTilesList.get(k);
-                        int[] p = parseKey(key);
-                        int tx = p[0], ty = p[1];
-                        if (Math.abs(tx - coreTileX) <= 5 && Math.abs(ty - coreTileY) <= 5) {
-                            Integer d = distanceMap.get(key);
-                            if (d == null || d > 0) {
-                                distanceMap.put(key, 0);
-                                queue.add(new Node(tx, ty, key));
-                            }
-                        }
-                    }
-
-                    for (int c = 0; c < closestAntikeiForThisCore.size(); c++) {
-                        Node item = closestAntikeiForThisCore.get(c);
-                        if (distanceMap.get(item.key) == null) {
-                            distanceMap.put(item.key, 0);
-                            queue.add(item);
-                        }
-                    }
-                }
+        // Cập nhật lại Flow Field nếu số lõi phòng thủ thay đổi
+        if (Vars.state.isPlaying() && tickCount % 45 == 0) {
+            int cores = countTargetCores();
+            if (lastCoreCount != -1 && cores != lastCoreCount) {
+                rebuildField(false);
             }
+            lastCoreCount = cores;
         }
 
-        if (queue.isEmpty() && antikeiTilesList.size() > 0) {
-            String firstKey = antikeiTilesList.get(0);
-            int[] p = parseKey(firstKey);
-            distanceMap.put(firstKey, 0);
-            queue.add(new Node(p[0], p[1], firstKey));
-        }
-
-        final int[] dxs = {0, 0, 1, -1};
-        final int[] dys = {1, -1, 0, 0};
-
-        while (!queue.isEmpty()) {
-            Node curr = queue.poll();
-            int currDist = distanceMap.get(curr.key);
-
-            for (int i = 0; i < 4; i++) {
-                int nx = curr.x + dxs[i];
-                int ny = curr.y + dys[i];
-                String nKey = getTileKey(nx, ny);
-
-                Tile tile = Vars.world.tile(nx, ny);
-                if (tile != null && tile.floor() == antikeiBlock) {
-                    if (distanceMap.get(nKey) == null) {
-                        distanceMap.put(nKey, currDist + 1);
-                        queue.add(new Node(nx, ny, nKey));
-                    }
-                }
-            }
-        }
-
-        for (int i = 0; i < antikeiTilesList.size(); i++) {
-            String key = antikeiTilesList.get(i);
-            int[] p = parseKey(key);
-            int x = p[0], y = p[1];
-            Integer currentDist = distanceMap.get(key);
-            if (currentDist == null) continue;
-
-            int bestNx = x, bestNy = y;
-            int minDst = currentDist;
-
-            for (int j = 0; j < 4; j++) {
-                int nx = x + dxs[j];
-                int ny = y + dys[j];
-                Integer nDist = distanceMap.get(getTileKey(nx, ny));
-
-                if (nDist != null && nDist < minDst) {
-                    minDst = nDist;
-                    bestNx = nx;
-                    bestNy = ny;
-                }
-            }
-
-            if (bestNx != x || bestNy != y) {
-                float worldX = x * Vars.tilesize + Vars.tilesize / 2f;
-                float worldY = y * Vars.tilesize + Vars.tilesize / 2f;
-                float targetX = bestNx * Vars.tilesize + Vars.tilesize / 2f;
-                float targetY = bestNy * Vars.tilesize + Vars.tilesize / 2f;
-
-                float angle = Angles.angle(worldX, worldY, targetX, targetY);
-                autoFlowMap.put(key, Float.valueOf(angle));
-            }
+        // Chỉ điều hướng trên server/host để không giật hình trên client; Mindustry tự đồng bộ mượt
+        if (!Vars.net.client() && Vars.state.isPlaying() && !Vars.state.isPaused()) {
+            Team waveTeam = Vars.state.rules != null ? Vars.state.rules.waveTeam : Team.crux;
+            Groups.unit.each(u -> steerWaveUnit(u, waveTeam));
         }
     }
 
-    private static void clearOresOnAntikei() {
-        if (antikeiBlock == null || Vars.world == null) return;
-
-        for (int i = 0; i < antikeiTilesList.size(); i++) {
-            int[] p = parseKey(antikeiTilesList.get(i));
-            Tile tile = Vars.world.tile(p[0], p[1]);
-            if (tile != null && tile.overlay() != null && tile.overlay() != Blocks.air) {
-                NexNet.setOverlay(tile, Blocks.air);
-            }
-        }
-    }
-
-    private static float getOptimalAngle(float worldX, float worldY, String key, Team unitTeam) {
-        Float flow = flowDirectionMap.get(key);
-        if (flow != null) return flow;
-        Float auto = autoFlowMap.get(key);
-        if (auto != null) return auto;
-        CoreBuild core = getClosestCore(worldX, worldY, unitTeam);
-        if (core != null) {
-            return Angles.angle(worldX, worldY, core.x, core.y);
-        }
-        return 0f;
-    }
-
-    private static boolean isTargetValid(Teamc t) {
-        if (t instanceof Unit) return ((Unit) t).isValid();
-        if (t instanceof Building) return ((Building) t).isValid();
-        return t != null;
-    }
-
-    // ------------------------------------------------------------------ cập nhật mỗi tick
-
-    private static void update() {
-        if (antikeiBlock == null || Vars.state.isMenu()) return;
-
-        frameCount++;
-        if (frameCount % 1800 == 0) {
-            nearestCache = new HashMap<>();
-            unitTargetCache = new HashMap<>();
-        }
-
-        if (Vars.state.isEditor() && !Core.input.keyDown(KeyCode.r)
-            && (Core.input.keyDown(KeyCode.mouseLeft) || Core.input.isTouched())) {
-            Vec2 mouseVec = Core.camera.unproject(Core.input.mouse());
-            Tile currentTile = Vars.world.tileWorld(mouseVec.x, mouseVec.y);
-
-            if (currentTile != null && currentTile.floor() == antikeiBlock) {
-                if (lastEditorTile != null && (lastEditorTile.x != currentTile.x || lastEditorTile.y != currentTile.y)) {
-                    float dragAngle = Angles.angle(lastEditorTile.worldx(), lastEditorTile.worldy(), currentTile.worldx(), currentTile.worldy());
-
-                    String lastKey = getTileKey(lastEditorTile.x, lastEditorTile.y);
-                    String currentKey = getTileKey(currentTile.x, currentTile.y);
-
-                    flowDirectionMap.put(lastKey, Float.valueOf(dragAngle));
-                    flowDirectionMap.put(currentKey, Float.valueOf(dragAngle));
-                    saveFlowData();
-                } else {
-                    String currentKey = getTileKey(currentTile.x, currentTile.y);
-                    if (!flowDirectionMap.containsKey(currentKey)) {
-                        flowDirectionMap.put(currentKey, Float.valueOf(0f));
-                        saveFlowData();
-                    }
+    private static void handleEditorInput() {
+        if (Core.input.keyDown(KeyCode.mouseLeft) || Core.input.isTouched()) {
+            Vec2 mv = Core.camera.unproject(Core.input.mouse());
+            Tile tile = Vars.world.tileWorld(mv.x, mv.y);
+            if (tile != null && tile.floor() == antikeiBlock) {
+                if (!mapHasAntikei || tile.x >= mapW || tile.y >= mapH || !isRoad[tile.y * mapW + tile.x]) {
+                    rebuildField(true);
                 }
-                lastEditorTile = currentTile;
+                int idx = tile.y * mapW + tile.x;
+                if (Core.input.keyDown(KeyCode.r)) {
+                    if (!Float.isNaN(manualAng[idx])) {
+                        manualAng[idx] = NO_ANGLE;
+                        rebuildField(false);
+                        saveManualFlow();
+                    }
+                    lastEditorTile = null;
+                    return;
+                }
+                if (lastEditorTile != null && (lastEditorTile.x != tile.x || lastEditorTile.y != tile.y)) {
+                    float ang = Angles.angle(lastEditorTile.worldx(), lastEditorTile.worldy(), tile.worldx(), tile.worldy());
+                    int prevIdx = lastEditorTile.y * mapW + lastEditorTile.x;
+                    manualAng[prevIdx] = ang;
+                    flowAng[prevIdx] = ang;
+                    manualAng[idx] = ang;
+                    flowAng[idx] = ang;
+                    saveManualFlow();
+                } else if (Float.isNaN(manualAng[idx])) {
+                    manualAng[idx] = 0f;
+                    flowAng[idx] = 0f;
+                    saveManualFlow();
+                }
+                lastEditorTile = tile;
             } else {
                 lastEditorTile = null;
             }
@@ -481,156 +454,119 @@ public final class Antikei {
             lastEditorTile = null;
         }
 
-        if (!mapHasAntikei) return;
-
-        if (Vars.state.isPlaying() && frameCount % 60 == 0) {
-            clearOresOnAntikei();
-        }
-
-        if (Vars.state.isPlaying() && frameCount % 30 == 0) {
-            int currentCores = getTotalCores();
-            if (lastCoreCount != -1 && currentCores < lastCoreCount) {
-                cacheAntikeiTiles();
+        if (Core.input.keyTap(KeyCode.mouseMiddle) && mapHasAntikei) {
+            Vec2 mv = Core.camera.unproject(Core.input.mouse());
+            Tile tile = Vars.world.tileWorld(mv.x, mv.y);
+            if (tile != null && tile.floor() == antikeiBlock && tile.x < mapW && tile.y < mapH) {
+                int idx = tile.y * mapW + tile.x;
+                float cur = !Float.isNaN(manualAng[idx]) ? manualAng[idx] : (!Float.isNaN(flowAng[idx]) ? flowAng[idx] : 0f);
+                float next = (cur + 90f) % 360f;
+                manualAng[idx] = next;
+                flowAng[idx] = next;
+                saveManualFlow();
             }
-            lastCoreCount = currentCores;
-        }
-
-        if (Core.input.keyTap(KeyCode.mouseMiddle)) {
-            Vec2 mouseVec = Core.camera.unproject(Core.input.mouse());
-            Tile tile = Vars.world.tileWorld(mouseVec.x, mouseVec.y);
-
-            if (tile != null && tile.floor() == antikeiBlock) {
-                String key = getTileKey(tile.x, tile.y);
-                Float rawVal = flowDirectionMap.get(key);
-                if (rawVal == null && autoFlowMap.containsKey(key)) {
-                    rawVal = autoFlowMap.get(key);
-                }
-                float currentAngleNum = rawVal != null ? rawVal : 0f;
-
-                float nextAngle = (currentAngleNum + 90f) % 360f;
-                flowDirectionMap.put(key, Float.valueOf(nextAngle));
-                saveFlowData();
-            }
-        }
-
-        if (Vars.state.isEditor() && Core.input.keyDown(KeyCode.r)
-            && (Core.input.keyDown(KeyCode.mouseLeft) || Core.input.isTouched())) {
-            Vec2 mouseVec = Core.camera.unproject(Core.input.mouse());
-            Tile tile = Vars.world.tileWorld(mouseVec.x, mouseVec.y);
-
-            if (tile != null && tile.floor() == antikeiBlock) {
-                String key = getTileKey(tile.x, tile.y);
-                if (flowDirectionMap.containsKey(key)) {
-                    flowDirectionMap.remove(key);
-                    saveFlowData();
-                }
-            }
-        }
-
-        if (mapHasAntikei && !Vars.state.isPaused()) {
-            Groups.unit.each(Antikei::steerUnit);
         }
     }
 
-    private static void steerUnit(Unit unit) {
-        if (unit == null || !unit.isAdded() || unit.isFlying()) return;
+    /** Điều hướng mượt riêng cho quái đợt đi bộ (kiểu Thủ Thành) đi dọc mặt đường antikei. */
+    private static void steerWaveUnit(Unit unit, Team waveTeam) {
+        if (unit == null || unit.dead || !unit.isAdded() || unit.isFlying() || unit.isPlayer()) return;
+        if (unit.team != waveTeam) return;
 
-        Tile currentTile = unit.tileOn();
+        int tx = unit.tileX(), ty = unit.tileY();
+        if (tx < 0 || tx >= mapW || ty < 0 || ty >= mapH) return;
+        int idx = ty * mapW + tx;
+
         float moveAngle;
-
-        if (currentTile != null && currentTile.floor() == antikeiBlock) {
-            int uTileX = unit.tileX();
-            int uTileY = unit.tileY();
-            String currentKey = getTileKey(uTileX, uTileY);
-            float worldX = uTileX * Vars.tilesize + Vars.tilesize / 2f;
-            float worldY = uTileY * Vars.tilesize + Vars.tilesize / 2f;
-
-            moveAngle = getOptimalAngle(worldX, worldY, currentKey, unit.team);
-        } else {
-            Tile nearest = findNearestAntikeiCached(unit);
-            if (nearest != null) {
-                moveAngle = unit.angleTo(nearest.worldx(), nearest.worldy());
+        if (isRoad[idx]) {
+            float fa = flowAng[idx];
+            if (!Float.isNaN(fa)) {
+                moveAngle = fa;
             } else {
-                CoreBuild core = getClosestCore(unit.x, unit.y, unit.team);
-                if (core != null) {
-                    moveAngle = unit.angleTo(core.x, core.y);
-                } else {
-                    moveAngle = unit.rotation;
-                }
+                CoreBuild core = closestDefenderCore(unit.x, unit.y, unit.team);
+                moveAngle = core != null ? unit.angleTo(core.x, core.y) : unit.rotation;
+            }
+            // Kéo nhẹ vào trục giữa dải đường nếu 2 bên mép không phải đường để tránh kẹt góc tường
+            float fx = Mathf.cosDeg(moveAngle), fy = Mathf.sinDeg(moveAngle);
+            float tileCx = tx * Vars.tilesize + Vars.tilesize * 0.5f;
+            float tileCy = ty * Vars.tilesize + Vars.tilesize * 0.5f;
+            float offX = tileCx - unit.x, offY = tileCy - unit.y;
+            // Thành phần vuông góc với hướng chạy
+            float perpDot = offX * (-fy) + offY * fx;
+            float steerX = fx + (-fy) * Mathf.clamp(perpDot * 0.08f, -0.35f, 0.35f);
+            float steerY = fy + fx * Mathf.clamp(perpDot * 0.08f, -0.35f, 0.35f);
+            moveAngle = Angles.angle(steerX, steerY);
+        } else {
+            float tra = toRoadAng[idx];
+            if (!Float.isNaN(tra)) {
+                moveAngle = tra;
+            } else {
+                CoreBuild core = closestDefenderCore(unit.x, unit.y, unit.team);
+                moveAngle = core != null ? unit.angleTo(core.x, core.y) : unit.rotation;
             }
         }
 
-        unit.vel.trns(moveAngle, unit.speed());
+        // Chuyển hướng vận tốc mượt (không giật khựng 90° đột ngột)
+        float spd = unit.speed();
+        Tmp.v1.trns(moveAngle, spd);
+        unit.vel.lerp(Tmp.v1, Mathf.clamp(0.28f * Time.delta));
 
-        float range = unit.range();
-        Teamc target;
-        TargetEntry tc = unitTargetCache.get(unit.id);
-        if (tc != null && frameCount - tc.f < 6 && (tc.t == null || isTargetValid(tc.t))) {
-            target = tc.t;
-        } else {
-            target = Units.closestTarget(unit.team, unit.x, unit.y, range);
-            unitTargetCache.put(unit.id, new TargetEntry(target, frameCount - (unit.id % 6)));
+        // Quái vẫn tự động bắn mục tiêu trong tầm trong lúc hành quân dọc đường
+        TargetEntry tc = targetCache.get(unit.id);
+        if (tc == null) {
+            tc = new TargetEntry();
+            tc.tick = -999;
+            targetCache.put(unit.id, tc);
+        }
+        if (tickCount - tc.tick >= 10 || (tc.t != null && !isTargetValid(tc.t))) {
+            tc.t = Units.closestTarget(unit.team, unit.x, unit.y, unit.range());
+            tc.tick = tickCount - (unit.id & 7);
         }
 
-        if (target != null) {
-            Posc tp = (Posc) target;
+        if (tc.t != null) {
+            Posc tp = (Posc) tc.t;
             unit.lookAt(tp.x(), tp.y());
             unit.aim(tp.x(), tp.y());
             unit.controlWeapons(true, true);
         } else {
             unit.lookAt(moveAngle);
-            unit.aim(unit.x + Angles.trnsx(moveAngle, 10f), unit.y + Angles.trnsy(moveAngle, 10f));
+            unit.aim(unit.x + Angles.trnsx(moveAngle, 16f), unit.y + Angles.trnsy(moveAngle, 16f));
             unit.controlWeapons(false, false);
         }
     }
 
-    // ------------------------------------------------------------------ vẽ mũi tên dòng chảy
+    // ------------------------------------------------------------------ Vẽ mũi tên chỉ đường (O(1), không cấp phát)
 
     private static void draw() {
-        if (antikeiBlock == null || Vars.state.isMenu()) return;
-        int total = antikeiTilesList.size();
-        if (total == 0) return;
+        if (antikeiBlock == null || !mapHasAntikei || Vars.state == null || Vars.state.isMenu()) return;
 
-        if (drawCacheVersion != antikeiDrawVersion || drawCacheLen != total) {
-            drawXs = new float[total];
-            drawYs = new float[total];
-            drawKeys = new String[total];
-            for (int i = 0; i < total; i++) {
-                String key = antikeiTilesList.get(i);
-                int[] p = parseKey(key);
-                drawKeys[i] = key;
-                drawXs[i] = p[0] * Vars.tilesize + Vars.tilesize / 2f;
-                drawYs[i] = p[1] * Vars.tilesize + Vars.tilesize / 2f;
-            }
-            drawCacheVersion = antikeiDrawVersion;
-            drawCacheLen = total;
-            angleCache = new HashMap<>();
-        }
-
+        boolean editor = Vars.state.isEditor();
         Draw.z(Layer.floor + 0.1f);
         Rect cb = Core.camera.bounds(Tmp.r1);
-        float cx0 = cb.x - 8, cy0 = cb.y - 8, cx1 = cb.x + cb.width + 8, cy1 = cb.y + cb.height + 8;
-        Draw.color(Pal.accent);
-        Lines.stroke(1.2f);
+        int x0 = Math.max(0, World.toTile(cb.x) - 1);
+        int y0 = Math.max(0, World.toTile(cb.y) - 1);
+        int x1 = Math.min(mapW - 1, World.toTile(cb.x + cb.width) + 1);
+        int y1 = Math.min(mapH - 1, World.toTile(cb.y + cb.height) + 1);
 
-        for (int i = 0; i < total; i++) {
-            float worldX = drawXs[i];
-            float worldY = drawYs[i];
-            if (worldX < cx0 || worldX > cx1 || worldY < cy0 || worldY > cy1) continue;
+        Draw.color(Pal.accent, editor ? 0.85f : 0.35f);
+        Lines.stroke(editor ? 1.25f : 0.95f);
 
-            String key = drawKeys[i];
-            AngleEntry ac = angleCache.get(key);
-            if (ac == null || frameCount - ac.f >= 30) {
-                ac = new AngleEntry(getOptimalAngle(worldX, worldY, key, Team.crux), frameCount + (i % 15));
-                angleCache.put(key, ac);
+        for (int y = y0; y <= y1; y++) {
+            int row = y * mapW;
+            float wy = y * Vars.tilesize + Vars.tilesize * 0.5f;
+            for (int x = x0; x <= x1; x++) {
+                int idx = row + x;
+                if (!isRoad[idx]) continue;
+                float ang = flowAng[idx];
+                if (Float.isNaN(ang)) continue;
+                float wx = x * Vars.tilesize + Vars.tilesize * 0.5f;
+                float tx = wx + Angles.trnsx(ang, 2.2f);
+                float ty = wy + Angles.trnsy(ang, 2.2f);
+                Lines.lineAngleCenter(wx, wy, ang, 3.8f);
+                Lines.lineAngle(tx, ty, ang + 140f, 1.9f);
+                Lines.lineAngle(tx, ty, ang - 140f, 1.9f);
             }
-            float angle = ac.a;
-
-            Lines.lineAngleCenter(worldX, worldY, angle, 4f);
-            Lines.lineAngle(worldX + Angles.trnsx(angle, 2f), worldY + Angles.trnsy(angle, 2f), angle + 135f, 2f);
-            Lines.lineAngle(worldX + Angles.trnsx(angle, 2f), worldY + Angles.trnsy(angle, 2f), angle - 135f, 2f);
         }
-
         Draw.reset();
     }
 }

@@ -798,6 +798,7 @@ public final class PvpDomination {
         trainSpawnTiles.clear();
         trainUnit = null;
         trainWave = 0;
+        Arrays.fill(trainTierCounts, 0);
         trainMaxWaves = getTrainMaxWaves();
         trainGearSlots = getTrainGearSlots();
         trainNextDelay = 0f;
@@ -879,7 +880,7 @@ public final class PvpDomination {
         }
     }
 
-    private static UnitType pickRandomTrainingUnit() {
+    public static UnitType pickRandomTrainingUnit() {
         if (trainPoolCache == null || trainPoolCache.isEmpty()) {
             trainPoolCache = new ArrayList<>();
             UnitType[] t1to5 = {
@@ -939,6 +940,7 @@ public final class PvpDomination {
         trainMaxWaves = clamped;
         trainGearSlots = clampedSlots;
         trainWave = 0;
+        Arrays.fill(trainTierCounts, 0);
         trainUnit = null;
         trainFinished = false;
         trainPromptShown = false;
@@ -951,11 +953,51 @@ public final class PvpDomination {
         }
     }
 
+    /** Đếm số lần gặp từng bậc quái đợt T1 → T5 trong chế độ Huấn luyện. */
+    public static final int[] trainTierCounts = new int[5];
+
+    /** Phân loại bậc T1..T5 của unit quái đợt (ưu tiên tên unit vanilla, dự phòng theo máu gốc cho unit mod). */
+    public static int classifyUnitTier(UnitType ut) {
+        if (ut == null) return 1;
+        String n = ut.name != null ? ut.name.toLowerCase() : "";
+        int dash = n.indexOf('-');
+        String shortN = dash >= 0 ? n.substring(dash + 1) : n;
+        if (shortN.equals("dagger") || shortN.equals("nova") || shortN.equals("crawler") || shortN.equals("flare")
+            || shortN.equals("mono") || shortN.equals("risso") || shortN.equals("retusa")
+            || shortN.equals("stell") || shortN.equals("elude") || shortN.equals("merui")) return 1;
+        if (shortN.equals("mace") || shortN.equals("pulsar") || shortN.equals("atrax") || shortN.equals("horizon")
+            || shortN.equals("poly") || shortN.equals("minke") || shortN.equals("oxynoe")
+            || shortN.equals("locus") || shortN.equals("avert") || shortN.equals("cleroi")) return 2;
+        if (shortN.equals("fortress") || shortN.equals("quasar") || shortN.equals("spiroct") || shortN.equals("zenith")
+            || shortN.equals("mega") || shortN.equals("bryde") || shortN.equals("cyerce")
+            || shortN.equals("precept") || shortN.equals("obviate") || shortN.equals("anthicus")) return 3;
+        if (shortN.equals("scepter") || shortN.equals("vela") || shortN.equals("arkyid") || shortN.equals("antumbra")
+            || shortN.equals("quad") || shortN.equals("sei") || shortN.equals("aegires")
+            || shortN.equals("vanquish") || shortN.equals("quell") || shortN.equals("tecta")) return 4;
+        if (shortN.equals("reign") || shortN.equals("corvus") || shortN.equals("toxopid") || shortN.equals("eclipse")
+            || shortN.equals("oct") || shortN.equals("omura") || shortN.equals("navanax")
+            || shortN.equals("conquer") || shortN.equals("disrupt") || shortN.equals("collaris")) return 5;
+        float hp = ut.health;
+        if (hp <= 380f) return 1;
+        if (hp <= 1050f) return 2;
+        if (hp <= 3200f) return 3;
+        if (hp <= 11000f) return 4;
+        return 5;
+    }
+
+    public static String trainTierSummary() {
+        return "[#b8e994]T1: " + trainTierCounts[0] + "[]  [#82ccdd]T2: " + trainTierCounts[1]
+            + "[]  [#f6b93b]T3: " + trainTierCounts[2] + "[]  [#e58e26]T4: " + trainTierCounts[3]
+            + "[]  [#eb2f06]T5: " + trainTierCounts[4] + "[]";
+    }
+
     private static void spawnNextTrainingMonster() {
         if (!isTraining() || Vars.net.client() || trainFinished) return;
         if (trainSpawnTiles.isEmpty()) scanTrainingSpawns();
         UnitType ut = pickRandomTrainingUnit();
         if (ut == null) return;
+        int tier = classifyUnitTier(ut);
+        if (tier >= 1 && tier <= 5) trainTierCounts[tier - 1]++;
 
         float sx, sy;
         if (!trainSpawnTiles.isEmpty()) {

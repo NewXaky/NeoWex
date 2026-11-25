@@ -96,7 +96,7 @@ public final class PvpBotAI {
         public String shortName, colHex;
         public int slotIdx, persona;
         public Mode mode = Mode.IDLE;
-        public float deadT = 40f, thinkT = 0f, shopT = 140f, buildT = 360f, incomeT = 0f, learnT = 180f;
+        public float deadT = 40f, thinkT = 0f, shopT = 140f, buildT = 360f, incomeT = 0f, learnT = 180f, skillT = 15f;
         public float hitT = 0f, strafeDir = 1f, strafeFlipT = 90f, recallCd = 0f;
         public float ambientChatT = 4200f, coreAlertCd = 0f, lastCoreHp = -1f, greetT = 160f;
         // Né tường kiểu cũ (pathQuery)
@@ -108,6 +108,7 @@ public final class PvpBotAI {
         // Học theo player
         public int learnUnit = 0, learnPilot = 0, learnBarrack = 0;
         public final ArrayList<String> learnTurrets = new ArrayList<>();
+        public final ArrayList<Integer> learnItems = new ArrayList<>();
         public boolean swapPending = false;
         // Trạng thái hội thoại & chiến đấu
         public boolean greeted = false, aggressiveOrder = false, defensiveOrder = false;
@@ -559,15 +560,29 @@ public final class PvpBotAI {
         if (hSt == null) return;
         boolean memDirty = false;
 
-        // 1. Học pháo trang bị của player
+        // 1. Học pháo trang bị của player (ưu tiên pháo đang lắp trên unit trước)
         a.learnTurrets.clear();
+        for (int i = 0; i < hSt.d.size() && i < hSt.p.size(); i++) {
+            if (hSt.p.get(i) != NewModePvp.EQUIPPED) continue;
+            String tid = hSt.d.get(i);
+            if (tid != null && !tid.isEmpty() && !a.learnTurrets.contains(tid)) a.learnTurrets.add(tid);
+        }
         for (int i = 0; i < hSt.d.size(); i++) {
             String tid = hSt.d.get(i);
             if (tid != null && !tid.isEmpty() && !a.learnTurrets.contains(tid)) a.learnTurrets.add(tid);
         }
         if (!a.learnTurrets.isEmpty()) {
-            String favT = a.learnTurrets.get(a.learnTurrets.size() - 1);
+            String favT = a.learnTurrets.get(0);
             if (!favT.equals(mem.learnedTurret)) { mem.learnedTurret = favT; memDirty = true; }
+        }
+
+        // 1b. Học trang bị item của player
+        a.learnItems.clear();
+        if (hSt.gEq != null) {
+            for (int i = 0; i < hSt.gEq.length; i++) {
+                int gid = hSt.gEq[i];
+                if (gid >= 0 && !a.learnItems.contains(gid)) a.learnItems.add(gid);
+            }
         }
 
         // 2. Học cấp nhà máy lính
@@ -710,6 +725,43 @@ public final class PvpBotAI {
         }
     }
 
+    /** Kiểm tra tọa độ (x, y) có nằm trong lãnh thổ lõi của bất kỳ phe PvP đối phương nào không. */
+    static boolean isInEnemyTerritory(Team myTeam, float x, float y) {
+        if (myTeam == null || Vars.state == null || Vars.state.teams == null) return false;
+        float safeR = NewModePvp.TERRITORY_RADIUS + 40f;
+        float safeR2 = safeR * safeR;
+        for (mindustry.game.Teams.TeamData td : Vars.state.teams.active) {
+            if (td == null || td.team == myTeam || td.team == Team.derelict || td.team == Vars.state.rules.waveTeam) continue;
+            if (!NewModePvp.isPvpTeam(td.team) || td.cores == null) continue;
+            for (int i = 0; i < td.cores.size; i++) {
+                CoreBlock.CoreBuild ec = td.cores.get(i);
+                if (ec != null && ec.isValid() && Mathf.dst2(x, y, ec.x, ec.y) <= safeR2) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Tìm mục tiêu farm an toàn trên toàn bản đồ (đi ra ngoài lãnh thổ nhưng TUYỆT ĐỐI không vào lãnh thổ phe địch). */
+    static Unit findSafeFarmTarget(Unit u, Team myTeam) {
+        if (u == null || myTeam == null) return null;
+        Unit bestWave = null;
+        float bestWaveD2 = Float.MAX_VALUE;
+        Unit bestOther = null;
+        float bestOtherD2 = Float.MAX_VALUE;
+        for (Unit e : Groups.unit) {
+            if (e == null || e.dead || !e.isValid() || e.team == myTeam || e.team == Team.derelict) continue;
+            if (!e.targetable(myTeam)) continue;
+            if (isInEnemyTerritory(myTeam, e.x, e.y)) continue;
+            float d2 = Mathf.dst2(u.x, u.y, e.x, e.y);
+            if (e.team == Vars.state.rules.waveTeam) {
+                if (d2 < bestWaveD2) { bestWaveD2 = d2; bestWave = e; }
+            } else {
+                if (d2 < bestOtherD2) { bestOtherD2 = d2; bestOther = e; }
+            }
+        }
+        return bestWave != null ? bestWave : bestOther;
+    }
+
     static void runAfkAssist(Player pl, Unit u, AfkTrack t) {
         Team tm = pl.team();
         if (tm == null || tm.cores().size == 0) return;
@@ -724,22 +776,49 @@ public final class PvpBotAI {
         if (t.strafeT <= 0f) { t.strafeT = 70f + Mathf.random(60f); t.strafeDir = -t.strafeDir; }
 
         float hpRatio = u.maxHealth > 0f ? u.health / u.maxHealth : 1f;
-        Unit tgt = findSmartTarget(u, core, NewModePvp.TERRITORY_RADIUS + 180f, true);
+        // Nếu lỡ lọt vào lãnh thổ phe địch -> lập tức rút ra về hướng lõi nhà!
+        if (isInEnemyTerritory(tm, u.x, u.y)) {
+            goPathAfk(t, u, core.x, core.y, HOME_R * 0.8f);
+            aimAndShoot(u, null);
+            tryUseUnitSkill(pl, u, null, true, core.x, core.y);
+            return;
+        }
+        // Ưu tiên 1: thủ lãnh thổ nhà nếu có địch xâm nhập; Ưu tiên 2: đi ra ngoài lãnh thổ farm quái (tránh lãnh thổ địch)
+        Unit tgt = findSmartTarget(u, core, NewModePvp.TERRITORY_RADIUS + 80f, false);
+        if (tgt == null) tgt = findSafeFarmTarget(u, tm);
         if (hpRatio < 0.35f) {
             goPathAfk(t, u, core.x, core.y, HOME_R * 0.7f);
             aimAndShoot(u, tgt);
+            tryUseUnitSkill(pl, u, tgt, true, core.x, core.y);
             return;
         }
         if (tgt != null) {
             float wantR = Math.max(90f, Math.min(240f, u.range() * 0.78f));
             float dst = Mathf.dst(u.x, u.y, tgt.x, tgt.y);
             boolean isPvpDuel = tgt.team != Vars.state.rules.waveTeam && (tgt.isPlayer() || botUnitOf(tgt) != null);
-            if (dst > wantR * 1.15f) goPathAfk(t, u, tgt.x, tgt.y, wantR * 0.85f);
-            else if (isPvpDuel) strafeTarget(u, tgt, wantR, dst, t.strafeDir);
-            else { Tmp.v1.setZero(); u.movePref(Tmp.v1); }
+            if (dst > wantR * 1.15f) {
+                if (!isInEnemyTerritory(tm, tgt.x, tgt.y)) goPathAfk(t, u, tgt.x, tgt.y, wantR * 0.85f);
+                else { Tmp.v1.setZero(); u.movePref(Tmp.v1); }
+            } else if (isPvpDuel) {
+                strafeTarget(u, tgt, wantR, dst, t.strafeDir);
+            } else {
+                Tmp.v1.setZero(); u.movePref(Tmp.v1);
+            }
             aimAndShoot(u, tgt);
+            tryUseUnitSkill(pl, u, tgt, false, core.x, core.y);
         } else {
-            goPathAfk(t, u, core.x, core.y, HOME_R);
+            // Chưa thấy quái -> tuần tra ngoài rìa lãnh thổ hướng ra giữa bản đồ để farm (không vào lãnh thổ địch)
+            float mapCx = Vars.world.unitWidth() * 0.5f;
+            float mapCy = Vars.world.unitHeight() * 0.5f;
+            float outAng = Angles.angle(core.x, core.y, mapCx, mapCy);
+            float patrolDist = Math.min(Mathf.dst(core.x, core.y, mapCx, mapCy) * 0.85f, NewModePvp.TERRITORY_RADIUS + 180f);
+            float px = core.x + Angles.trnsx(outAng, patrolDist);
+            float py = core.y + Angles.trnsy(outAng, patrolDist);
+            if (isInEnemyTerritory(tm, px, py)) {
+                px = core.x;
+                py = core.y;
+            }
+            goPathAfk(t, u, px, py, 56f);
             aimAndShoot(u, null);
         }
     }
@@ -923,6 +1002,50 @@ public final class PvpBotAI {
         }
 
         executeMovementAndCombat(a, u, core, st);
+
+        // Kích hoạt kỹ năng nút của các unit đặc biệt (Archueng, Honivery, Bulvasyr, Lancyron)
+        a.skillT -= Time.delta;
+        if (a.skillT <= 0f) {
+            a.skillT = 15f;
+            Unit skTgt = (a.target != null && !a.target.dead && a.target.isValid()) ? a.target : findSmartTarget(u, core, 480f, true);
+            tryUseUnitSkill(pl, u, skTgt, a.mode == Mode.RETREAT, core.x, core.y);
+        }
+    }
+
+    /** Cho Bot A.I (và chế độ Hỗ trợ AFK) chủ động dùng kỹ năng nút của các unit Archueng / Honivery / Bulvasyr / Lancyron. */
+    static void tryUseUnitSkill(Player pl, Unit u, Unit target, boolean retreating, float coreX, float coreY) {
+        if (Vars.net.client() || pl == null || u == null || u.dead || !u.isValid()) return;
+        if (Zeralion.isBound(u)) return;
+        try {
+            if (ArchuengPvp.isArch(u)) {
+                if (target != null && !target.dead && Mathf.within(u.x, u.y, target.x, target.y, 260f)) {
+                    float ang = Angles.angle(u.x, u.y, target.x, target.y);
+                    ArchuengPvp.onReq(pl, String.valueOf(ang));
+                }
+            } else if (HoniveryPvp.isHon(u)) {
+                if (target != null && !target.dead && Mathf.within(u.x, u.y, target.x, target.y, 320f)) {
+                    HoniveryPvp.onReq(pl, "");
+                }
+            } else if (BulvasyrDash.isBul(u)) {
+                if (retreating) {
+                    float ang = Angles.angle(u.x, u.y, coreX, coreY);
+                    BulvasyrDash.onReq(pl, String.valueOf(ang));
+                } else if (target != null && !target.dead) {
+                    float d = Mathf.dst(u.x, u.y, target.x, target.y);
+                    if (d > 100f && d < 460f) {
+                        float ang = Angles.angle(u.x, u.y, target.x, target.y) + Mathf.range(18f);
+                        BulvasyrDash.onReq(pl, String.valueOf(ang));
+                    }
+                }
+            } else if (u instanceof Lancyron.LancyronUnit && !((Lancyron.LancyronUnit) u).isClone) {
+                Lancyron.LancyronUnit lu = (Lancyron.LancyronUnit) u;
+                boolean inFight = target != null && !target.dead && Mathf.within(u.x, u.y, target.x, target.y, Lancyron.RANGE * 1.15f);
+                boolean needHealOrShield = u.health < u.maxHealth * 0.90f || lu.shieldRatio() < 0.72f;
+                if (retreating || inFight || needHealOrShield) {
+                    Lancyron.onSkillReq(pl, "");
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     static void spawnAgentUnit(Agent a, CoreBlock.CoreBuild core, NewModePvp.St st) {
@@ -1184,11 +1307,61 @@ public final class PvpBotAI {
     static void doShopping(Agent a, NewModePvp.St st, CoreBlock.CoreBuild core) {
         if (GearItems.war()) {
             GearItems.botAutoEquip(st);
+            // Tự học & mua trang bị item theo player (ưu tiên đúng item player đang mặc, sau đó lấp đầy các ô trống)
+            if (st.pts > 0) {
+                int maxSlots = GearItems.slots();
+                boolean boughtItem = false;
+                for (int i = 0; i < a.learnItems.size() && st.pts > 0; i++) {
+                    GearItems.Def ld = GearItems.def(a.learnItems.get(i));
+                    if (ld == null || ld.kind > 0 || ld.rarity >= GearItems.R_SHOP || ld.slot < 0 || ld.slot >= maxSlots) continue;
+                    GearItems.Def cur = GearItems.def(st.gEq[ld.slot]);
+                    int curB = GearItems.eqBonusAt(st, ld.slot);
+                    if (cur != null && cur.id == ld.id) continue;
+                    if (cur != null && GearItems.power(cur, curB) >= GearItems.power(ld, 0)) continue;
+                    int pr = GearItems.price(ld, a.botPl.team());
+                    if (st.pts >= pr) {
+                        st.pts -= pr;
+                        if (cur != null) GearItems.addInv(st, cur.id, GearItems.isEqBought(st, ld.slot), curB);
+                        st.gEq[ld.slot] = ld.id;
+                        st.gEqBonus[ld.slot] = 0;
+                        GearItems.setEqBought(st, ld.slot, true);
+                        st.gKey = Integer.MIN_VALUE;
+                        boughtItem = true;
+                        break;
+                    }
+                }
+                if (!boughtItem && st.pts > 0) {
+                    for (int sl = 0; sl < maxSlots && st.pts > 0; sl++) {
+                        if (st.gEq[sl] >= 0) continue;
+                        GearItems.Def best = null;
+                        int bestPr = 0;
+                        for (int id = 0; id < GearItems.n; id++) {
+                            GearItems.Def gd = GearItems.DEFS[id];
+                            if (gd == null || gd.kind > 0 || gd.rarity >= GearItems.R_SHOP || gd.slot != sl) continue;
+                            int pr = GearItems.price(gd, a.botPl.team());
+                            if (pr <= st.pts && (best == null || GearItems.power(gd, 0) > GearItems.power(best, 0))) {
+                                best = gd;
+                                bestPr = pr;
+                            }
+                        }
+                        if (best != null) {
+                            st.pts -= bestPr;
+                            st.gEq[sl] = best.id;
+                            st.gEqBonus[sl] = 0;
+                            GearItems.setEqBought(st, sl, true);
+                            st.gKey = Integer.MIN_VALUE;
+                            boughtItem = true;
+                            break;
+                        }
+                    }
+                }
+                if (boughtItem) NewModePvp.changed();
+            }
             if (st.pi > 0 && NewModePvp.pilotGiftCount(st, st.pi) < NewModePvp.PILOT_MAX_GIFTS && st.gInv.size() >= 3) {
                 for (int i = st.gInv.size() - 1; i >= 0; i--) {
                     GearItems.Def gd = GearItems.def(st.gInv.get(i));
                     if (gd != null && gd.rarity < GearItems.R_SHOP) {
-                        st.gInv.remove(i);
+                        GearItems.removeInvSrcAt(st, i);
                         st.pgift.add((st.pi << 8) | gd.id);
                         st.gKey = Integer.MIN_VALUE;
                         NewModePvp.changed();
@@ -1197,6 +1370,28 @@ public final class PvpBotAI {
                 }
             }
         }
+
+        // 2a. Lắp ngay pháo đang nằm trong túi lên unit nếu còn ô & còn sức chịu tải
+        try {
+            NewModePvp.Defs defs = NewModePvp.droneDefs();
+            int slots = NewModePvp.equipSlots(st);
+            int hardMax = NewModePvp.unitHardLoadMax(st);
+            boolean eqChanged = false;
+            if (defs != null && st.d.size() == st.p.size()) {
+                for (int i = 0; i < st.d.size(); i++) {
+                    if (st.p.get(i) == NewModePvp.EQUIPPED) continue;
+                    if (NewModePvp.equipCount(st) >= slots) break;
+                    NewModePvp.Def bd = defs.map.get(st.d.get(i));
+                    if (bd == null || bd.kind.equals("tractor") || bd.kind.equals("point")) continue;
+                    if (NewModePvp.equippedWeight(st) + NewModePvp.turretWeight(bd) <= hardMax) {
+                        st.p.set(i, NewModePvp.EQUIPPED);
+                        eqChanged = true;
+                    }
+                }
+            }
+            if (eqChanged) NewModePvp.changed();
+        } catch (Throwable ignored) {}
+
         if (st.pts <= 0) return;
 
         // 1. Nâng nhà máy lính học theo player (hoặc tự nâng khi dư điểm)
@@ -1210,15 +1405,19 @@ public final class PvpBotAI {
             }
         }
 
-        // 2. Mua pháo gắn lên drone — ưu tiên đúng loại pháo mà player đang dùng!
+        // 2b. Mua & LẮP TRỰC TIẾP pháo drone lên unit — ưu tiên pháo học từ player và tuân thủ giới hạn trọng lượng!
         try {
             NewModePvp.Defs defs = NewModePvp.droneDefs();
             int slots = NewModePvp.equipSlots(st);
-            if (st.d.size() < slots && defs != null && defs.list.size() > 0) {
+            int hardMax = NewModePvp.unitHardLoadMax(st);
+            int curW = NewModePvp.equippedWeight(st);
+            if (NewModePvp.equipCount(st) < slots && defs != null && defs.list.size() > 0) {
                 NewModePvp.Def chosen = null;
                 for (int i = 0; i < a.learnTurrets.size(); i++) {
                     NewModePvp.Def ld = defs.map.get(a.learnTurrets.get(i));
-                    if (ld != null && !ld.kind.equals("tractor") && !ld.kind.equals("point") && ld.cost <= st.pts) {
+                    if (ld != null && !ld.kind.equals("tractor") && !ld.kind.equals("point")
+                        && NewModePvp.turretCost(st, ld) <= st.pts
+                        && curW + NewModePvp.turretWeight(ld) <= hardMax) {
                         if (chosen == null || ld.cost > chosen.cost) chosen = ld;
                     }
                 }
@@ -1226,13 +1425,18 @@ public final class PvpBotAI {
                     for (int i = 0; i < defs.list.size(); i++) {
                         NewModePvp.Def d = defs.list.get(i);
                         if (d.kind.equals("tractor") || d.kind.equals("point")) continue;
-                        if (d.cost <= st.pts && (chosen == null || d.cost > chosen.cost)) chosen = d;
+                        if (NewModePvp.turretCost(st, d) <= st.pts
+                            && curW + NewModePvp.turretWeight(d) <= hardMax
+                            && (chosen == null || d.cost > chosen.cost)) {
+                            chosen = d;
+                        }
                     }
                 }
                 if (chosen != null) {
-                    st.pts -= chosen.cost;
+                    int c = NewModePvp.turretCost(st, chosen);
+                    st.pts -= c;
                     st.d.add(chosen.id);
-                    st.p.add(0);
+                    st.p.add(NewModePvp.EQUIPPED);
                     NewModePvp.changed();
                 }
             }

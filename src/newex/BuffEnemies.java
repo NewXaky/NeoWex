@@ -7,7 +7,6 @@ import mindustry.game.EventType.UnitDestroyEvent;
 import mindustry.game.EventType.UnitSpawnEvent;
 import mindustry.game.Team;
 import mindustry.gen.Unit;
-import newex.content.PvpDomination;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -43,8 +42,6 @@ public final class BuffEnemies {
 
     private static void applyHealthBuff(Unit unit) {
         if (unit == null) return;
-        // Chế độ Huấn Luyện Unit Player: không áp dụng tăng % máu theo đợt.
-        if (PvpDomination.isTraining()) return;
         // JS gốc dùng Vars.player.team() trực tiếp; thêm kiểm tra null để server không bị lỗi.
         Team playerTeam = Vars.player != null ? Vars.player.team() : Vars.state.rules.defaultTeam;
         if (unit.team == playerTeam) return;

@@ -52,7 +52,7 @@ public final class Therdum {
     public static class TherdumBullet extends BasicBulletType {
         public TherdumBullet() {
             speed = 6f;
-            damage = 24f;
+            damage = 36f;
             width = 10f;
             height = 14f;
             hitEffect = smokeHitFx;
@@ -154,7 +154,7 @@ public final class Therdum {
         protected void shoot(BulletType type) {
             if (!hasAmmo()) return;
 
-            float baseDmg = 24f;
+            float baseDmg = 36f;
             int bulletCount = 40;
             float spread = 12f;
             float curRange = range();

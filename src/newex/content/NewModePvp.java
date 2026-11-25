@@ -320,7 +320,7 @@ public class NewModePvp {
         return Strings.fixed(total, 2) + " " + tr("ô/s", "tiles/s") + "  (" + (add >= 0 ? "+" : "") + Strings.fixed(add, 2) + ")";
     }
     static final float SPD_FLAT = 0.01f;
-    static final float REGEN_PCT = 0.25f;
+    static final int REGEN_FLAT = 35;
     static final float REGEN_THRESHOLD = 0.99f;
     static final float DMG_PCT_MAXHP = 0.05f;
     static final float DMG_PER_ARMOR = 0.005f; // 0.05 / 10 giáp / cấp (giảm từ 0.03 = 0.3)
@@ -351,7 +351,7 @@ public class NewModePvp {
     static final int LIGHT_SPD_PCT = 8;
     static final String THERDUM_ID = "therdum";
     static final int THERDUM_PRICE = 10;
-    static final int THERDUM_HIT_CAP = 100;
+    static final int THERDUM_HIT_CAP = 900;
     static final int STAT_HEAL = 14, HEAL_CUT_PCT = 1, HEAL_CUT_MAX = 90, HEAL_CUT_TICKS = 240;
     /** Chỉ số Giảm hồi máu chỉ có ở chế độ Hỗn loạn và Chiến tranh. */
     static boolean statVisible(int i) { return i != STAT_HEAL || ChaosMode.on() || GearItems.war(); }
@@ -422,7 +422,7 @@ public class NewModePvp {
         new Stat("Tỉ lệ bạo kích", "Crit chance", l -> "[gold]" + (l * 2) + "%[]"),
         new Stat("Sát thương bạo kích", "Crit damage", l -> "[gold]" + (150 + l * 12) + "%[]"),
         new Stat("Xuyên giáp", "Armor pierce", l -> "[orange]" + (l * 5) + "%[]"),
-        new Stat("Hồi máu", "Regeneration", l -> "[green]+" + Strings.fixed(l * REGEN_PCT, 2) + "%[] " + tr("máu tối đa/giây (dưới 99% máu)", "max HP/s (below 99% HP)")),
+        new Stat("Hồi máu", "Regeneration", l -> "[green]+" + (l * REGEN_FLAT) + "[] " + tr("máu/giây (dưới 99% máu)", "HP/s (below 99% HP)")),
         new Stat("Sát thương % máu tối đa", "Max HP % damage", l -> "[scarlet]+" + Strings.fixed(l * DMG_PCT_MAXHP, 2) + "%[] " + tr("máu tối đa của địch mỗi đòn", "of enemy max HP per hit")),
         new Stat("Sát thương theo giáp", "Armor-based damage", l -> "[scarlet]+" + Strings.fixed(l * DMG_PER_ARMOR * 10, 1) + "%[] " + tr("mỗi 10 giáp đang có", "per 10 armor you hold")),
         new Stat("Đẩy lùi", "Knockback", l -> "[cyan]+" + Strings.fixed(l * KNOCK_PER, 2) + "[] " + tr("lực hất văng", "knockback")),
@@ -1039,6 +1039,7 @@ public class NewModePvp {
             Vars.netClient.addPacketHandler(GearItems.FX_KIND, content -> GearItems.onFxPacket(content));
             Vars.netClient.addPacketHandler(GearItems.RING_KIND, content -> GearItems.onRingPacket(content));
             Vars.netClient.addPacketHandler(GearItems.PORT_KIND, content -> GearItems.onPortPacket(content));
+            Vars.netClient.addPacketHandler(TDRONE_KIND, content -> onTurretDronePacket(content));
             NexNet.onClient("newex-gear-tp", GearItems::onTpMsg);
             Vars.netClient.addPacketHandler(PFX_KIND, content -> {
                 try {
@@ -1188,6 +1189,7 @@ public class NewModePvp {
     static ObjectMap<Object, BulletType> ammoMap(Block blk) {
         if (blk instanceof ItemTurret) return (ObjectMap) ((ItemTurret) blk).ammoTypes;
         if (blk instanceof LiquidTurret) return (ObjectMap) ((LiquidTurret) blk).ammoTypes;
+        if (blk instanceof ContinuousLiquidTurret) return (ObjectMap) ((ContinuousLiquidTurret) blk).ammoTypes;
         return null;
     }
     static ArrayList<Pair> ammoPairs(Block blk) {
@@ -1472,7 +1474,7 @@ public class NewModePvp {
             if (bt == null) bt = p.v;
             if (!isDummyBullet(p.v)) { bt = p.v; break; }
         }
-        if (bt == null) { Object st = fld(blk, "shootType", null); if (st instanceof BulletType) bt = (BulletType) st; }
+        if (bt == null) { Object st = fld(blk, "shootType", null); if (st instanceof BulletType && !isDummyBullet((BulletType) st)) bt = (BulletType) st; }
         if (bt == null) bt = fallbackBullet(blk);
         ensureLoaded(bt);
         def.eqBullet = bt; def.eqBulletSet = true;
@@ -1584,26 +1586,21 @@ public class NewModePvp {
     static final class MpOut { float x, y; boolean w; }
     static final MpOut mpOut = new MpOut();
     static MpOut mountPos(Unit u, int k, int n) {
-        try {
-            ArrayList<float[]> wm = weaponMounts(u.type);
-            if (wm.size() > 0) {
-                float[] m = wm.get(k % wm.size());
-                float rot = u.rotation - 90;
-                mpOut.x = u.x + Angles.trnsx(rot, m[0], m[1]);
-                mpOut.y = u.y + Angles.trnsy(rot, m[0], m[1]);
-                mpOut.w = true;
-                return mpOut;
-            }
-        } catch (Throwable err) {}
         mpOut.w = false;
-        if (n <= 1) { mpOut.x = u.x; mpOut.y = u.y; return mpOut; }
-        int inner = Math.min(n, 6), ring = k < inner ? 0 : 1, cnt = ring == 0 ? inner : n - inner, idx = ring == 0 ? k : k - inner;
-        float a = u.rotation + ((float) idx / cnt) * 360 + ring * (180f / cnt);
-        float r = u.hitSize * (ring == 0 ? 0.28f : 0.5f);
-        if (n <= 6) r = u.hitSize * 0.3f;
+        float a = ((float) k / Math.max(1, n)) * 360f + u.rotation;
+        float r = Math.max(14f, u.hitSize * 0.65f + 8f);
         mpOut.x = u.x + Mathf.cosDeg(a) * r;
         mpOut.y = u.y + Mathf.sinDeg(a) * r;
         return mpOut;
+    }
+    static MpOut mountPos(Unit u, MState stt) {
+        if (stt != null && stt.drone != null && stt.drone.isAdded() && !stt.drone.dead) {
+            mpOut.x = stt.drone.x;
+            mpOut.y = stt.drone.y;
+            mpOut.w = false;
+            return mpOut;
+        }
+        return mountPos(u, stt != null ? stt.k : 0, stt != null ? stt.n : 1);
     }
     static float mountScale(Unit u, Def def, int n) {
         float base = def.block.size * Vars.tilesize;
@@ -1640,6 +1637,7 @@ public class NewModePvp {
         float rel, ang, tt, life, charge, bLife; int q, barrel, k, n = 1;
         float f = 1f, spread; int rep = 1; // chế độ nhiều pháo: hệ số Tấn công riêng của pháo, góc lệch đạn thêm, số đạn mỗi lần bắn
         Tgt tgt; Bullet ptgt; Bullet b;
+        TurretDroneUnit drone;
     }
     static final HashMap<String, MState> mountSt = new HashMap<>();
     static final HashMap<String, Float> equipAng = new HashMap<>();
@@ -1755,11 +1753,10 @@ public class NewModePvp {
         return new float[]{tx, ty};
     }
     static final HashMap<String, Boolean> FORCE_AUTO_AIM = new HashMap<>();
-    static { FORCE_AUTO_AIM.put("lustre", true); }
     static final class AimRes { float tx, ty; Tgt t; }
     static AimRes resolveAim(Unit u, Def def, MpOut mp, Aim ast, MState stt, BulletType bt, float range) {
         AimRes r = new AimRes();
-        if (ast.shoot && FORCE_AUTO_AIM.get(def.id) == null) { r.tx = ast.x; r.ty = ast.y; return r; }
+        if (ast.shoot) { r.tx = ast.x; r.ty = ast.y; return r; }
         Block blk = def.block;
         if (!targetValid(stt.tgt, u, def, mp, range)) stt.tgt = null;
         stt.tt -= Time.delta;
@@ -1780,7 +1777,7 @@ public class NewModePvp {
         return r;
     }
     static float[] muzzle(Unit u, Block blk, MpOut mp, float rot) {
-        float off = mp.w ? 0f : Math.min(blk.size * Vars.tilesize * 0.5f, u.hitSize * 0.5f);
+        float off = Vars.tilesize * 0.52f;
         return new float[]{mp.x + Mathf.cosDeg(rot) * off, mp.y + Mathf.sinDeg(rot) * off};
     }
 
@@ -1794,7 +1791,7 @@ public class NewModePvp {
         boolean delayed = fldF(pat, "firstShotDelay", 0f) > 0;
         if (!Vars.headless && delayed) {
             try {
-                MpOut mp0 = mountPos(u, stt.k, stt.n);
+                MpOut mp0 = mountPos(u, stt);
                 Object cs = fld(blk, "chargeSound", null);
                 if (cs instanceof arc.audio.Sound) ((arc.audio.Sound) cs).at(mp0.x, mp0.y, 1f);
                 Object ce = fld(bt, "chargeEffect", null);
@@ -1809,7 +1806,7 @@ public class NewModePvp {
                 stt.q = Math.max(0, stt.q - 1);
                 try {
                     if (!u.isValid() || u.dead) return;
-                    MpOut mp = mountPos(u, stt.k, stt.n);
+                    MpOut mp = mountPos(u, stt);
                     float rot = stt.ang;
                     float[] mz = muzzle(u, blk, mp, rot);
                     float bx = mz[0] + Angles.trnsx(rot - 90, xo, yo), by = mz[1] + Angles.trnsy(rot - 90, xo, yo);
@@ -1864,16 +1861,16 @@ public class NewModePvp {
     }
 
     static void therdumFire(Unit u, Def def, MState stt, Aim aim) {
-        MpOut mp = mountPos(u, stt.k, stt.n);
+        MpOut mp = mountPos(u, stt);
         float rot = stt.ang;
         float[] mz = muzzle(u, def.block, mp, rot);
-        float sx = mz[0] + Angles.trnsx(rot, 6f), sy = mz[1] + Angles.trnsy(rot, 6f);
+        float sx = mz[0] + Angles.trnsx(rot, 2f), sy = mz[1] + Angles.trnsy(rot, 2f);
         float range = turretRange(def), dm = Math.max(0.1f, u.damageMultiplier) * stt.f;
         if (!Vars.headless) { try { therdumFx.at(sx, sy, rot); } catch (Throwable err) {} }
         for (int i = 0; i < 40; i++) {
             float sp = Mathf.random(3f, 9f);
             Bullet b = therdumBullet.create(u, u.team, sx, sy, rot + Mathf.range(12f));
-            if (b != null) { b.vel.setLength(sp); b.lifetime = range / sp; b.damage = 24 * dm; }
+            if (b != null) { b.vel.setLength(sp); b.lifetime = range / sp; b.damage = 36f * dm; }
         }
     }
     static void shootTurret(Unit u, Def def, MpOut mp, Aim ast, MState stt, String key) {
@@ -2025,32 +2022,250 @@ public class NewModePvp {
             stt.rel = 0;
         }
     }
+    // ===== Drone pháo mini 1 ô (unit không quân thật bay quanh unit player phạm vi 8 ô, có HP & giáp như khối pháo gốc) =====
+    static final String TDRONE_KIND = "newex-pvp-tdrone";
+    static final float DRONE_ROAM_RADIUS = 8f * Vars.tilesize; // phạm vi 8 ô (64 đơn vị) quanh unit player
+    static final float DRONE_RESPAWN_TICKS = 240f; // hồi sinh sau 4 giây nếu drone pháo bị bắn nổ
+    static final HashMap<String, TurretDroneUnit> activeDrones = new HashMap<>();
+    static final HashMap<String, Float> droneRespawnCd = new HashMap<>();
+    static final HashMap<Integer, Short> clientDroneBlock = new HashMap<>();
+    static float droneMapSyncT = 0f;
+    public static UnitType turretDroneType;
+
+    public static class TurretDroneUnit extends mindustry.gen.UnitEntity {
+        public static final int CLASS_ID = mindustry.gen.EntityMapping.register("newex-pvp-turret-drone", TurretDroneUnit::new);
+
+        public String droneKey = "";
+        public int ownerUnitId = -1;
+        public short droneBlockId = -1;
+        public float lastTouchTime = 0f;
+        public float desiredAimRot = 0f;
+        private float roamAng = 0f;
+        private float roamDist = 28f;
+        private float roamTimer = 0f;
+
+        @Override
+        public int classId() {
+            return CLASS_ID;
+        }
+
+        public Block resolveBlock() {
+            short bid = droneBlockId;
+            if (bid < 0) {
+                Short mapped = clientDroneBlock.get(this.id);
+                if (mapped != null) {
+                    bid = mapped;
+                    droneBlockId = bid;
+                }
+            }
+            if (bid < 0) return null;
+            try {
+                return Vars.content.block(bid);
+            } catch (Throwable err) {
+                return null;
+            }
+        }
+
+        @Override
+        public void update() {
+            elevation = 1f; // luôn là không quân bay trên không
+            if (!Vars.net.client()) {
+                if (Time.time - lastTouchTime > 36f) {
+                    despawnDroneServer(this);
+                    return;
+                }
+                Unit owner = ownerUnitId >= 0 ? Groups.unit.getByID(ownerUnitId) : null;
+                if (owner == null || owner.dead || !owner.isAdded() || owner.team != team) {
+                    despawnDroneServer(this);
+                    return;
+                }
+
+                float minR = Math.max(15f, owner.hitSize * 0.62f + 8f);
+                float maxR = Math.max(minR + 8f, DRONE_ROAM_RADIUS);
+                roamTimer -= Time.delta;
+                float curTx = owner.x + Angles.trnsx(roamAng, roamDist);
+                float curTy = owner.y + Angles.trnsy(roamAng, roamDist);
+                if (roamTimer <= 0f || Mathf.within(x, y, curTx, curTy, 6f)) {
+                    roamAng = Mathf.random(360f);
+                    roamDist = Mathf.random(minR, maxR);
+                    roamTimer = Mathf.random(85f, 155f);
+                    curTx = owner.x + Angles.trnsx(roamAng, roamDist);
+                    curTy = owner.y + Angles.trnsy(roamAng, roamDist);
+                }
+
+                // Đẩy nhẹ tách nhau giữa các drone pháo cùng phe để không bị chồng lên nhau
+                float sepX = 0f, sepY = 0f;
+                for (TurretDroneUnit other : activeDrones.values()) {
+                    if (other == null || other == this || other.dead || !other.isAdded() || other.ownerUnitId != ownerUnitId) continue;
+                    float dx = x - other.x, dy = y - other.y;
+                    float d2 = dx * dx + dy * dy;
+                    if (d2 > 0.01f && d2 < 14f * 14f) {
+                        float d = (float) Math.sqrt(d2);
+                        float push = (14f - d) * 0.45f;
+                        sepX += (dx / d) * push;
+                        sepY += (dy / d) * push;
+                    }
+                }
+                curTx += sepX;
+                curTy += sepY;
+
+                float distOwner = Mathf.dst(x, y, owner.x, owner.y);
+                if (distOwner > 360f) {
+                    set(curTx, curTy);
+                    vel.setZero();
+                } else {
+                    float spd = distOwner > maxR ? 6.8f : 3.4f;
+                    Tmp.v1.set(curTx - x, curTy - y);
+                    if (Tmp.v1.len() > 1f) {
+                        Tmp.v1.limit(spd);
+                        vel.lerp(Tmp.v1, Mathf.clamp(0.14f * Time.delta));
+                    } else {
+                        vel.scl(0.88f);
+                    }
+                }
+
+                float aimSave = desiredAimRot;
+                super.update();
+                rotation = Angles.moveToward(rotation, aimSave, 18f * Time.delta);
+                return;
+            }
+            super.update();
+        }
+
+        @Override
+        public void write(arc.util.io.Writes write) {
+            super.write(write);
+            write.s(droneBlockId);
+        }
+
+        @Override
+        public void read(arc.util.io.Reads read) {
+            super.read(read);
+            droneBlockId = read.s();
+        }
+    }
+
+    static void despawnDroneServer(TurretDroneUnit d) {
+        if (d == null) return;
+        if (d.droneKey != null && !d.droneKey.isEmpty() && activeDrones.get(d.droneKey) == d) {
+            activeDrones.remove(d.droneKey);
+        }
+        try {
+            Call.unitDespawn(d);
+        } catch (Throwable err) {
+            try { d.remove(); } catch (Throwable ignored) {}
+        }
+    }
+
+    static void broadcastDroneMap(int droneId, short blockId) {
+        if (Vars.net.client()) return;
+        try {
+            Call.clientPacketReliable(TDRONE_KIND, droneId + ":" + blockId);
+        } catch (Throwable err) {}
+    }
+
+    static void syncAllDroneMapsPeriodically() {
+        if (Vars.net.client() || activeDrones.isEmpty()) return;
+        droneMapSyncT += Time.delta;
+        if (droneMapSyncT < 180f) return;
+        droneMapSyncT = 0f;
+        StringBuilder sb = new StringBuilder();
+        for (TurretDroneUnit d : activeDrones.values()) {
+            if (d == null || d.dead || !d.isAdded() || d.droneBlockId < 0) continue;
+            if (sb.length() > 0) sb.append(';');
+            sb.append(d.id).append(':').append(d.droneBlockId);
+        }
+        if (sb.length() > 0) {
+            try { Call.clientPacketReliable(TDRONE_KIND, sb.toString()); } catch (Throwable err) {}
+        }
+    }
+
+    static void onTurretDronePacket(String content) {
+        if (content == null || content.isEmpty()) return;
+        try {
+            String[] items = content.split(";");
+            for (String it : items) {
+                int c = it.indexOf(':');
+                if (c <= 0) continue;
+                int id = Integer.parseInt(it.substring(0, c).trim());
+                short bid = Short.parseShort(it.substring(c + 1).trim());
+                clientDroneBlock.put(id, bid);
+                Unit u = Groups.unit.getByID(id);
+                if (u instanceof TurretDroneUnit) {
+                    ((TurretDroneUnit) u).droneBlockId = bid;
+                }
+            }
+        } catch (Throwable err) {}
+    }
+
+    static TurretDroneUnit ensureTurretDrone(Unit owner, Def def, String key, int k, int n) {
+        if (Vars.net.client() || turretDroneType == null || owner == null || def == null || def.block == null) return null;
+        TurretDroneUnit drone = activeDrones.get(key);
+        if (drone != null && (drone.dead || !drone.isAdded() || drone.team != owner.team || drone.ownerUnitId != owner.id || drone.droneBlockId != def.block.id)) {
+            boolean wasKilled = drone.dead && drone.ownerUnitId == owner.id && drone.droneBlockId == def.block.id;
+            activeDrones.remove(key);
+            if (!drone.dead && drone.isAdded()) despawnDroneServer(drone);
+            if (wasKilled) droneRespawnCd.put(key, Time.time + DRONE_RESPAWN_TICKS);
+            drone = null;
+        }
+        if (drone == null) {
+            Float cd = droneRespawnCd.get(key);
+            if (cd != null && Time.time < cd) return null;
+            droneRespawnCd.remove(key);
+            Unit created = turretDroneType.create(owner.team);
+            if (!(created instanceof TurretDroneUnit)) return null;
+            drone = (TurretDroneUnit) created;
+            Block blk = def.block;
+            float hp = blk.health > 0 ? blk.health : (blk.scaledHealth > 0 ? blk.scaledHealth * blk.size * blk.size : 250f);
+            drone.maxHealth = Math.max(80f, hp);
+            drone.health = drone.maxHealth;
+            drone.armor = Math.max(0f, blk.armor);
+            drone.droneKey = key;
+            drone.ownerUnitId = owner.id;
+            drone.droneBlockId = blk.id;
+            drone.lastTouchTime = Time.time;
+            float spawnAng = ((float) k / Math.max(1, n)) * 360f + Mathf.random(-20f, 20f);
+            float spawnR = Math.max(16f, owner.hitSize * 0.7f + 10f);
+            drone.set(owner.x + Angles.trnsx(spawnAng, spawnR), owner.y + Angles.trnsy(spawnAng, spawnR));
+            drone.rotation = owner.rotation;
+            drone.desiredAimRot = owner.rotation;
+            drone.elevation = 1f;
+            drone.add();
+            activeDrones.put(key, drone);
+            broadcastDroneMap(drone.id, blk.id);
+        }
+        drone.lastTouchTime = Time.time;
+        return drone;
+    }
+
     static void mountFire(Player pl, ArrayList<Def> list, Unit u, String pfx) {
         int n = list.size();
         if (n == 0) return;
-        if (Zeralion.isBound(u) || Lancyron.isStealthedUnit(u)) { // bị Zeralion khóa hoặc Lancyron đang tàng hình: không thể bắn
-            for (int k = 0; k < n; k++) {
-                Def def = list.get(k);
-                String key = pl.id + ":" + pfx + k + ":" + def.id;
-                MState stt = mountSt.get(key);
-                if (stt != null && stt.b != null) {
-                    try { stt.b.remove(); } catch (Throwable ignored) {}
-                    stt.b = null;
-                }
-                equipBeam.remove(key);
-            }
-            return;
-        }
+        syncAllDroneMapsPeriodically();
+        boolean suppressed = Zeralion.isBound(u) || Lancyron.isStealthedUnit(u);
         St own = byId.get(pl.id);
         int tm = own != null ? tmodeCfg() : -1;
         Aim ast = null;
         for (int k = 0; k < n; k++) {
             Def def = list.get(k);
-            if (ChaosMode.silenced(def.id) || ChaosMode.skipFrame()) continue;   // Hỗn loạn: thẻ Thể trạng khổng lồ / Thời gian ngừng trôi
             String key = pl.id + ":" + pfx + k + ":" + def.id;
-            MpOut mp = mountPos(u, k, n);
             MState stt = mstate(key, u);
             stt.k = k; stt.n = n;
+            TurretDroneUnit drone = ensureTurretDrone(u, def, key, k, n);
+            stt.drone = drone;
+            if (drone == null) {
+                if (stt.b != null) { try { stt.b.remove(); } catch (Throwable ignored) {} stt.b = null; }
+                equipBeam.remove(key);
+                continue;
+            }
+            if (suppressed) {
+                if (stt.b != null) { try { stt.b.remove(); } catch (Throwable ignored) {} stt.b = null; }
+                equipBeam.remove(key);
+                drone.desiredAimRot = u.rotation;
+                continue;
+            }
+            if (ChaosMode.silenced(def.id) || ChaosMode.skipFrame()) continue;   // Hỗn loạn: thẻ Thể trạng khổng lồ / Thời gian ngừng trôi
+            MpOut mp = mountPos(u, stt);
             stt.f = 1f; stt.rep = 1;
             if (own != null && tm == 0) {
                 // Dồn lực: pháo cùng loại không bắn thêm đạn mà tăng sát thương cho chính pháo đó
@@ -2069,6 +2284,12 @@ public class NewModePvp {
                 else shootTurret(u, def, mp, ast, stt, key);
             } catch (Throwable err) { logOnce("mf:" + def.id, "mount update failed for " + def.id + ": " + err, false); }
             u.damageMultiplier = dmSave;
+            // Khi player nhắm bắn hướng nào, drone quay hướng đó ngay; còn lại quay theo hướng tự động nhắm mục tiêu
+            if (ast.shoot) {
+                drone.desiredAimRot = Angles.angle(drone.x, drone.y, ast.x, ast.y);
+            } else {
+                drone.desiredAimRot = stt.ang;
+            }
         }
     }
 
@@ -2235,8 +2456,9 @@ public class NewModePvp {
             Block blk = def.block;
             String key = pl.id + ":" + pfx + k + ":" + def.id;
             Draw.reset();
-            MpOut mp = mountPos(u, k, n);
             if (def.kind.equals("tractor")) {
+                MState stt = mountSt.get(key);
+                MpOut mp = mountPos(u, stt != null ? stt : mstate(key, u));
                 float[] bp = equipBeam.get(key);
                 if (bp != null) {
                     boolean ok = false;
@@ -2714,6 +2936,7 @@ public class NewModePvp {
                 if (!isActive()) return;
                 try {
                     Groups.player.each(pl -> eachDrawEquip(pl));
+                    for (int i = 0; i < bots.size(); i++) eachDrawEquip(bots.get(i).botPl);
                     drawBuildPreview();
                     drawCmdMark();
                     drawCoreShields();
@@ -3334,7 +3557,7 @@ public class NewModePvp {
                     if (unit.shield < shCap) unit.shield = Math.min(shCap, unit.shield + shCap * 0.1f * secs);
                 }
                 if (s[8] > 0) {
-                    float regenAmt = unit.maxHealth * s[8] * statK * REGEN_PCT / 100f * secs;
+                    float regenAmt = s[8] * statK * REGEN_FLAT * secs;
                     VanhauField vhF = vanhauOn ? vanhauField.get(pl.id) : null;
                     if (vhF != null && vhF.hp > 0 && vhF.hp < vhF.max) vhF.hp = Math.min(vhF.max, vhF.hp + regenAmt);
                     else if (unit.health < unit.maxHealth * REGEN_THRESHOLD) unit.heal(regenAmt);
@@ -3360,8 +3583,8 @@ public class NewModePvp {
                     + Math.max(0, s[0]) * 3 + Math.max(0, s[1]) * 4;
                 float ratio = eqc.eqWeight / (float) Math.max(1, cap);
                 if (ratio > 0.60f) {
-                    float wm = ratio <= 1.00f ? (1f - (ratio - 0.60f) * 0.45f)
-                        : Math.max(0.45f, 0.82f - (ratio - 1.00f) * 1.08f);
+                    float wm = ratio <= 1.00f ? (1f - (ratio - 0.60f) * 0.75f)
+                        : Math.max(0.15f, 0.70f - (ratio - 1.00f) * 2.20f);
                     unit.speedMultiplier *= wm;
                 }
             }
@@ -3403,6 +3626,79 @@ public class NewModePvp {
         spawnRageStatus = new StatusEffect("pvp-spawn-rage");
         spawnRageStatus.permanent = false; spawnRageStatus.show = true;
         try { spawnRageStatus.color = Color.valueOf("ff5a5a"); } catch (Throwable err) {}
+
+        turretDroneType = new UnitType("pvp-turret-drone") {
+            {
+                flying = true;
+                speed = 3.8f;
+                accel = 0.14f;
+                drag = 0.08f;
+                rotateSpeed = 14f;
+                hitSize = Vars.tilesize; // đúng 1 ô (8 đơn vị)
+                health = 400f;
+                armor = 2f;
+                engineSize = 0f;
+                drawCell = false;
+                drawBody = false;
+                drawItems = false;
+                drawMinimap = false;
+                isEnemy = false;
+                playerControllable = false;
+                logicControllable = false;
+                useUnitCap = false;
+                allowedInPayloads = false;
+                createWreck = false;
+                createScorch = false;
+                hidden = true;
+                constructor = TurretDroneUnit::new;
+            }
+
+            @Override
+            public void draw(Unit unit) {
+                if (!(unit instanceof TurretDroneUnit)) return;
+                TurretDroneUnit td = (TurretDroneUnit) unit;
+                float droneSz = Vars.tilesize; // 1 ô (8x8)
+                float zPrev = Draw.z();
+
+                // Bóng bay không quân
+                Draw.z(Layer.flyingUnitLow - 0.1f);
+                Draw.color(0f, 0f, 0f, 0.34f);
+                Fill.circle(td.x - 1.8f, td.y - 2.2f, droneSz * 0.46f);
+
+                // Đế năng lượng màu phe dưới thân drone
+                Draw.z(Layer.flyingUnit + 0.02f);
+                Draw.color(td.team.color, 0.46f);
+                Fill.circle(td.x, td.y, droneSz * 0.40f);
+
+                // Vẽ nguyên khối pháo gốc thu gọn đúng 1 ô
+                Block blk = td.resolveBlock();
+                if (blk != null) {
+                    TextureRegion reg = (blk.fullIcon != null && blk.fullIcon.found()) ? blk.fullIcon : blk.uiIcon;
+                    if (reg != null && reg.found()) {
+                        Draw.color();
+                        Draw.mixcol(Color.white, Mathf.clamp(td.hitTime));
+                        Draw.rect(reg, td.x, td.y, droneSz, droneSz, td.rotation - 90f);
+                        Draw.mixcol();
+                    }
+                } else {
+                    Draw.color(td.team.color);
+                    Fill.square(td.x, td.y, droneSz * 0.38f, td.rotation - 90f);
+                }
+
+                // Thanh HP của drone pháo mini (giống unit thường)
+                float ratio = Mathf.clamp(td.health / Math.max(1f, td.maxHealth));
+                float bw = 10f, bh = 1.8f;
+                float by = td.y - 6.2f;
+                Draw.z(Layer.flyingUnit + 0.09f);
+                Draw.color(Color.black, 0.65f);
+                Fill.rect(td.x, by, bw + 1.2f, bh + 1.2f);
+                Draw.color(ratio > 0.5f ? Color.valueOf("5dff7a") : (ratio > 0.25f ? Color.valueOf("ffd166") : Color.valueOf("ff5252")), 0.95f);
+                Fill.rect(td.x - (bw * (1f - ratio)) * 0.5f, by, bw * ratio, bh);
+
+                Draw.z(zPrev);
+                Draw.reset();
+            }
+        };
     }
     static float spawnLeft(int pid, float dur) {
         Float t = spawnBuff.get(pid);
@@ -3903,7 +4199,7 @@ public class NewModePvp {
                         CoreBlock.CoreBuild cb = cores.get(i);
                         if (cb == null || !cb.isValid()) continue;
                         float mh = cb.maxHealth();
-                        if (cb.health < mh * REGEN_THRESHOLD) cb.heal(mh * sv[8] * REGEN_PCT / 100f * healSecs);
+                        if (cb.health < mh * REGEN_THRESHOLD) cb.heal(sv[8] * REGEN_FLAT * healSecs);
                     }
                 }
             } catch (Throwable err) { logOnce("corestats", "core stats failed: " + err, false); }
@@ -4718,6 +5014,7 @@ public class NewModePvp {
         resetUiState();
         respawnLock.clear(); deadUnit.clear(); spawnBuff.clear(); swapPending.clear(); prevUnit.clear(); extPvp.clear();
         barrackT.clear(); rally.clear(); soldiers.clear(); soldierOwner.clear(); mountSt.clear(); lastHitBy.clear(); teamHit.clear();
+        activeDrones.clear(); droneRespawnCd.clear(); clientDroneBlock.clear(); droneMapSyncT = 0f;
         passiveT = PASSIVE_INTERVAL; logged.clear(); rolled.clear(); rolledN = 0; winning = false; seenBoth = false; dirty = false; syncT = 0; stVer++;
         PvpBotAI.clear(); notifLog.clear(); notifUnread = 0; autoPauseFixed = false;
         restoreStore();
@@ -4752,22 +5049,27 @@ public class NewModePvp {
     // ===== Hệ thống Trọng Lượng Pháo & Độ Chịu Nặng của Unit Player =====
     private static final int[] TIER_LOAD_BASE = {35, 60, 95, 140, 200, 260, 300, 300, 350, 380, 380, 380};
 
-    /** Trọng lượng của 1 pháo khi lắp lên Unit: tính theo kích thước + sức mạnh sát thương (cân bằng pháo rẻ nhưng quá mạnh) + giá. */
+    /** Trọng lượng của 1 pháo khi lắp lên Unit: tăng mạnh theo kích thước + sức mạnh + giá để chỉ mang được vài pháo hạng nặng. */
     static int turretWeight(Def def) {
-        if (def == null || def.block == null) return 6;
+        if (def == null || def.block == null) return 12;
         if (def.weight > 0) return def.weight;
         int sz = Math.max(1, def.block.size);
         int dmg = Math.max(0, turretDmg(def));
-        float w = sz * sz * 2.2f + (float) Math.sqrt(dmg) * 0.75f + def.cost * 0.45f;
-        if (def.id.equals(MALIGN_ID) || def.id.equals(SMITE_ID) || def.id.equals(LUSTRE_ID)) w *= 1.35f;
-        def.weight = Math.max(4, Math.round(w));
+        float w = sz * sz * 5.8f + (float) Math.sqrt(dmg) * 1.6f + def.cost * 1.8f;
+        if (sz == 4) w *= 1.25f;
+        else if (sz >= 5) w *= 1.45f;
+        if (def.id.equals(MALIGN_ID) || def.id.equals(SMITE_ID) || def.id.equals(LUSTRE_ID)
+            || def.id.equals("scathe") || def.id.equals("titan") || def.id.equals("foreshadow") || def.id.equals("meltdown")) {
+            w *= 1.25f;
+        }
+        def.weight = Math.max(10, Math.round(w));
         return def.weight;
     }
 
     static String weightTierTag(int w) {
-        if (w <= 15) return "[#7dff9c]" + tr("Nhẹ", "Light") + "[]";
-        if (w <= 35) return "[#ffd166]" + tr("Vừa", "Medium") + "[]";
-        if (w <= 65) return "[orange]" + tr("Nặng", "Heavy") + "[]";
+        if (w <= 35) return "[#7dff9c]" + tr("Nhẹ", "Light") + "[]";
+        if (w <= 85) return "[#ffd166]" + tr("Vừa", "Medium") + "[]";
+        if (w <= 160) return "[orange]" + tr("Nặng", "Heavy") + "[]";
         return "[scarlet]" + tr("Siêu nặng", "Super Heavy") + "[]";
     }
 
@@ -4808,8 +5110,8 @@ public class NewModePvp {
         if (w <= 0) return 1f;
         float ratio = w / (float) Math.max(1, unitLoadCap(st));
         if (ratio <= 0.60f) return 1f;
-        if (ratio <= 1.00f) return 1f - (ratio - 0.60f) * 0.45f; // 1.00 -> 0.82 (-18%)
-        return Math.max(0.45f, 0.82f - (ratio - 1.00f) * 1.08f);  // Quá tải: 0.82 -> 0.55 (-45% ở 125%)
+        if (ratio <= 1.00f) return 1f - (ratio - 0.60f) * 0.75f; // 1.00 -> 0.70 (-30%)
+        return Math.max(0.15f, 0.70f - (ratio - 1.00f) * 2.20f);  // Quá tải: 0.70 -> 0.15 (-85% ở 125%)
     }
 
     static String loadSummaryText(St st) {
@@ -6354,7 +6656,7 @@ public class NewModePvp {
         out.add(new String[]{"[#ff9f43]✦ " + tr("Tỉ lệ bạo kích", "Crit chance") + "[]" + statLvTag(st, 5), "[#ffb142]" + pctStr(ChaosMode.critChanceShown(s[5])) + "%[]"});
         out.add(new String[]{"[#ff4757]✹ " + tr("Sát thương bạo kích", "Crit damage") + "[]" + statLvTag(st, 6), "[#ff6b81]" + pctStr(ChaosMode.critDmgShown(s[5], s[6])) + "%[]"});
         out.add(new String[]{"[#c792ea]◈ " + tr("Xuyên giáp", "Armor pierce") + "[]" + statLvTag(st, 7), "[#d6a2e8]" + pctStr(s[7] * 5f) + "%[]"});
-        out.add(new String[]{"[#7bed9f]✚ " + tr("Hồi máu", "Regeneration") + "[]" + statLvTag(st, 8), "[#7bed9f]" + numStr(u.maxHealth * s[8] * REGEN_PCT / 100f) + "[]" + tr(" máu/giây (", " HP/s (") + pctStr(s[8] * REGEN_PCT) + "%, " + tr("mỗi giây 1 lần", "1x/sec") + ")"});
+        out.add(new String[]{"[#7bed9f]✚ " + tr("Hồi máu", "Regeneration") + "[]" + statLvTag(st, 8), "[#7bed9f]+" + (s[8] * REGEN_FLAT) + "[]" + tr(" máu/giây (mỗi giây 1 lần)", " HP/s (1x/sec)")});
         out.add(new String[]{"[#ff6b81]☠ " + tr("Sát thương % máu tối đa", "Max HP % damage") + "[]" + statLvTag(st, 9), "[#ff7979]+" + pctStr(ChaosMode.pctMaxHp(s[9], DMG_PCT_MAXHP)) + "%[]" + tr(" máu tối đa mục tiêu/lần trúng", " target max HP per hit")});
         out.add(new String[]{"[#70a1ff]⬡ " + tr("Sát thương theo giáp", "Armor-based damage") + "[]" + statLvTag(st, 10), "[#74b9ff]+" + pctStr(s[10] * DMG_PER_ARMOR * u.armor * 100f) + "%[]"});
         out.add(new String[]{"[#eccc68]⇤ " + tr("Đẩy lùi", "Knockback") + "[]" + statLvTag(st, 11), "[#f6e58d]+" + numStr(s[11] * KNOCK_PER) + "[]"});
@@ -6367,6 +6669,9 @@ public class NewModePvp {
             int gsLim = Math.min(GearItems.MAXSLOTS, Math.max(gsCap, GearItems.slots()));
             for (int gi = 0; gi < gsLim; gi++) if (GearItems.def(st.gEq[gi]) != null) gsEq++;
             out.add(new String[]{"[#ffd166]◈ " + tr("Số ô trang bị", "Equipment slots") + "[]", "[#ffd166]" + gsEq + "/" + gsCap + " " + tr("ô", "slots") + "[]"});
+        }
+        if (PvpDomination.isTraining()) {
+            out.add(new String[]{"[#38ef7d]❖ " + tr("Quái đợt huấn luyện (T1–T5)", "Training wave units (T1–T5)") + "[]", PvpDomination.trainTierSummary()});
         }
         return out;
     }
@@ -7606,6 +7911,7 @@ public class NewModePvp {
 
     /** Goi MOT lan tu NexMod.init() (thu tu main.js: sau SurvivorSkills, truoc ArchuengPvp). */
     public static void init() {
+        int ensureTurretDroneRegistered = TurretDroneUnit.CLASS_ID;
         NewMode.pvp = HOOK;
         ArchuengPvp.pvpActive = NewModePvp::apiIsActive;
         LoadoutSelection.pvpSettingsHook = NewModePvp::addSettings;

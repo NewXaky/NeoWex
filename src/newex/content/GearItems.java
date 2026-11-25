@@ -265,13 +265,39 @@ final class GearItems {
     }
 
     // ------------------------------------------------------------------ chỉ số vượt trội cho vật phẩm nhặt (cao hơn hẳn đồ mua cửa hàng)
-    /** Xác suất nhận bậc chỉ số vượt trội khi nhặt vật phẩm từ quái: 80% vượt trội (+1/+2/+3), đồ mua luôn = 0. */
+    /** Xác suất nhận bậc chỉ số vượt trội khi nhặt vật phẩm từ quái: 80% vượt trội (+1/+2/+3) cộng ngẫu nhiên cho 1 chỉ số dương, đồ mua luôn = 0. */
     static int rollDropBonus() {
         double r = Math.random();
-        if (r < 0.20) return 0;      // 20%: chuẩn
-        if (r < 0.60) return 1;      // 40%: Vượt trội +1 (+35% chỉ số dương, tối thiểu +1)
-        if (r < 0.88) return 2;      // 28%: Vượt trội +2 (+65% chỉ số dương, tối thiểu +2)
-        return 3;                    // 12%: Siêu Việt +3 (+100% chỉ số dương, tối thiểu +3)
+        int tier;
+        if (r < 0.20) return 0;          // 20%: chuẩn
+        else if (r < 0.60) tier = 1;     // 40%: Vượt trội +1 (+35% cho 1 chỉ số dương ngẫu nhiên, tối thiểu +1)
+        else if (r < 0.88) tier = 2;     // 28%: Vượt trội +2 (+65% cho 1 chỉ số dương ngẫu nhiên, tối thiểu +2)
+        else tier = 3;                   // 12%: Siêu Việt +3 (+100% cho 1 chỉ số dương ngẫu nhiên, tối thiểu +3)
+        int salt = 1 + (int) (Math.random() * 29);
+        return (salt << 2) | tier;
+    }
+    static int bonusTier(int bonusCode) {
+        return Math.max(0, bonusCode) & 3;
+    }
+    /** Trả về vị trí chẵn i trong mảng mods của 1 chỉ số dương ngẫu nhiên được chọn để cộng Vượt Trội (hoặc -1 nếu không có). */
+    static int chosenBonusModPair(int[] mods, int bonusCode) {
+        int tier = bonusTier(bonusCode);
+        if (tier <= 0 || mods == null) return -1;
+        int posCount = 0;
+        for (int i = 0; i + 1 < mods.length; i += 2) {
+            if (mods[i] != 12 && mods[i + 1] > 0) posCount++;
+        }
+        if (posCount <= 0) return -1;
+        int salt = Math.max(0, bonusCode) >>> 2;
+        int targetPos = salt % posCount;
+        int cur = 0;
+        for (int i = 0; i + 1 < mods.length; i += 2) {
+            if (mods[i] != 12 && mods[i + 1] > 0) {
+                if (cur == targetPos) return i;
+                cur++;
+            }
+        }
+        return -1;
     }
     static int bonusModVal(int baseVal, int bonusTier) {
         if (bonusTier <= 0 || baseVal <= 0) return baseVal;
@@ -279,17 +305,21 @@ final class GearItems {
         if (bonusTier == 2) return baseVal + Math.max(2, Math.round(baseVal * 0.65f));
         return baseVal + Math.max(3, baseVal);
     }
-    static String bonusTag(int bonusTier) {
+    static String bonusTag(int bonusCode) {
+        int bonusTier = bonusTier(bonusCode);
         if (bonusTier <= 0) return "";
         if (bonusTier == 1) return tr(" [#ffd166][Vượt trội +1][]", " [#ffd166][Superior +1][]");
         if (bonusTier == 2) return tr(" [#ff9f1c][Vượt trội +2][]", " [#ff9f1c][Superior +2][]");
         return tr(" [#ff4d6d][Siêu Việt +3][]", " [#ff4d6d][Mythic +3][]");
     }
-    static boolean isSrcBought(byte src) { return src == 1; }
-    static int srcBonus(byte src) { return src >= 2 ? Math.min(3, src - 1) : 0; }
+    static boolean isSrcBought(byte src) { return (src & 0xFF) == 1; }
+    static int srcBonus(byte src) {
+        int u = src & 0xFF;
+        return u >= 2 ? (u - 1) : 0;
+    }
     static byte makeSrc(boolean bought, int bonus) {
         if (bought) return (byte) 1;
-        return bonus > 0 ? (byte) (1 + Math.min(3, bonus)) : (byte) 0;
+        return bonus > 0 ? (byte) (1 + Math.min(125, bonus)) : (byte) 0;
     }
     static int invBonusAt(NewModePvp.St st, int idx) {
         if (st == null || st.gInvSrc == null || idx < 0 || idx >= st.gInvSrc.size()) return 0;
@@ -297,7 +327,7 @@ final class GearItems {
     }
     static int eqBonusAt(NewModePvp.St st, int slot) {
         if (st == null || st.gEqBonus == null || slot < 0 || slot >= st.gEqBonus.length) return 0;
-        return Math.max(0, Math.min(3, st.gEqBonus[slot]));
+        return Math.max(0, Math.min(125, st.gEqBonus[slot]));
     }
 
     // ------------------------------------------------------------------ chỉ số cộng thêm
@@ -314,10 +344,13 @@ final class GearItems {
             Def d = def(st.gEq[s]);
             if (d == null) continue;
             if (d.skill > 0) mask |= (1 << d.skill);
-            int bt = eqBonusAt(st, s);
+            int bc = eqBonusAt(st, s);
+            int bt = bonusTier(bc);
+            int chosenPair = chosenBonusModPair(d.mods, bc);
             for (int i = 0; i + 1 < d.mods.length; i += 2) {
                 if (d.mods[i] >= 0 && d.mods[i] < st.gDelta.length && d.mods[i] != 12) {
-                    st.gDelta[d.mods[i]] += bonusModVal(d.mods[i + 1], bt);
+                    int val = (i == chosenPair) ? bonusModVal(d.mods[i + 1], bt) : d.mods[i + 1];
+                    st.gDelta[d.mods[i]] += val;
                     any = true;
                 }
             }
@@ -413,7 +446,7 @@ final class GearItems {
         int best = -1, bestB = -1;
         for (int i = 0; i < st.gInv.size(); i++) {
             if (st.gInv.get(i) != id) continue;
-            int b = invBonusAt(st, i);
+            int b = bonusTier(invBonusAt(st, i));
             if (b > bestB) { bestB = b; best = i; }
         }
         return best;
@@ -471,13 +504,13 @@ final class GearItems {
             if (p.length > 3 && !p[3].isEmpty()) {
                 String[] is = p[3].split(",");
                 for (int i = 0; i < st.gInvSrc.size() && i < is.length; i++) {
-                    st.gInvSrc.set(i, (byte) clampI(Integer.parseInt(is[i].trim()), 0, 4));
+                    st.gInvSrc.set(i, (byte) clampI(Integer.parseInt(is[i].trim()), 0, 126));
                 }
             }
             if (p.length > 4 && !p[4].isEmpty()) {
                 String[] eb = p[4].split(",");
                 for (int i = 0; i < MAXSLOTS && i < eb.length; i++) {
-                    st.gEqBonus[i] = clampI(Integer.parseInt(eb[i].trim()), 0, 3);
+                    st.gEqBonus[i] = clampI(Integer.parseInt(eb[i].trim()), 0, 125);
                 }
             }
         } catch (Throwable ignored) {}
@@ -548,7 +581,12 @@ final class GearItems {
     }
     static int power(Def d, int bonus) {
         int p = 0;
-        for (int i = 0; i + 1 < d.mods.length; i += 2) p += bonusModVal(d.mods[i + 1], bonus);
+        int bt = bonusTier(bonus);
+        int chosenPair = chosenBonusModPair(d.mods, bonus);
+        for (int i = 0; i + 1 < d.mods.length; i += 2) {
+            if (d.mods[i] == 12) continue;
+            p += (i == chosenPair) ? bonusModVal(d.mods[i + 1], bt) : d.mods[i + 1];
+        }
         return p + d.rarity * 3 + (d.skill > 0 ? 6 : 0);
     }
     static int power(Def d) { return power(d, 0); }
@@ -1413,6 +1451,7 @@ final class GearItems {
                 Def dd = def(v);
                 if (idx < 0 || dd == null) return;
                 if (dd.kind > 0) { removeInvAt(st, idx); NewModePvp.toast(player, tr("[accent]Đã bỏ vật phẩm cửa hàng (không hóa quái).", "[accent]Shop item discarded (no monster).")); }
+                else if (PvpDomination.isTraining()) { removeInvAt(st, idx); NewModePvp.toast(player, tr("[accent]Đã bỏ vật phẩm (Huấn luyện không tạo quái).", "[accent]Item discarded (no monster in Training).")); }
                 else if (spawnCarrier(dd)) {
                     removeInvAt(st, idx);
                     NewModePvp.toast(player, tr("[accent]Vật phẩm hóa thành quái trên bản đồ - hạ nó để nhận!", "[accent]The item became a monster on the map - kill it to claim!"));
@@ -1449,9 +1488,11 @@ final class GearItems {
 
     static String statText(int[] mods, int bonus) {
         StringBuilder sb = new StringBuilder();
+        int bt = bonusTier(bonus);
+        int chosenPair = chosenBonusModPair(mods, bonus);
         for (int i = 0; i + 1 < mods.length; i += 2) {
             int base = mods[i + 1];
-            int v = bonusModVal(base, bonus);
+            int v = (i == chosenPair) ? bonusModVal(base, bt) : base;
             if (i > 0) sb.append("  ");
             sb.append(v >= 0 ? (v > base ? "[#ffd166]+" : "[#7cfc00]+") : "[scarlet]").append(v).append(' ').append(tr(NewModePvp.STATS[mods[i]].vi, NewModePvp.STATS[mods[i]].en)).append("[]");
         }
@@ -1569,13 +1610,21 @@ final class GearItems {
         tot.add("[accent]" + tr("Chỉ số & kỹ năng từ vật phẩm", "Bonus stats & skills from items") + "[]").left().row();
         int[] g = delta(st);
         boolean any = false;
-        if (g != null) for (int i = 0; i < g.length; i++) {
-            if (g[i] == 0) continue;
-            any = true;
-            int base = st.s != null && i < st.s.length ? st.s[i] : 0;
-            int lv = Math.max(floorOf(i), base + g[i]);
-            tot.add("[white]" + tr(NewModePvp.STATS[i].vi, NewModePvp.STATS[i].en) + "[]  " + (g[i] > 0 ? "[#7cfc00]+" : "[scarlet]") + g[i] + "[]  [lightgray]→ " + NewModePvp.STATS[i].f.get(lv) + "[]")
-                .left().growX().wrap().minWidth(0).padTop(3).row();
+        if (g != null) {
+            ArrayList<Integer> order = new ArrayList<>();
+            for (int i = 0; i < g.length; i++) if (g[i] != 0) order.add(i);
+            order.sort((a, b) -> {
+                int cmp = Integer.compare(g[b], g[a]);
+                return cmp != 0 ? cmp : Integer.compare(a, b);
+            });
+            for (int idx = 0; idx < order.size(); idx++) {
+                int i = order.get(idx);
+                any = true;
+                int base = st.s != null && i < st.s.length ? st.s[i] : 0;
+                int lv = Math.max(floorOf(i), base + g[i]);
+                tot.add("[white]" + tr(NewModePvp.STATS[i].vi, NewModePvp.STATS[i].en) + "[]  " + (g[i] > 0 ? "[#7cfc00]+" : "[scarlet]") + g[i] + "[]  [lightgray]→ " + NewModePvp.STATS[i].f.get(lv) + "[]")
+                    .left().growX().wrap().minWidth(0).padTop(3).row();
+            }
         }
         if (hasSkill(st, SK_MOVE_ATK)) {
             any = true;

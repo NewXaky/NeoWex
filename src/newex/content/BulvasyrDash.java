@@ -68,7 +68,7 @@ public final class BulvasyrDash {
 
     // ---------- hình ảnh ----------
     static final class Vis {
-        int uid; float ang, t; boolean ended;
+        int uid; float ang, t, sx, sy; boolean ended;
         final float[] tx = new float[44], ty = new float[44];
         int n = 0; float ghostAcc = 0f;
     }
@@ -161,7 +161,7 @@ public final class BulvasyrDash {
     }
 
     static boolean isActive() {
-        try { return NewModePvp.apiIsActive(); } catch (Throwable err) { return false; }
+        return Vars.state != null && Vars.state.isGame();
     }
 
     // ---------- mạng ----------
@@ -217,6 +217,9 @@ public final class BulvasyrDash {
             v.uid = Integer.parseInt(p[0]);
             v.ang = Float.parseFloat(p[1]);
             float x = Float.parseFloat(p[2]), y = Float.parseFloat(p[3]);
+            v.sx = x; v.sy = y;
+            v.tx[0] = x; v.ty[0] = y;
+            v.n = 1;
             vis.add(v);
             startFx.at(x, y, v.ang);
             Effect.shake(3.4f, 16f, x, y);
@@ -265,28 +268,46 @@ public final class BulvasyrDash {
             Vis v = vis.get(i);
             Unit u = Groups.unit.getByID(v.uid);
             v.t += Time.delta;
-            if (u != null && !u.dead && v.t < DUR + 2f) {
+            if (v.t < DUR + 2f) {
+                boolean isLocalOwn = u != null && Vars.player != null && Vars.player.unit() == u;
+                float cx, cy, rot;
+                if (isLocalOwn && !u.dead) {
+                    cx = u.x; cy = u.y; rot = u.rotation;
+                } else {
+                    // Với player khác trong Host (UDP snapshot trễ), nội suy trực tiếp dọc đường lướt để Host & mọi người chơi luôn thấy rõ đuôi lướt!
+                    float f = Interp.smoother.apply(Mathf.clamp(v.t / DUR));
+                    float ex = v.sx + Mathf.cosDeg(v.ang) * (f * DIST);
+                    float ey = v.sy + Mathf.sinDeg(v.ang) * (f * DIST);
+                    if (u != null && !u.dead && Mathf.dst(v.sx, v.sy, u.x, u.y) > f * DIST * 0.45f) {
+                        cx = Mathf.lerp(ex, u.x, 0.5f);
+                        cy = Mathf.lerp(ey, u.y, 0.5f);
+                    } else {
+                        cx = ex; cy = ey;
+                    }
+                    rot = v.ang;
+                }
                 // lưu vệt đường đi (mới nhất ở đầu mảng)
                 System.arraycopy(v.tx, 0, v.tx, 1, v.tx.length - 1);
                 System.arraycopy(v.ty, 0, v.ty, 1, v.ty.length - 1);
-                v.tx[0] = u.x; v.ty[0] = u.y;
+                v.tx[0] = cx; v.ty[0] = cy;
                 v.n = Math.min(v.n + 1, v.tx.length);
                 // bóng ảnh: dày hơn khi đang lướt nhanh
                 float sp = Mathf.sin(Mathf.clamp(v.t / DUR) * Mathf.PI);
                 v.ghostAcc += Time.delta * (0.4f + sp * 1.4f);
+                TextureRegion reg = (u != null && u.type != null) ? u.type.fullIcon : (Bulvasyr.bulvasyr != null ? Bulvasyr.bulvasyr.fullIcon : null);
                 while (v.ghostAcc >= 1f) {
                     v.ghostAcc -= 1f;
                     Ghost g = new Ghost();
-                    g.x = u.x; g.y = u.y; g.rot = u.rotation; g.life = 22f; g.region = u.type.fullIcon;
+                    g.x = cx; g.y = cy; g.rot = rot; g.life = 22f; g.region = reg;
                     ghosts.add(g);
                 }
             } else if (!v.ended) {
                 v.ended = true;
-                if (u != null) {
-                    endFx.at(u.x, u.y, v.ang);
-                    Effect.shake(2.6f, 12f, u.x, u.y);
-                    Sounds.explosion.at(u.x, u.y, 1.5f, 0.5f);
-                }
+                float ex = v.n > 0 ? v.tx[0] : (u != null ? u.x : v.sx);
+                float ey = v.n > 0 ? v.ty[0] : (u != null ? u.y : v.sy);
+                endFx.at(ex, ey, v.ang);
+                Effect.shake(2.6f, 12f, ex, ey);
+                Sounds.explosion.at(ex, ey, 1.5f, 0.5f);
             }
             if (v.t > DUR + 26f) vis.remove(i);
         }
@@ -325,18 +346,20 @@ public final class BulvasyrDash {
                 Lines.line(v.tx[i], v.ty[i], v.tx[i + 1], v.ty[i + 1]);
             }
             // vệt tốc độ mảnh chạy dọc hai bên thân
-            if (u != null && !u.dead && v.t < DUR + 2f) {
+            if (v.n > 0 && v.t < DUR + 2f) {
+                float hx = v.tx[0], hy = v.ty[0];
+                float hsz = u != null ? u.hitSize : 32f;
                 float sp = Mathf.sin(Mathf.clamp(v.t / DUR) * Mathf.PI);
                 float c = Mathf.cosDeg(v.ang), s = Mathf.sinDeg(v.ang);
                 for (int k = 0; k < 9; k++) {
-                    float lat = Mathf.sin(k * 2.399f + v.uid) * u.hitSize * 0.75f;
+                    float lat = Mathf.sin(k * 2.399f + v.uid) * hsz * 0.75f;
                     float len = (14f + 70f * sp) * (0.6f + 0.4f * Mathf.absin(k * 1.7f + v.t * 0.35f, 4f, 1f));
-                    float sx = u.x - s * lat - c * (k * 3f), sy = u.y + c * lat - s * (k * 3f);
+                    float sx = hx - s * lat - c * (k * 3f), sy = hy + c * lat - s * (k * 3f);
                     Draw.color(k % 3 == 0 ? COL2 : STEEL, 0.5f * sp);
                     Lines.stroke(0.9f + 0.5f * (k % 2));
                     Lines.line(sx, sy, sx - c * len, sy - s * len);
                 }
-                Drawf.light(u.x, u.y, 56f + 50f * sp, COL2, 0.55f * sp);
+                Drawf.light(hx, hy, 56f + 50f * sp, COL2, 0.55f * sp);
             }
         }
         Draw.blend();
