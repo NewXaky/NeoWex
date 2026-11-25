@@ -708,11 +708,7 @@ public final class PvpDomination {
     }
 
     public static boolean trainMultiSaveOn() {
-        StringMap tg = NewModePvp.getTags();
-        if (isTraining() && tg != null && tg.containsKey(TAG_TRAIN_MULTISAVE)) {
-            return "1".equals(tg.get(TAG_TRAIN_MULTISAVE, "0"));
-        }
-        return Core.settings.getBool(KEY_TRAIN_MULTI_SAVE, false);
+        return false;
     }
 
     public static int hostPlayerId() {
@@ -2526,39 +2522,7 @@ public final class PvpDomination {
     /** Trang cài đặt trước khi vào map Huấn Luyện Unit Player (dùng MachineUi). */
     public static void openTrainingSetupDialog() {
         if (Vars.headless) return;
-        final MachineUi.Panel panel = MachineUi.panel(tr("Huấn Luyện — Tạo Bản Sao Lưu Unit", "Unit Training Backup"));
-        final boolean[] multiSaveVal = {trainMultiSaveOn()};
-        panel.onBuild(() -> {
-            Table c = panel.content();
-            c.clear();
-            c.margin(10f).top().left().defaults().left();
-            float w = panel.innerW();
-            float wrapW = Math.max(160f, w - 28f);
-            c.add("[#38ef7d]" + tr("-- HUẤN LUYỆN UNIT PLAYER --", "-- UNIT TRAINING --") + "[]").padBottom(6f).row();
-            c.add("[lightgray]" + tr("Cố định: nhiều pháo cùng loại + đa đạn • " + DEFAULT_TRAIN_MAX_WAVES + " đợt • " + FIXED_TRAIN_GEAR_SLOTS + " ô trang bị.",
-                "Fixed: duplicate turrets + multi-shot • " + DEFAULT_TRAIN_MAX_WAVES + " waves • " + FIXED_TRAIN_GEAR_SLOTS + " gear slots.") + "[]")
-                .wrap().width(wrapW).padBottom(10f).row();
-            Table msCard = new Table(Styles.black6);
-            msCard.margin(8f).left();
-            msCard.check(tr("Cho phép sao lưu 1 Unit thành nhiều bản cùng 1 lúc (1–5 ô)",
-                "Allow saving multiple copies of 1 Unit at once (1–5 slots)"),
-                multiSaveVal[0], (Boolc) b -> multiSaveVal[0] = b).width(wrapW - 12f).left().get().getLabel().setWrap(true);
-            c.add(msCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
-
-            Table ft = panel.footer();
-            ft.clear();
-            ft.margin(4f);
-            ft.button(tr("[#38ef7d]Bắt Đầu Huấn Luyện[]", "[#38ef7d]Start Training[]"), Styles.flatBordert, () -> {
-                Core.settings.put(KEY_TRAIN_MULTI_SAVE, multiSaveVal[0]);
-                panel.hide();
-                NewMode.startTrainingMap(DEFAULT_TRAIN_MAX_WAVES, true, 1, multiSaveVal[0], FIXED_TRAIN_GEAR_SLOTS);
-            }).height(44f).minWidth(190f).pad(4f);
-            ft.button(tr("Quay Lại", "Back"), Styles.flatBordert, () -> {
-                panel.hide();
-                openUnitManagerFromMenu();
-            }).height(44f).minWidth(110f).pad(4f);
-        });
-        panel.show();
+        NewMode.startTrainingMap(DEFAULT_TRAIN_MAX_WAVES, true, 1, false, FIXED_TRAIN_GEAR_SLOTS);
     }
 
     public static void openUnitManagerFromMenu() {
