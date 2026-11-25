@@ -112,6 +112,7 @@ public class NewModePvp {
     static final String KEY_TMODE = "newex-pvp-turret-mode";
     static final String KEY_PVB = "newex-pvp-player-vs-bot";
     static final String KEY_BVB = "newex-pvp-bot-vs-bot";
+    static final String KEY_AFKBOT = "newex-pvp-afk-bot";
     static final String KEY_BUILT = "newex-pvp-max-built";
     static final int DEFAULT_BUILT = 3;
     static final int LIMIT_BUILT = 12;
@@ -217,10 +218,10 @@ public class NewModePvp {
     static final String KEY_MAXLV = "newex-pvp-max-level";
     static final int LIMIT_MAXLV = 999;
     static final int FREE_SWITCH_LEVEL = 5;
-    static final int TIER_MAX = 12; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion, 11 bulvasyr, 12 lancyron (unit moi chien tranh)
-    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64, BULVASYR_MIN_LEVEL = 40, LANCYRON_MIN_LEVEL = 0;
+    static final int TIER_MAX = 13; // 1-5 thuong, 6 reign, 7 disrupt(archueng), 8 honivery, 9 aureon, 10 zeralion, 11 bulvasyr, 12 lancyron, 13 rexavyr (unit moi chien tranh)
+    static final int AUREON_MIN_LEVEL = 20, ZERALION_MIN_LEVEL = 64, BULVASYR_MIN_LEVEL = 40, LANCYRON_MIN_LEVEL = 0, REXAVYR_MIN_LEVEL = 50;
     /** Cấp tối thiểu để chọn unit bậc t (0 = không yêu cầu). */
-    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : t == 11 ? BULVASYR_MIN_LEVEL : t == 12 ? LANCYRON_MIN_LEVEL : 0; }
+    static int tierMinLevel(int t) { return t == 9 ? AUREON_MIN_LEVEL : t == 10 ? ZERALION_MIN_LEVEL : t == 11 ? BULVASYR_MIN_LEVEL : t == 12 ? LANCYRON_MIN_LEVEL : t == 13 ? REXAVYR_MIN_LEVEL : 0; }
     static boolean isWarTier(int t) { return t >= 9; }
 
     // ===== Chế độ lắp nhiều pháo cùng loại (St.tm: 0 = Dồn lực tăng ST, 1 = Đa đạn giảm 10% tốc độ/pháo cùng loại) =====
@@ -685,6 +686,7 @@ public class NewModePvp {
         if (lv == 10) { UnitType z = Zeralion.zeralion; return z != null ? z : UnitTypes.collaris; }
         if (lv == 11) { UnitType b = Bulvasyr.bulvasyr; return b != null ? b : UnitTypes.collaris; }
         if (lv == 12) { UnitType l = Lancyron.lancyron; return l != null ? l : UnitTypes.collaris; }
+        if (lv == 13) { UnitType rx = Rexavyr.rexavyr; return rx != null ? rx : UnitTypes.collaris; }
         if (tierList == null) tierList = new UnitType[]{UnitTypes.merui, UnitTypes.cleroi, UnitTypes.anthicus, UnitTypes.tecta, UnitTypes.collaris};
         return tierList[Math.min(5, Math.max(1, lv)) - 1];
     }
@@ -2954,6 +2956,8 @@ public class NewModePvp {
     static final HashMap<Integer, Integer> soldierOwner = new HashMap<>();
     static boolean pvbOn() { return setBool(KEY_PVB, false); }
     static boolean bvbOn() { return setBool(KEY_BVB, false); }
+    /** Bot A.I tự điều khiển hộ khi người chơi AFK > 1 phút (mặc định bật). */
+    static boolean afkBotOn() { return setBool(KEY_AFKBOT, true); }
     static PvpBotAI.Agent botOf(int id) { return PvpBotAI.botOf(id); }
     static PvpBotAI.Agent botUnitOf(Unit u) { return PvpBotAI.botUnitOf(u); }
     static boolean isBotId(int id) { return PvpBotAI.isBotId(id); }
@@ -5047,7 +5051,7 @@ public class NewModePvp {
     static int equipSlots(St st) { return Math.min(EQUIP_SLOT_CAP, Math.max(1, st.lv)); }
 
     // ===== Hệ thống Trọng Lượng Pháo & Độ Chịu Nặng của Unit Player =====
-    private static final int[] TIER_LOAD_BASE = {35, 60, 95, 140, 200, 260, 300, 300, 350, 380, 380, 380};
+    private static final int[] TIER_LOAD_BASE = {35, 60, 95, 140, 200, 260, 300, 300, 350, 380, 380, 380, 380};
 
     /** Trọng lượng của 1 pháo khi lắp lên Unit: tăng mạnh theo kích thước + sức mạnh + giá để chỉ mang được vài pháo hạng nặng. */
     static int turretWeight(Def def) {
@@ -5620,6 +5624,8 @@ public class NewModePvp {
         content.check(tr("Dùng NewMode ở map khác (EXP diệt quái, biến về đổi unit, xây dựng)", "Use NewMode on other maps (kill EXP, return toggles unit, building)"), v[5], (Boolc) b -> v[5] = b).pad(5).left().row();
         content.check(tr("Player vs Bot: mọi người chơi cùng 1 phe đấu phe bot (thêm người = thêm bot, bot càng thông minh)", "Player vs Bot: all players on one side vs the bot team (more players = more bots, smarter bots)"), v[6], (Boolc) b -> v[6] = b).pad(5).left().row();
         content.check(tr("Bot vs Bot: người chơi chỉ xem, 2 phe đều là bot (ưu tiên hơn Player vs Bot; áp dụng khi mở map; phím 6 đổi camera bot)", "Bot vs Bot: players only watch, both sides are bots (overrides Player vs Bot; applies on map open; key 6 cycles bot cameras)"), v[7], (Boolc) b -> v[7] = b).pad(5).left().row();
+        final boolean[] afkBot = {afkBotOn()};
+        content.check(tr("Bot A.I tự động điều khiển khi bạn AFK (đứng im) hơn 1 phút", "A.I bot auto-controls your unit after 1 minute AFK"), afkBot[0], (Boolc) b -> afkBot[0] = b).pad(5).left().row();
         final TextField drField = numField(content, tr("Giới hạn pháo xây gần lõi (PvP):", "Built turret limit (PvP):"), maxBuilt(), 2, tr("pháo (0 - " + LIMIT_BUILT + ")", "turrets (0 - " + LIMIT_BUILT + ")"), false);
         final TextField mlField = numField(content, tr("Cấp tối đa (PvP):", "Max level (PvP):"), maxLevel(), 3, tr("cấp (1 - " + LIMIT_MAXLV + ", mặc định " + MAX_LEVEL + ")", "level (1 - " + LIMIT_MAXLV + ", default " + MAX_LEVEL + ")"), false);
         final TextField shField = numField(content, tr("Thời gian khiên bất tử của lõi đầu trận (phút, 0 = tắt):", "Core invincible shield time at match start (minutes, 0 = off):"), shieldMinutes(), 4,
@@ -5654,7 +5660,7 @@ public class NewModePvp {
             Core.settings.put(KEY_BUILT, clampParse(drField, DEFAULT_BUILT, 0, LIMIT_BUILT));
             Core.settings.put(KEY_BZONE, v[1]); Core.settings.put(KEY_RZONE, v[2]); Core.settings.put(KEY_UPANY, v[3]); Core.settings.put(KEY_WRAND, v[4]);
             Core.settings.put(KEY_TERR, clampParse(tField, 0, 0, LIMIT_TERR));
-            Core.settings.put(KEY_TMODE, tmSel[0]); Core.settings.put(KEY_EXT, v[5]); Core.settings.put(KEY_MULTI, v[0]); Core.settings.put(KEY_PVB, v[6]); Core.settings.put(KEY_BVB, v[7]);
+            Core.settings.put(KEY_TMODE, tmSel[0]); Core.settings.put(KEY_EXT, v[5]); Core.settings.put(KEY_MULTI, v[0]); Core.settings.put(KEY_PVB, v[6]); Core.settings.put(KEY_BVB, v[7]); Core.settings.put(KEY_AFKBOT, afkBot[0]);
             invalidateCfgCache();
         };
     }
@@ -5779,7 +5785,7 @@ public class NewModePvp {
             : (isExtraTier(t) ? tr("Đặc biệt", "Special") : (tr("Bậc ", "Tier ") + t));
         col.add("[lightgray]" + roleText + "[]").left().wrap().growX();
         row.add(col).growX().left().minWidth(0);
-        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 9 ? "Aureon" : t == 10 ? "Zeralion" : t == 11 ? "Bulvasyr" : t == 12 ? "Lancyron" : null;
+        final String sk = t == 7 ? "Archueng" : t == 8 ? "Honivery" : t == 9 ? "Aureon" : t == 10 ? "Zeralion" : t == 11 ? "Bulvasyr" : t == 12 ? "Lancyron" : t == 13 ? "Rexavyr" : null;
         if (t == cur) row.add("[accent]" + tr("Đang dùng", "In use") + "[]").width(selW).center();
         else if (st.lv < tierMinLevel(t)) row.add("[scarlet]" + tr("Cần cấp ", "Need Lv ") + tierMinLevel(t) + "[]").width(selW).center();
         else row.button(tr("Chọn", "Select"), () -> send(REQ_UNIT, String.valueOf(t))).size(selW, btnH());
