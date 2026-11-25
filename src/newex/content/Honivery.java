@@ -422,6 +422,7 @@ public final class Honivery {
             ArchuengPvp.buildKeybindRow(t);
             BulvasyrDash.buildKeybindRow(t);
             Lancyron.buildKeybindRow(t);
+            RexavyrSkill.buildKeybindRow(t);
         });
     }
 

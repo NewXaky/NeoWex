@@ -83,6 +83,8 @@ import newex.content.Tank15;
 import newex.content.aureon;
 import newex.content.Bulvasyr;
 import newex.content.Lancyron;
+import newex.content.Rexavyr;
+import newex.content.RexavyrSkill;
 import newex.content.Cos;
 import newex.content.Swordoder;
 import newex.content.Rangtaturs;
@@ -205,6 +207,7 @@ public class NexMod extends Mod {
         Bulvasyr.init(); // đăng ký classId & khiên vật lý Bulvasyr (chặn đạn/laser/mảnh đạn)
         BulvasyrDash.init(); // nut skill Luot cua Bulvasyr (unit bậc 11 trong NewMode PvP)
         Lancyron.init(); // đăng ký classId & khiên vật lý trước ngực Lancyron
+        RexavyrSkill.init(); // nut skill Lao+Can / Gam cua Rexavyr (unit bậc 13 trong NewMode PvP)
         Erysidus.init();
         Ravendes.init();
         Persefer.init();
@@ -282,6 +285,7 @@ public class NexMod extends Mod {
         aureon.create(); // unit Aureon (4 chân, 4 tia sét)
                 Bulvasyr.create();
         Lancyron.create(); // unit Lancyron (2 chân, khiên vật lý trước ngực tách lớp, 2 tên lửa hông + 1 shotgun tâm)
+        Rexavyr.create(); // unit Rexavyr (T-Rex cơ giáp: phun lửa, lao+cắn, gầm, vẫy đuôi)
         Honivery.create(); // unit Honivery (chuyển từ mod Multi Dimensional)
         Zeralion.create(); // unit Zeralion (2 chân bước luân phiên, 2 pháo bắn 3 nhịp)
         Emperical.create(); // paralyzed/oppressive (không tạo trong constructor)

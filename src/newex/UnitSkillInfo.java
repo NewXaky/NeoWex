@@ -15,6 +15,8 @@ import mindustry.ui.dialogs.BaseDialog;
 import newex.content.ArchuengPvp;
 import newex.content.Bulvasyr;
 import newex.content.BulvasyrDash;
+import newex.content.Rexavyr;
+import newex.content.RexavyrSkill;
 import newex.content.Honivery;
 import newex.content.HoniveryPvp;
 import newex.content.Lancyron;
@@ -215,11 +217,28 @@ public final class UnitSkillInfo {
         ));
     }
 
+    public static void registerRexavyr() {
+        register(new SkillProfile(
+            "Rexavyr",
+            () -> Rexavyr.rexavyr,
+            "LAO TỚI CẮN XÉ · TIẾNG GẦM CHẤN ĐỘNG",
+            DamageKind.BASIC_ATTACK,
+            Color.valueOf("FF8A1F"),
+            "Lao + Cắn: [cyan]8s[] hồi chiêu · Gầm: [cyan]20s[] hồi chiêu",
+            "[gold]Phun lửa[]: tầm gần, đạn xuyên mục tiêu, gây [orange]thiêu đốt[]\n[gold]Vẫy đuôi[]: tự động quất khi có địch phía sau, hất văng và làm chậm",
+            "[gold]Lao + Cắn[]: lao thẳng về phía trước rồi cắn, sát thương lớn [scarlet]600% Tấn Công[] và [green]hút máu[]. PC lao về phía chuột, mobile lao theo hướng đang chạy.",
+            "[gold]Gầm[]: sóng âm quanh unit gây [scarlet]150% Tấn Công[], [cyan]choáng 1.5s[] + yếu giáp + chậm kẻ địch, xóa đạn địch gần đó và tăng sức mạnh bản thân 4s.",
+            null,
+            () -> "PC: Lao + Cắn - phím [accent][" + RexavyrSkill.getKey(0).value + "][], Gầm - phím [accent][" + RexavyrSkill.getKey(1).value + "][] (đổi trong Cài đặt)\nMobile: nút LAO + CẮN và GẦM trên màn hình"
+        ));
+    }
+
     public static void init() {
         registerHonivery();
         registerAureon();
         registerBulvasyr();
         registerLancyron();
+        registerRexavyr();
         registerArchueng();
         registerZeralion();
     }

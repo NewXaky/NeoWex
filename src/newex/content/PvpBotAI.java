@@ -686,6 +686,10 @@ public final class PvpBotAI {
 
     static void tickAfkCopilot() {
         if (NewModePvp.bvbOn()) return;
+        if (!NewModePvp.afkBotOn()) {
+            for (AfkTrack t : afkMap.values()) { t.assisting = false; t.idleT = 0f; }
+            return;
+        }
         for (Player pl : Groups.player) {
             if (pl == null || isBotPl(pl) || !NewModePvp.isPvpTeam(pl.team())) continue;
             Unit u = pl.unit();
