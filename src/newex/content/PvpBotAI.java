@@ -375,7 +375,7 @@ public final class PvpBotAI {
     }
 
     public static void replaceBot(Player pl) {
-        if (agents.isEmpty()) return;
+        if (agents.isEmpty() || !NewModePvp.botAiOn()) return;
         Agent a = agents.get(0);
         Team tm = a.botPl.team();
         boolean inherit = pl != null && pl.team() == tm;
@@ -424,6 +424,10 @@ public final class PvpBotAI {
 
     public static void manage() {
         if (Vars.net.client() || !NewModePvp.isFull() || Vars.state.gameOver) return;
+        if (!NewModePvp.botAiOn()) {
+            for (int i = agents.size() - 1; i >= 0; i--) removeAgent(true, agents.get(i));
+            return;
+        }
         loadMemory();
         ArrayList<Team> want = desiredTeams();
         HashMap<Integer, Integer> need = new HashMap<>();
@@ -468,6 +472,7 @@ public final class PvpBotAI {
 
     public static void tick() {
         if (Vars.net.client() || !NewModePvp.isFull() || Vars.state.gameOver || Vars.state.isPaused()) return;
+        if (!NewModePvp.botAiOn()) return;
         tickChatQueue();
         tickAfkCopilot();
         tick1v2OfferCheck();
@@ -686,10 +691,6 @@ public final class PvpBotAI {
 
     static void tickAfkCopilot() {
         if (NewModePvp.bvbOn()) return;
-        if (!NewModePvp.afkBotOn()) {
-            for (AfkTrack t : afkMap.values()) { t.assisting = false; t.idleT = 0f; }
-            return;
-        }
         for (Player pl : Groups.player) {
             if (pl == null || isBotPl(pl) || !NewModePvp.isPvpTeam(pl.team())) continue;
             Unit u = pl.unit();

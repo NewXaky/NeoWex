@@ -112,7 +112,7 @@ public class NewModePvp {
     static final String KEY_TMODE = "newex-pvp-turret-mode";
     static final String KEY_PVB = "newex-pvp-player-vs-bot";
     static final String KEY_BVB = "newex-pvp-bot-vs-bot";
-    static final String KEY_AFKBOT = "newex-pvp-afk-bot";
+    static final String KEY_BOTAI = "newex-pvp-bot-ai";
     static final String KEY_BUILT = "newex-pvp-max-built";
     static final int DEFAULT_BUILT = 3;
     static final int LIMIT_BUILT = 12;
@@ -2956,8 +2956,7 @@ public class NewModePvp {
     static final HashMap<Integer, Integer> soldierOwner = new HashMap<>();
     static boolean pvbOn() { return setBool(KEY_PVB, false); }
     static boolean bvbOn() { return setBool(KEY_BVB, false); }
-    /** Bot A.I tự điều khiển hộ khi người chơi AFK > 1 phút (mặc định bật). */
-    static boolean afkBotOn() { return setBool(KEY_AFKBOT, true); }
+    static boolean botAiOn() { return setBool(KEY_BOTAI, true); }
     static PvpBotAI.Agent botOf(int id) { return PvpBotAI.botOf(id); }
     static PvpBotAI.Agent botUnitOf(Unit u) { return PvpBotAI.botUnitOf(u); }
     static boolean isBotId(int id) { return PvpBotAI.isBotId(id); }
@@ -5624,12 +5623,12 @@ public class NewModePvp {
         content.check(tr("Dùng NewMode ở map khác (EXP diệt quái, biến về đổi unit, xây dựng)", "Use NewMode on other maps (kill EXP, return toggles unit, building)"), v[5], (Boolc) b -> v[5] = b).pad(5).left().row();
         content.check(tr("Player vs Bot: mọi người chơi cùng 1 phe đấu phe bot (thêm người = thêm bot, bot càng thông minh)", "Player vs Bot: all players on one side vs the bot team (more players = more bots, smarter bots)"), v[6], (Boolc) b -> v[6] = b).pad(5).left().row();
         content.check(tr("Bot vs Bot: người chơi chỉ xem, 2 phe đều là bot (ưu tiên hơn Player vs Bot; áp dụng khi mở map; phím 6 đổi camera bot)", "Bot vs Bot: players only watch, both sides are bots (overrides Player vs Bot; applies on map open; key 6 cycles bot cameras)"), v[7], (Boolc) b -> v[7] = b).pad(5).left().row();
-        final boolean[] afkBot = {afkBotOn()};
-        content.check(tr("Bot A.I tự động điều khiển khi bạn AFK (đứng im) hơn 1 phút", "A.I bot auto-controls your unit after 1 minute AFK"), afkBot[0], (Boolc) b -> afkBot[0] = b).pad(5).left().row();
         final TextField drField = numField(content, tr("Giới hạn pháo xây gần lõi (PvP):", "Built turret limit (PvP):"), maxBuilt(), 2, tr("pháo (0 - " + LIMIT_BUILT + ")", "turrets (0 - " + LIMIT_BUILT + ")"), false);
         final TextField mlField = numField(content, tr("Cấp tối đa (PvP):", "Max level (PvP):"), maxLevel(), 3, tr("cấp (1 - " + LIMIT_MAXLV + ", mặc định " + MAX_LEVEL + ")", "level (1 - " + LIMIT_MAXLV + ", default " + MAX_LEVEL + ")"), false);
         final TextField shField = numField(content, tr("Thời gian khiên bất tử của lõi đầu trận (phút, 0 = tắt):", "Core invincible shield time at match start (minutes, 0 = off):"), shieldMinutes(), 4,
             tr("phút (0 - " + LIMIT_SHIELD_MIN + ", mặc định " + DEFAULT_SHIELD_MIN + "; " + LIMIT_SHIELD_MIN + " = lõi bất tử vĩnh viễn)", "min (0 - " + LIMIT_SHIELD_MIN + ", default " + DEFAULT_SHIELD_MIN + "; " + LIMIT_SHIELD_MIN + " = core invincible forever)"), true);
+        final boolean[] botAi = {botAiOn()};
+        content.check(tr("Bật Bot A.I (tắt = bot không hoạt động, tự rời trận)", "Enable Bot A.I (off = bots inactive and removed)"), botAi[0], (Boolc) b -> botAi[0] = b).pad(5).left().row();
         content.add(tr("[accent]-- CHẾ ĐỘ CHIẾN TRANH --[]", "[accent]-- WAR MODE --[]")).padTop(12).row();
         final TextField gearSlotField = numField(content, tr("Số ô trang bị vật phẩm:", "Item equipment slots:"), GearItems.slots(), 2,
             tr("ô (" + GearItems.TYPES + " - " + GearItems.MAXSLOTS + ", mặc định " + GearItems.TYPES + "; cần mở lại map)", "slots (" + GearItems.TYPES + " - " + GearItems.MAXSLOTS + ", default " + GearItems.TYPES + "; reopen the map)"), false);
@@ -5660,7 +5659,7 @@ public class NewModePvp {
             Core.settings.put(KEY_BUILT, clampParse(drField, DEFAULT_BUILT, 0, LIMIT_BUILT));
             Core.settings.put(KEY_BZONE, v[1]); Core.settings.put(KEY_RZONE, v[2]); Core.settings.put(KEY_UPANY, v[3]); Core.settings.put(KEY_WRAND, v[4]);
             Core.settings.put(KEY_TERR, clampParse(tField, 0, 0, LIMIT_TERR));
-            Core.settings.put(KEY_TMODE, tmSel[0]); Core.settings.put(KEY_EXT, v[5]); Core.settings.put(KEY_MULTI, v[0]); Core.settings.put(KEY_PVB, v[6]); Core.settings.put(KEY_BVB, v[7]); Core.settings.put(KEY_AFKBOT, afkBot[0]);
+            Core.settings.put(KEY_TMODE, tmSel[0]); Core.settings.put(KEY_EXT, v[5]); Core.settings.put(KEY_MULTI, v[0]); Core.settings.put(KEY_PVB, v[6]); Core.settings.put(KEY_BVB, v[7]); Core.settings.put(KEY_BOTAI, botAi[0]);
             invalidateCfgCache();
         };
     }

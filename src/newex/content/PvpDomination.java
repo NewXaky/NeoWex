@@ -104,6 +104,7 @@ public final class PvpDomination {
     public static final String KEY_TRAIN_MULTI_SAVE = "newex-train-multi-save";
     public static final String KEY_TRAIN_GEAR_SLOTS = "newex-train-gear-slots";
     public static final int DEFAULT_TRAIN_MAX_WAVES = 15;
+    public static final int FIXED_TRAIN_GEAR_SLOTS = 12;
     private static final String KEY_BAR_X = "newex-dom-bar-x";
     private static final String KEY_BAR_Y = "newex-dom-bar-y";
     private static final String KEY_SWAP_X = "newex-dom-swap-x";
@@ -691,19 +692,19 @@ public final class PvpDomination {
     }
 
     public static int getTrainMaxWaves() {
-        return Mathf.clamp(Core.settings.getInt(KEY_TRAIN_MAX_WAVES, DEFAULT_TRAIN_MAX_WAVES), 1, 200);
+        return DEFAULT_TRAIN_MAX_WAVES;
     }
 
     public static int getTrainGearSlots() {
-        return Mathf.clamp(Core.settings.getInt(KEY_TRAIN_GEAR_SLOTS, GearItems.MAXSLOTS), GearItems.TYPES, GearItems.MAXSLOTS);
+        return FIXED_TRAIN_GEAR_SLOTS;
     }
 
     public static boolean trainDupTurretOn() {
-        return Core.settings.getBool(KEY_TRAIN_DUP_TURRET, true);
+        return true;
     }
 
     public static int trainTurretMode() {
-        return Core.settings.getInt(KEY_TRAIN_TMODE, 0) == 1 ? 1 : 0;
+        return 1;
     }
 
     public static boolean trainMultiSaveOn() {
@@ -2522,12 +2523,42 @@ public final class PvpDomination {
     }
 
     // ===== PHẦN 3: CÀI ĐẶT HUẤN LUYỆN TẠO BẢN SAO UNIT & KHO UNIT / CHỌN UNIT (MachineUi) =====
-    /** Vào thẳng map Huấn Luyện Unit Player với cấu hình cố định (không còn trang cài đặt). */
-    public static final int TRAIN_FIXED_WAVES = 15, TRAIN_FIXED_SLOTS = 12;
+    /** Trang cài đặt trước khi vào map Huấn Luyện Unit Player (dùng MachineUi). */
     public static void openTrainingSetupDialog() {
         if (Vars.headless) return;
-        // Cho phép nhiều pháo cùng loại + chế độ Đa đạn (1), 15 đợt, 12 ô trang bị.
-        NewMode.startTrainingMap(TRAIN_FIXED_WAVES, true, 1, trainMultiSaveOn(), TRAIN_FIXED_SLOTS);
+        final MachineUi.Panel panel = MachineUi.panel(tr("Huấn Luyện — Tạo Bản Sao Lưu Unit", "Unit Training Backup"));
+        final boolean[] multiSaveVal = {trainMultiSaveOn()};
+        panel.onBuild(() -> {
+            Table c = panel.content();
+            c.clear();
+            c.margin(10f).top().left().defaults().left();
+            float w = panel.innerW();
+            float wrapW = Math.max(160f, w - 28f);
+            c.add("[#38ef7d]" + tr("-- HUẤN LUYỆN UNIT PLAYER --", "-- UNIT TRAINING --") + "[]").padBottom(6f).row();
+            c.add("[lightgray]" + tr("Cố định: nhiều pháo cùng loại + đa đạn • " + DEFAULT_TRAIN_MAX_WAVES + " đợt • " + FIXED_TRAIN_GEAR_SLOTS + " ô trang bị.",
+                "Fixed: duplicate turrets + multi-shot • " + DEFAULT_TRAIN_MAX_WAVES + " waves • " + FIXED_TRAIN_GEAR_SLOTS + " gear slots.") + "[]")
+                .wrap().width(wrapW).padBottom(10f).row();
+            Table msCard = new Table(Styles.black6);
+            msCard.margin(8f).left();
+            msCard.check(tr("Cho phép sao lưu 1 Unit thành nhiều bản cùng 1 lúc (1–5 ô)",
+                "Allow saving multiple copies of 1 Unit at once (1–5 slots)"),
+                multiSaveVal[0], (Boolc) b -> multiSaveVal[0] = b).width(wrapW - 12f).left().get().getLabel().setWrap(true);
+            c.add(msCard).width(Math.max(160f, w - 8f)).padBottom(8f).row();
+
+            Table ft = panel.footer();
+            ft.clear();
+            ft.margin(4f);
+            ft.button(tr("[#38ef7d]Bắt Đầu Huấn Luyện[]", "[#38ef7d]Start Training[]"), Styles.flatBordert, () -> {
+                Core.settings.put(KEY_TRAIN_MULTI_SAVE, multiSaveVal[0]);
+                panel.hide();
+                NewMode.startTrainingMap(DEFAULT_TRAIN_MAX_WAVES, true, 1, multiSaveVal[0], FIXED_TRAIN_GEAR_SLOTS);
+            }).height(44f).minWidth(190f).pad(4f);
+            ft.button(tr("Quay Lại", "Back"), Styles.flatBordert, () -> {
+                panel.hide();
+                openUnitManagerFromMenu();
+            }).height(44f).minWidth(110f).pad(4f);
+        });
+        panel.show();
     }
 
     public static void openUnitManagerFromMenu() {
